@@ -136,6 +136,21 @@
             "timeout": 2000
           }
         ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/agent-log.sh\" start || true",
+            "timeout": 2000
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/agent-split.sh\" \"$(basename \"$PWD\")\" || true",
+            "timeout": 3000
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -151,6 +166,21 @@
             "type": "command",
             "command": "bash \"$HOME/claude/TP_skills/session-manager/periodic-notion-log.sh\" 2>/dev/null || true",
             "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/agent-log.sh\" end || true",
+            "timeout": 2000
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/agent-split-close.sh\" || true",
+            "timeout": 2000
           }
         ]
       },
