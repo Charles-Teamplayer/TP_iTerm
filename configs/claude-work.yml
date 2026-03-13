@@ -1,0 +1,77 @@
+session: claude-work
+
+windows:
+  - name: imsms
+    root: ~/claude/TP_newIMSMS
+    commands:
+      - bash ~/.claude/scripts/tab-status.sh starting imsms && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: imsms-agent
+    root: ~/claude/TP_newIMSMS_Agent
+    commands:
+      - sleep 5 && bash ~/.claude/scripts/tab-status.sh starting imsms-agent && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: mdm
+    root: ~/claude/TP_MDM
+    commands:
+      - sleep 10 && bash ~/.claude/scripts/tab-status.sh starting mdm && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: tesla-lvds
+    root: ~/claude/TP_TESLA_LVDS
+    commands:
+      - sleep 15 && bash ~/.claude/scripts/tab-status.sh starting tesla-lvds && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: tesla-dashboard
+    root: ~/ralph-claude-code/TESLA_Status_Dashboard
+    commands:
+      - sleep 20 && bash ~/.claude/scripts/tab-status.sh starting tesla-dashboard && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: mindmap
+    root: ~/claude/TP_MindMap_AutoCC
+    commands:
+      - sleep 25 && bash ~/.claude/scripts/tab-status.sh starting mindmap && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: sj-mindmap
+    root: ~/SJ_MindMap
+    commands:
+      - sleep 30 && bash ~/.claude/scripts/tab-status.sh starting sj-mindmap && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: imessage
+    root: ~/claude/TP_A.iMessage_standalone_01067051080
+    commands:
+      - sleep 35 && bash ~/.claude/scripts/tab-status.sh starting imessage && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: btt
+    root: ~/claude/TP_BTT
+    commands:
+      - sleep 40 && bash ~/.claude/scripts/tab-status.sh starting btt && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: infra
+    root: ~/claude/TP_Infra_reduce_Project
+    commands:
+      - sleep 45 && bash ~/.claude/scripts/tab-status.sh starting infra && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: skills
+    root: ~/claude/TP_skills
+    commands:
+      - sleep 50 && bash ~/.claude/scripts/tab-status.sh starting skills && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: appletv
+    root: ~/claude/AppleTV_ScreenSaver.app
+    commands:
+      - sleep 55 && bash ~/.claude/scripts/tab-status.sh starting appletv && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: imsms-web
+    root: ~/claude/imsms.im-website
+    commands:
+      - sleep 60 && bash ~/.claude/scripts/tab-status.sh starting imsms-web && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: auto-restart
+    root: ~/claude/autoRestart_ClaudeCode
+    commands:
+      - sleep 65 && bash ~/.claude/scripts/tab-status.sh starting auto-restart && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+
+  - name: monitor
+    root: ~/claude
+    commands:
+      - echo "=== Claude Work Monitor ===" && tmux ls && echo "" && bash ~/.claude/scripts/session-registry.sh list
