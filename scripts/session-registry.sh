@@ -16,9 +16,23 @@ case "$ACTION" in
     register)
         # 세션 등록 (SessionStart hook에서 호출)
         TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-        PID=$(pgrep -f "claude" | tail -1)
-        # 현재 세션의 TTY 장치 찾기
+        # 부모 PID 체인으로 현재 세션의 claude PID 찾기
+        PID=""
         SESSION_TTY=""
+        SEARCH_PID=$$
+        for _i in 1 2 3 4 5 6 7 8; do
+            SEARCH_PID=$(ps -o ppid= -p "$SEARCH_PID" 2>/dev/null | tr -d ' ')
+            [ -z "$SEARCH_PID" ] && break
+            CMD=$(ps -o comm= -p "$SEARCH_PID" 2>/dev/null)
+            if echo "$CMD" | grep -q "claude" 2>/dev/null; then
+                PID="$SEARCH_PID"
+                break
+            fi
+        done
+        # PID 못 찾으면 fallback
+        if [ -z "$PID" ]; then
+            PID=$(pgrep -f "claude" | tail -1)
+        fi
         if [ -n "$PID" ]; then
             SESSION_TTY=$(ps -o tty= -p "$PID" 2>/dev/null | tr -d ' ')
             [ "$SESSION_TTY" = "??" ] && SESSION_TTY=""

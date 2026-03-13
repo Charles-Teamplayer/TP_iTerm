@@ -1,0 +1,173 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(python3 *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(cat *)",
+      "Bash(cd *)",
+      "Bash(./gradlew *)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Edit(.env)",
+      "Edit(.env.*)"
+    ]
+  },
+  "model": "sonnet",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/session-start.sh\" || true",
+            "timeout": 60000
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/tp-skills-update.sh\" || true",
+            "timeout": 10000
+          },
+          {
+            "type": "command",
+            "command": "source ~/.zshrc && python3 \"$HOME/claude/TP_skills/session-manager/notion-advanced.py\" \"$(basename \"$PWD\")\" \"Session Started\" \"Claude Code 세션 시작\" || true",
+            "timeout": 15000
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/session-registry.sh\" register",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/tab-status.sh\" active \"$(basename \"$PWD\")\"",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/pre-compact-backup.sh\" || true",
+            "timeout": 10000
+          },
+          {
+            "type": "command",
+            "command": "source ~/.zshrc && python3 \"$HOME/claude/TP_skills/session-manager/notion-advanced.py\" \"$(basename \"$PWD\")\" \"Auto Compact\" \"Context window 도달 - 자동 압축 실행\"",
+            "timeout": 15000
+          },
+          {
+            "type": "command",
+            "command": "echo \"[$(date '+%Y-%m-%d %H:%M:%S')] AUTO-COMPACT triggered in $(basename \"$PWD\")\" >> \"$HOME/claude/TP_history/_global/compact.log\"",
+            "timeout": 3000
+          }
+        ]
+      },
+      {
+        "matcher": "manual",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "source ~/.zshrc && python3 \"$HOME/claude/TP_skills/session-manager/notion-advanced.py\" \"$(basename \"$PWD\")\" \"Manual Backup\" \"수동 compact 실행\"",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/tab-status.sh\" waiting \"$(basename \"$PWD\")\"",
+            "timeout": 3000
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/session-registry.sh\" unregister",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "source ~/.zshrc && python3 \"$HOME/claude/TP_skills/session-manager/notion-advanced.py\" \"$(basename \"$PWD\")\" \"Session Ended\" \"Claude Code 세션 종료\"",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/tab-status.sh\" working \"$(basename \"$PWD\")\"",
+            "timeout": 2000
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/session-registry.sh\" heartbeat",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|Agent|Read|Glob|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/tab-status.sh\" working \"$(basename \"$PWD\")\"",
+            "timeout": 2000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [[ \"$CLAUDE_FILE_PATH\" == *\"/Users/teample.casper/claude/\"* ]] && [[ \"$CLAUDE_FILE_PATH\" != *\"TP_skills\"* ]] && [[ \"$CLAUDE_FILE_PATH\" != *\"TP_history\"* ]]; then PROJECT=$(echo \"$CLAUDE_FILE_PATH\" | sed 's|/Users/teample.casper/claude/||' | cut -d'/' -f1); mkdir -p \"$HOME/claude/TP_history/$PROJECT\"; echo \"$(date '+%Y-%m-%d %H:%M') $(echo $CLAUDE_FILE_PATH | sed \"s|.*/claude/$PROJECT/||\")\" >> \"$HOME/claude/TP_history/$PROJECT/changes.log\"; fi",
+            "timeout": 3000
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/claude/TP_skills/session-manager/periodic-notion-log.sh\" 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/skill-usage-tracker.sh\" \"$CLAUDE_TOOL_INPUT\" 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "swift-lsp@claude-plugins-official": true
+  },
+  "skipDangerousModePermissionPrompt": true
+}

@@ -12,6 +12,19 @@ log() {
 
 log "=== Auto-Restore 시작 ==="
 
+# 부팅 시 orphan tab-states 정리 (이전 세션 잔존 파일 제거)
+STATE_DIR="$HOME/.claude/tab-states"
+if [ -d "$STATE_DIR" ]; then
+    for sf in "$STATE_DIR"/ttys*; do
+        [ ! -f "$sf" ] && continue
+        TTY_DEV="/dev/$(basename "$sf")"
+        if [ ! -c "$TTY_DEV" ]; then
+            rm -f "$sf"
+            log "Orphan tab-state 제거: $(basename "$sf")"
+        fi
+    done
+fi
+
 # 환경변수 로드 후 CLAUDECODE 해제 (순서 중요: source 후 unset)
 if [ -f "$HOME/.zshrc" ]; then
     source "$HOME/.zshrc" 2>/dev/null || true

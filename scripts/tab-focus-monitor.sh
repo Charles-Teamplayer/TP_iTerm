@@ -8,28 +8,16 @@ TMP="/tmp/.iterm2-focus-tty"
 mkdir -p "$STATE_DIR" "$(dirname "$LOG")"
 
 log() { echo "[$(date '+%H:%M:%S')] $1" >> "$LOG"; }
-log "=== 포커스 모니터 v3 시작 ==="
+log "=== 포커스 모니터 v4 시작 ==="
 
 # PATH 보장 (LaunchAgent용)
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
-get_focused_tty() {
-    # osascript를 2초 타임아웃으로 실행
-    local result=""
-    result=$(osascript -e 'try' -e 'tell application "iTerm2" to return tty of current session of current tab of current window' -e 'end try' 2>/dev/null &
-    local pid=$!
-    local i=0
-    while [ $i -lt 20 ] && kill -0 $pid 2>/dev/null; do
-        sleep 0.1
-        i=$((i + 1))
-    done
-    if kill -0 $pid 2>/dev/null; then
-        kill $pid 2>/dev/null
-        wait $pid 2>/dev/null
-        return 1
-    fi
-    wait $pid 2>/dev/null)
-    echo "$result"
+# 원자적 파일 쓰기 (race condition 방지)
+atomic_write() {
+    local file="$1" content="$2"
+    local tmp="${file}.$$"
+    echo "$content" > "$tmp" 2>/dev/null && mv "$tmp" "$file" 2>/dev/null
 }
 
 LAST_TTY=""
@@ -81,9 +69,9 @@ while true; do
     case "$TAB_STATUS" in
         waiting|idle|stale|working)
             if [ -c "$SESSION_TTY" ]; then
-                printf '\e]1;🟢 %s\a' "$TAB_PROJECT" > "$SESSION_TTY" 2>/dev/null
+                printf '\e]1;%s\a' "$TAB_PROJECT" > "$SESSION_TTY" 2>/dev/null
                 printf '\e]6;1;bg;red;brightness;0\a\e]6;1;bg;green;brightness;220\a\e]6;1;bg;blue;brightness;0\a' > "$SESSION_TTY" 2>/dev/null
-                echo "active|${TAB_PROJECT}" > "$STATE_FILE"
+                atomic_write "$STATE_FILE" "active|${TAB_PROJECT}|$(date +%s)"
                 log "${TAB_STATUS} → active ($TAB_PROJECT, $TTY_NAME)"
             fi
             ;;

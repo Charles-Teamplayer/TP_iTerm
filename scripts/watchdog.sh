@@ -78,37 +78,71 @@ while true; do
         fi
     fi
 
-    # 2. 시간 경과 세션 상태 갱신 (idle: 1일+, stale: 7일+)
-    AGE_RESULT=$(bash "$HOME/.claude/scripts/session-registry.sh" age-check 2>/dev/null || true)
-    if [ -n "$AGE_RESULT" ]; then
-        echo "$AGE_RESULT" | while IFS=: read -r level project tty; do
-            if [ -n "$tty" ] && [ -c "/dev/$tty" ]; then
-                case "$level" in
-                    STALE)
-                        printf '\e]1;⚫ %s [7d+]\a' "$project" > "/dev/$tty" 2>/dev/null
-                        ;;
-                    IDLE)
-                        printf '\e]1;🟠 %s [1d+]\a' "$project" > "/dev/$tty" 2>/dev/null
-                        ;;
-                esac
+    # 2. 시간 경과 동그라미 표시 (tab-states 파일 기반)
+    #    1시간+ → 🟡  |  1일+ → 🔴  |  3일+ → 🔴⚪ 깜빡임
+    NOW=$(date +%s)
+    STATE_DIR="$HOME/.claude/tab-states"
+    if [ -d "$STATE_DIR" ]; then
+        for STATE_FILE in "$STATE_DIR"/ttys*; do
+            [ ! -f "$STATE_FILE" ] && continue
+            TTY_NAME=$(basename "$STATE_FILE")
+            TTY_PATH="/dev/$TTY_NAME"
+            [ ! -c "$TTY_PATH" ] && continue
+
+            TAB_STATUS=$(cut -d'|' -f1 "$STATE_FILE" 2>/dev/null)
+            TAB_PROJECT=$(cut -d'|' -f2 "$STATE_FILE" 2>/dev/null)
+            LAST_TS=$(cut -d'|' -f3 "$STATE_FILE" 2>/dev/null)
+            [ -z "$LAST_TS" ] && continue
+
+            AGE=$(( NOW - LAST_TS ))
+
+            if [ $AGE -ge 259200 ]; then
+                # 3일+ → 🔴⚪ 깜빡임 (1회만, 30초마다 반복됨)
+                printf '\e]1;🔴 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
+                echo "stale|${TAB_PROJECT}|${LAST_TS}" > "$STATE_FILE"
+                # 다음 30초에 ⚪로 바뀌도록 토글 파일
+                TOGGLE_FILE="/tmp/.tab-blink-${TTY_NAME}"
+                if [ -f "$TOGGLE_FILE" ]; then
+                    printf '\e]1;⚪ %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
+                    rm "$TOGGLE_FILE"
+                else
+                    printf '\e]1;🔴 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
+                    touch "$TOGGLE_FILE"
+                fi
+                printf '\e]6;1;bg;red;brightness;80\a\e]6;1;bg;green;brightness;80\a\e]6;1;bg;blue;brightness;80\a' > "$TTY_PATH" 2>/dev/null
+            elif [ $AGE -ge 86400 ]; then
+                # 24시간+ → 🔴
+                printf '\e]1;🔴 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
+                printf '\e]6;1;bg;red;brightness;200\a\e]6;1;bg;green;brightness;50\a\e]6;1;bg;blue;brightness;50\a' > "$TTY_PATH" 2>/dev/null
+                echo "idle|${TAB_PROJECT}|${LAST_TS}" > "$STATE_FILE"
+            elif [ $AGE -ge 3600 ]; then
+                # 1시간+ → 🟡
+                printf '\e]1;🟡 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
+                printf '\e]6;1;bg;red;brightness;200\a\e]6;1;bg;green;brightness;150\a\e]6;1;bg;blue;brightness;0\a' > "$TTY_PATH" 2>/dev/null
+                echo "idle|${TAB_PROJECT}|${LAST_TS}" > "$STATE_FILE"
+            elif [ $AGE -ge 600 ]; then
+                # 10분+ → ⚪ 흰색
+                printf '\e]1;⚪ %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
+                printf '\e]6;1;bg;red;brightness;220\a\e]6;1;bg;green;brightness;220\a\e]6;1;bg;blue;brightness;220\a' > "$TTY_PATH" 2>/dev/null
+                echo "idle|${TAB_PROJECT}|${LAST_TS}" > "$STATE_FILE"
             fi
         done
     fi
 
     # 3. 좀비 프로세스 감지 (72시간 이상 + tty 없음)
-    ZOMBIES=$(ps aux | grep "[c]laude" | awk '{
-        split($10, t, ":");
-        if (length(t) >= 3) {
-            hours = t[1];
-            if (hours+0 > 72 && $7 == "??") print $2, $11
-        }
+    ZOMBIES=$(ps -eo pid,tty,etime,command 2>/dev/null | grep "[c]laude" | grep -v "Claude.app\|Helper\|watchdog\|auto-restore" | awk '{
+        # etime 형식: DD-HH:MM:SS 또는 HH:MM:SS 또는 MM:SS
+        split($3, parts, "-");
+        days = 0;
+        if (length(parts) == 2) { days = parts[1]+0; }
+        if (days >= 3 && $2 == "??") print $1, $4
     }' 2>/dev/null || true)
 
     if [ -n "$ZOMBIES" ]; then
         log "ZOMBIE DETECTED: $ZOMBIES"
     fi
 
-    # 3. iTerm2 생존 확인
+    # 4. iTerm2 생존 확인
     if ! pgrep -x "iTerm2" > /dev/null; then
         log "WARNING: iTerm2 not running"
     fi
