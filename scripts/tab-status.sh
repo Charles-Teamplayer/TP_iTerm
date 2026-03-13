@@ -18,6 +18,9 @@
 STATUS="${1:-active}"
 PROJECT="${2:-$(basename "$PWD")}"
 
+# 디버그 로그
+echo "[$(date '+%H:%M:%S')] ${STATUS} | ${PROJECT} | caller:$$" >> "$HOME/.claude/logs/tab-status-debug.log" 2>/dev/null
+
 find_tty() {
     if [ -n "${TTY:-}" ] && [ -c "$TTY" ]; then
         echo "$TTY"

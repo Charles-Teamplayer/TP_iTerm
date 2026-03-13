@@ -1,55 +1,83 @@
 #!/bin/bash
-# iTerm2 탭 포커스 감지 데몬
-# 탭 선택 시 🟡/🟠/⚫ → 🟢 자동 전환
-# 파일 기반 상태 판별: ~/.claude/tab-states/{tty}
+# iTerm2 탭 포커스 감지 데몬 v3
+# 탭 선택 시 🟡/🟠/⚫/🔵 → 🟢 자동 전환
 
 STATE_DIR="$HOME/.claude/tab-states"
 LOG="$HOME/.claude/logs/tab-focus-monitor.log"
+TMP="/tmp/.iterm2-focus-tty"
 mkdir -p "$STATE_DIR" "$(dirname "$LOG")"
 
 log() { echo "[$(date '+%H:%M:%S')] $1" >> "$LOG"; }
-log "=== 포커스 모니터 시작 ==="
+log "=== 포커스 모니터 v3 시작 ==="
+
+# PATH 보장 (LaunchAgent용)
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+get_focused_tty() {
+    # osascript를 2초 타임아웃으로 실행
+    local result=""
+    result=$(osascript -e 'try' -e 'tell application "iTerm2" to return tty of current session of current tab of current window' -e 'end try' 2>/dev/null &
+    local pid=$!
+    local i=0
+    while [ $i -lt 20 ] && kill -0 $pid 2>/dev/null; do
+        sleep 0.1
+        i=$((i + 1))
+    done
+    if kill -0 $pid 2>/dev/null; then
+        kill $pid 2>/dev/null
+        wait $pid 2>/dev/null
+        return 1
+    fi
+    wait $pid 2>/dev/null)
+    echo "$result"
+}
 
 LAST_TTY=""
 
-while true; do
-    # 현재 포커스된 세션의 TTY
-    SESSION_TTY=$(osascript 2>/dev/null <<'SCPT'
-tell application "iTerm2"
-    if (count of windows) = 0 then return ""
-    tell current session of current tab of current window
-        return tty
-    end tell
-end tell
-SCPT
-    )
+# 시작 시 현재 탭 기록
+LAST_TTY=$(osascript -e 'try' -e 'tell application "iTerm2" to return tty of current session of current tab of current window' -e 'end try' 2>/dev/null)
+log "초기 TTY: ${LAST_TTY:-없음}"
 
-    if [ -z "$SESSION_TTY" ]; then
-        sleep 2
+while true; do
+    # 현재 포커스 TTY 가져오기
+    osascript -e 'try' -e 'tell application "iTerm2" to return tty of current session of current tab of current window' -e 'end try' > "$TMP" 2>/dev/null &
+    OSA_PID=$!
+
+    # 최대 2초 대기
+    WAIT=0
+    while [ $WAIT -lt 20 ] && kill -0 $OSA_PID 2>/dev/null; do
+        sleep 0.1
+        WAIT=$((WAIT + 1))
+    done
+
+    # 타임아웃 시 kill
+    if kill -0 $OSA_PID 2>/dev/null; then
+        kill -9 $OSA_PID 2>/dev/null
+        wait $OSA_PID 2>/dev/null
+        log "osascript 타임아웃 — skip"
+        sleep 1
         continue
     fi
+    wait $OSA_PID 2>/dev/null
 
-    # 같은 탭이면 스킵
-    if [ "$SESSION_TTY" = "$LAST_TTY" ]; then
-        sleep 2
+    SESSION_TTY=$(cat "$TMP" 2>/dev/null | tr -d '\n\r')
+
+    # 빈값이거나 같은 탭이면 스킵
+    if [ -z "$SESSION_TTY" ] || [ "$SESSION_TTY" = "$LAST_TTY" ]; then
+        sleep 1
         continue
     fi
 
     LAST_TTY="$SESSION_TTY"
 
-    # 해당 TTY의 상태 파일 읽기
+    # 상태 파일 읽기
     TTY_NAME=$(basename "$SESSION_TTY")
     STATE_FILE="${STATE_DIR}/${TTY_NAME}"
-
-    if [ ! -f "$STATE_FILE" ]; then
-        sleep 2
-        continue
-    fi
+    [ ! -f "$STATE_FILE" ] && { sleep 1; continue; }
 
     TAB_STATUS=$(cut -d'|' -f1 "$STATE_FILE" 2>/dev/null)
     TAB_PROJECT=$(cut -d'|' -f2 "$STATE_FILE" 2>/dev/null)
 
-    # waiting/idle/stale → 🟢 active 전환
     case "$TAB_STATUS" in
         waiting|idle|stale|working)
             if [ -c "$SESSION_TTY" ]; then
@@ -61,5 +89,5 @@ SCPT
             ;;
     esac
 
-    sleep 2
+    sleep 1
 done
