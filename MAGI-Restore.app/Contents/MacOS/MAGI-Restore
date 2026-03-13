@@ -1,0 +1,148 @@
+#!/bin/bash
+# MAGI-Restore — Claude Code AutoRestart 설치 및 관리 앱
+# 더블클릭으로 설치/업데이트/상태확인
+
+APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CLAUDE_DIR="$HOME/.claude"
+SCRIPTS_DIR="$CLAUDE_DIR/scripts"
+LAUNCH_DIR="$HOME/Library/LaunchAgents"
+LOG="$CLAUDE_DIR/logs/magi-restore-app.log"
+
+mkdir -p "$SCRIPTS_DIR" "$CLAUDE_DIR/logs" "$CLAUDE_DIR/tab-states" "$LAUNCH_DIR"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG"; }
+
+notify() {
+    osascript -e "display notification \"$1\" with title \"MAGI-Restore\" sound name \"Glass\"" 2>/dev/null || true
+}
+
+alert() {
+    osascript -e "display dialog \"$1\" with title \"MAGI-Restore\" buttons {\"확인\"} default button \"확인\"" 2>/dev/null || true
+}
+
+ask() {
+    osascript -e "display dialog \"$1\" with title \"MAGI-Restore\" buttons {\"취소\", \"$2\"} default button \"$2\"" 2>/dev/null
+}
+
+log "=== MAGI-Restore 앱 실행 ==="
+
+# 환경변수 로드
+if [ -f "$HOME/.zshrc" ]; then
+    source "$HOME/.zshrc" 2>/dev/null || true
+fi
+
+# iTerm2 확인
+if [ ! -d "/Applications/iTerm.app" ]; then
+    alert "iTerm2가 설치되어 있지 않습니다.\n\nhttps://iterm2.com 에서 다운로드하세요."
+    open "https://iterm2.com"
+    exit 1
+fi
+
+# claude CLI 확인
+if ! command -v claude &>/dev/null; then
+    alert "Claude Code CLI가 설치되어 있지 않습니다.\n\n터미널에서 실행:\nnpm install -g @anthropic-ai/claude-code"
+    exit 1
+fi
+
+# 현재 상태 확인
+INSTALLED=0
+RUNNING=0
+UID_NUM=$(id -u)
+
+if [ -f "$SCRIPTS_DIR/watchdog.sh" ] && [ -f "$SCRIPTS_DIR/tab-focus-monitor.sh" ] && [ -f "$SCRIPTS_DIR/auto-restore.sh" ]; then
+    INSTALLED=1
+fi
+
+if launchctl print "gui/$UID_NUM/com.claude.watchdog" &>/dev/null; then
+    RUNNING=$((RUNNING + 1))
+fi
+if launchctl print "gui/$UID_NUM/com.claude.tab-focus-monitor" &>/dev/null; then
+    RUNNING=$((RUNNING + 1))
+fi
+if launchctl print "gui/$UID_NUM/com.claude.auto-restore" &>/dev/null; then
+    RUNNING=$((RUNNING + 1))
+fi
+
+# 메인 메뉴
+if [ "$INSTALLED" -eq 1 ]; then
+    CHOICE=$(osascript << 'MENU'
+display dialog "MAGI-Restore 상태
+
+설치됨: ✅
+데몬 동작: RUNNING_COUNT/3
+
+무엇을 하시겠습니까?" with title "MAGI-Restore" buttons {"상태 확인", "업데이트", "재설치"} default button "상태 확인"
+button returned of result
+MENU
+    )
+    # RUNNING_COUNT 치환이 osascript 안에서 안되므로 분기
+    if [ -z "$CHOICE" ]; then exit 0; fi
+else
+    CHOICE="재설치"
+    ask "MAGI-Restore를 설치하시겠습니까?\n\n설치 내용:\n- 탭 상태 표시 (색상 자동 변경)\n- 크래시 자동 감지 + 알림\n- 재부팅 시 자동 복원\n- 탭 포커스 감지" "설치" || exit 0
+fi
+
+case "$CHOICE" in
+    "상태 확인")
+        # 데몬 상태 수집
+        STATUS=""
+        for SVC in watchdog tab-focus-monitor auto-restore; do
+            if launchctl print "gui/$UID_NUM/com.claude.$SVC" &>/dev/null; then
+                PID=$(launchctl print "gui/$UID_NUM/com.claude.$SVC" 2>/dev/null | grep "pid =" | awk '{print $3}')
+                STATUS="${STATUS}\n  ✅ $SVC (PID: ${PID:-?})"
+            else
+                STATUS="${STATUS}\n  ❌ $SVC (중지됨)"
+            fi
+        done
+
+        # Claude 세션 수
+        SESSIONS=$(ps aux | grep "[c]laude" | grep -v "Claude.app\|Helper\|watchdog\|auto-restore\|tab-focus\|session-registry" | wc -l | tr -d ' ')
+
+        alert "MAGI-Restore 상태\n\n데몬:${STATUS}\n\nClaude 세션: ${SESSIONS}개"
+        ;;
+
+    "업데이트"|"재설치")
+        log "설치/업데이트 시작"
+
+        # 스크립트 소스 찾기 (앱 번들 내 또는 git repo)
+        REPO_DIR="$(cd "$APP_DIR/../.." && pwd)"
+        SRC_SCRIPTS="$REPO_DIR/scripts"
+        SRC_CONFIGS="$REPO_DIR/configs"
+
+        if [ ! -d "$SRC_SCRIPTS" ]; then
+            alert "스크립트 소스를 찾을 수 없습니다.\n\n앱이 git repo 안에 있어야 합니다:\nautoRestart_ClaudeCode/MAGI-Restore.app"
+            exit 1
+        fi
+
+        # 스크립트 복사
+        for f in "$SRC_SCRIPTS"/*.sh; do
+            cp "$f" "$SCRIPTS_DIR/"
+            chmod +x "$SCRIPTS_DIR/$(basename "$f")"
+        done
+        log "스크립트 복사 완료"
+
+        # LaunchAgent plist 복사 (경로 치환)
+        for f in "$SRC_CONFIGS"/com.claude.*.plist; do
+            [ ! -f "$f" ] && continue
+            BASENAME=$(basename "$f")
+            sed "s|/Users/teample.casper|${HOME}|g" "$f" > "$LAUNCH_DIR/$BASENAME"
+        done
+        log "LaunchAgent plist 복사 완료"
+
+        # LaunchAgent 등록
+        for f in "$LAUNCH_DIR"/com.claude.*.plist; do
+            [ ! -f "$f" ] && continue
+            LABEL=$(basename "$f" .plist)
+            launchctl bootout "gui/$UID_NUM" "$f" 2>/dev/null || true
+            launchctl bootstrap "gui/$UID_NUM" "$f" 2>/dev/null || true
+            log "$LABEL 등록"
+        done
+
+        notify "MAGI-Restore 설치 완료! 데몬 3개 등록됨."
+        alert "설치 완료!\n\n✅ watchdog (크래시 감지)\n✅ tab-focus-monitor (탭 전환 감지)\n✅ auto-restore (재부팅 복원)\n\n⚠️ auto-restore.sh의 PROJECTS 배열을\n이 Mac의 프로젝트 경로로 수정하세요."
+
+        log "설치/업데이트 완료"
+        ;;
+esac
+
+exit 0
