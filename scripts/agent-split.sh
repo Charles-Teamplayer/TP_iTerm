@@ -12,8 +12,8 @@ touch "$AGENT_LOG"
 # 이미 분할했으면 스킵
 [ -f "$SPLIT_MARKER" ] && exit 0
 
-# === iTerm2 네이티브 모드 (현재 환경) ===
-if [ "$TERM_PROGRAM" = "iTerm.app" ] || pgrep -x "iTerm2" > /dev/null 2>&1; then
+# === iTerm2 모드 (hook 환경에서는 TERM_PROGRAM이 비어있을 수 있어 항상 시도) ===
+if true; then
     osascript << APPLESCRIPT 2>/dev/null
 tell application "iTerm2"
     tell current session of current tab of current window

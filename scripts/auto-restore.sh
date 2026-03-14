@@ -64,30 +64,29 @@ if tmux has-session -t claude-work 2>/dev/null; then
     sleep 2
 fi
 
-# smug로 tmux 세션 생성 (iTerm2 tmux integration 모드)
-log "smug start claude-work 실행"
+# === Step 1: smug로 tmux 세션 생성 (직접 실행 + has-session polling으로 검증) ===
+log "smug start claude-work --detach 직접 실행"
+smug start claude-work --detach 2>/dev/null &
+SMUG_PID=$!
 
-# iTerm2에서 tmux integration 모드로 연결
-# -CC 플래그: iTerm2가 tmux 윈도우를 네이티브 탭/pane으로 표시
-osascript << 'EOF'
-tell application "iTerm"
-    activate
-    delay 1
-    set newWindow to (create window with default profile)
-    tell newWindow
-        tell current session
-            write text "smug start claude-work && tmux -CC attach -t claude-work"
-        end tell
-    end tell
-end tell
-EOF
+# tmux 세션이 실제로 생성될 때까지 최대 15초 대기 (0.3초 × 50회)
+SMUG_OK=0
+for _i in $(seq 1 50); do
+    if tmux has-session -t claude-work 2>/dev/null; then
+        SMUG_OK=1
+        break
+    fi
+    sleep 0.3
+done
+wait $SMUG_PID 2>/dev/null
 
-if [ $? -ne 0 ]; then
-    log "ERROR: smug 실행 실패, AppleScript 탭 fallback"
-    # Fallback: 직접 tmux 세션 생성
+if [ $SMUG_OK -ne 1 ]; then
+    log "smug 실패 (15초 내 세션 미생성), tmux 직접 생성 fallback"
+    kill $SMUG_PID 2>/dev/null || true
+
+    # Fallback: tmux 직접 세션 생성
     tmux new-session -d -s claude-work -n monitor -c "$HOME/claude" 2>/dev/null
 
-    # 프로젝트별 윈도우 생성
     PROJECTS=(
         "imsms:$HOME/claude/TP_newIMSMS"
         "imsms-agent:$HOME/claude/TP_newIMSMS_Agent"
@@ -110,25 +109,36 @@ if [ $? -ne 0 ]; then
         NAME=$(echo "$proj" | cut -d: -f1)
         PROJ_PATH=$(echo "$proj" | cut -d: -f2-)
         [ ! -d "$PROJ_PATH" ] && continue
-
         tmux new-window -t claude-work -n "$NAME" -c "$PROJ_PATH" 2>/dev/null
         tmux send-keys -t "claude-work:$NAME" "sleep $DELAY && unset CLAUDECODE && claude --dangerously-skip-permissions --continue" Enter
         DELAY=$((DELAY + 5))
         log "tmux 윈도우 생성: $NAME"
     done
+    log "tmux 직접 생성 완료"
+else
+    log "smug 성공 (tmux has-session 확인)"
+fi
 
-    # iTerm2에서 tmux -CC 연결
-    osascript << 'FALLBACK'
+# === Step 2: iTerm2에서 tmux -CC attach (네이티브 탭으로 표시) ===
+sleep 3
+log "iTerm2에서 tmux -CC attach 실행"
+osascript << 'EOF'
 tell application "iTerm"
     activate
-    tell current window
+    delay 1
+    set newWindow to (create window with default profile)
+    tell newWindow
         tell current session
             write text "tmux -CC attach -t claude-work"
         end tell
     end tell
 end tell
-FALLBACK
-    log "Fallback: tmux 직접 생성 + iTerm2 연결"
+EOF
+OSASCRIPT_RESULT=$?
+if [ $OSASCRIPT_RESULT -ne 0 ]; then
+    log "ERROR: iTerm2 attach 실패 (osascript exit $OSASCRIPT_RESULT)"
+else
+    log "iTerm2 tmux -CC attach 완료"
 fi
 
 # 세션 수 확인
