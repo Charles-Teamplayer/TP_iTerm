@@ -138,6 +138,10 @@ case "$CHOICE" in
             log "$LABEL 등록"
         done
 
+        # iTerm2 tmux integration 설정 (탭으로 열기)
+        defaults write com.googlecode.iterm2 OpenTmuxWindowsIn -int 0
+        log "iTerm2 tmux 탭 모드 설정 (OpenTmuxWindowsIn=0)"
+
         notify "MAGI-Restore 설치 완료! 데몬 3개 등록됨."
         alert "설치 완료!\n\n✅ watchdog (크래시 감지)\n✅ tab-focus-monitor (탭 전환 감지)\n✅ auto-restore (재부팅 복원)\n\n⚠️ auto-restore.sh의 PROJECTS 배열을\n이 Mac의 프로젝트 경로로 수정하세요."
 
