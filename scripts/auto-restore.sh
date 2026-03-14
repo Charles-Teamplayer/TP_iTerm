@@ -132,6 +132,9 @@ tell application "iTerm"
             write text "tmux -CC attach -t claude-work"
         end tell
     end tell
+    delay 2
+    activate
+    set frontmost to true
 end tell
 EOF
 OSASCRIPT_RESULT=$?
