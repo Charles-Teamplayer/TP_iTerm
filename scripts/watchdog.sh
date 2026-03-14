@@ -11,6 +11,17 @@ mkdir -p "$(dirname "$LOG_FILE")"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+    # 로그 로테이션 (50000줄 초과 시)
+    if [ "$(wc -l < "$LOG_FILE" 2>/dev/null)" -gt 50000 ] 2>/dev/null; then
+        tail -25000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null
+    fi
+}
+
+# 원자적 파일 쓰기
+atomic_write() {
+    local file="$1" content="$2"
+    local tmp="${file}.$$"
+    echo "$content" > "$tmp" 2>/dev/null && mv "$tmp" "$file" 2>/dev/null
 }
 
 notify() {
@@ -99,7 +110,7 @@ while true; do
             if [ $AGE -ge 259200 ]; then
                 # 3일+ → 🔴⚪ 깜빡임 (1회만, 30초마다 반복됨)
                 printf '\e]1;🔴 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
-                echo "stale|${TAB_PROJECT}|${LAST_TS}" > "$STATE_FILE"
+                atomic_write "$STATE_FILE" "stale|${TAB_PROJECT}|${LAST_TS}"
                 # 다음 30초에 ⚪로 바뀌도록 토글 파일
                 TOGGLE_FILE="/tmp/.tab-blink-${TTY_NAME}"
                 if [ -f "$TOGGLE_FILE" ]; then
@@ -114,17 +125,17 @@ while true; do
                 # 24시간+ → 🔴
                 printf '\e]1;🔴 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
                 printf '\e]6;1;bg;red;brightness;200\a\e]6;1;bg;green;brightness;50\a\e]6;1;bg;blue;brightness;50\a' > "$TTY_PATH" 2>/dev/null
-                echo "idle|${TAB_PROJECT}|${LAST_TS}" > "$STATE_FILE"
+                atomic_write "$STATE_FILE" "idle|${TAB_PROJECT}|${LAST_TS}"
             elif [ $AGE -ge 3600 ]; then
                 # 1시간+ → 🟡
                 printf '\e]1;🟡 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
                 printf '\e]6;1;bg;red;brightness;200\a\e]6;1;bg;green;brightness;150\a\e]6;1;bg;blue;brightness;0\a' > "$TTY_PATH" 2>/dev/null
-                echo "idle|${TAB_PROJECT}|${LAST_TS}" > "$STATE_FILE"
+                atomic_write "$STATE_FILE" "idle|${TAB_PROJECT}|${LAST_TS}"
             elif [ $AGE -ge 600 ]; then
                 # 10분+ → ⚪ 흰색
                 printf '\e]1;⚪ %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
                 printf '\e]6;1;bg;red;brightness;220\a\e]6;1;bg;green;brightness;220\a\e]6;1;bg;blue;brightness;220\a' > "$TTY_PATH" 2>/dev/null
-                echo "idle|${TAB_PROJECT}|${LAST_TS}" > "$STATE_FILE"
+                atomic_write "$STATE_FILE" "idle|${TAB_PROJECT}|${LAST_TS}"
             fi
         done
     fi
