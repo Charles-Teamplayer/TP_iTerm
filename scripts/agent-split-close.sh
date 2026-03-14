@@ -2,8 +2,8 @@
 # Agent 완료 시 분할 pane 자동 닫기
 # PostToolUse(Agent) hook에서 호출
 
-TTY_NAME="$(basename "$(tty)" 2>/dev/null || echo 'notty')"
-SPLIT_MARKER=$(ls /tmp/.agent-split-*-"$TTY_NAME" 2>/dev/null | head -1)
+TTY_ID="$(basename "$(tty)" 2>/dev/null || echo 'notty')"
+SPLIT_MARKER="/tmp/.agent-split-${TTY_ID}"
 
 [ -z "$SPLIT_MARKER" ] && exit 0
 

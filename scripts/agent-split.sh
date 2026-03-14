@@ -5,7 +5,8 @@
 
 PROJECT="${1:-$(basename "$PWD")}"
 AGENT_LOG="$HOME/.claude/logs/agent-activity.log"
-SPLIT_MARKER="/tmp/.agent-split-$$-$(basename "$(tty)" 2>/dev/null || echo 'notty')"
+TTY_ID="$(basename "$(tty)" 2>/dev/null || echo 'notty')"
+SPLIT_MARKER="/tmp/.agent-split-${TTY_ID}"
 
 mkdir -p "$(dirname "$AGENT_LOG")"
 touch "$AGENT_LOG"
@@ -29,14 +30,15 @@ fi
 # === iTerm2 네이티브 모드 ===
 if [ "$TERM_PROGRAM" = "iTerm.app" ] || pgrep -x "iTerm2" > /dev/null 2>&1; then
     # 이미 분할했으면 스킵
-    if ls /tmp/.agent-split-*-"$(basename "$(tty)" 2>/dev/null || echo 'notty')" 2>/dev/null | grep -q .; then
+    if [ -f "$SPLIT_MARKER" ]; then
         exit 0
     fi
 
     osascript << APPLESCRIPT
 tell application "iTerm2"
     tell current session of current tab of current window
-        set newSession to (split vertically with default profile)
+        set currentProfile to profile name
+        set newSession to (split vertically with same profile)
         tell newSession
             set name to "Agent Monitor"
             write text "echo '━━━ Agent Monitor ━━━'; echo '프로젝트: $PROJECT'; echo '시작: $(date "+%H:%M:%S")'; echo ''; tail -f '$AGENT_LOG'"
