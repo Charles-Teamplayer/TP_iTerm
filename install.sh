@@ -37,7 +37,11 @@ echo "⚠️  auto-restore.sh의 PROJECTS 배열을 이 Mac의 프로젝트 경�
 echo "    $SCRIPTS_DIR/auto-restore.sh"
 echo ""
 
-# 5. LaunchAgent 등록
+# 5. iTerm2 tmux integration 설정 (탭으로 열기)
+defaults write com.googlecode.iterm2 OpenTmuxWindowsIn -int 1
+echo "  ✓ iTerm2 tmux 탭 모드 설정"
+
+# 6. LaunchAgent 등록
 UID_NUM=$(id -u)
 for f in "$LAUNCH_DIR"/com.claude.*.plist; do
     LABEL=$(basename "$f" .plist)
@@ -52,7 +56,7 @@ echo ""
 echo "필수 확인사항:"
 echo "  1. iTerm2 설치 필요 (Terminal.app 미지원)"
 echo "  2. claude CLI 설치: npm install -g @anthropic-ai/claude-code"
-echo "  3. $SCRIPTS_DIR/auto-restore.sh 의 PROJECTS 배열을 이 Mac에 맞게 수정"
-echo "  4. Notion 연동 시: ~/.zshrc에 NOTION_API_KEY 설정"
+echo "  3. Notion 연동 시: ~/.zshrc에 NOTION_API_KEY 설정"
+echo "  ✓ iTerm2 tmux 탭 모드 자동 설정됨 (OpenTmuxWindowsIn=1)"
 echo ""
 echo "테스트: launchctl list | grep com.claude"

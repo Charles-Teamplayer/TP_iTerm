@@ -12,7 +12,30 @@
 #   crashed  = 빨강   세션 끊김 (깜빡임)
 
 STATUS="${1:-active}"
-PROJECT="${2:-$(basename "$PWD")}"
+
+# dir → 짧은 탭 이름 매핑
+_get_short_name() {
+    local dir="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+    case "$dir" in
+        */TP_newIMSMS)                          echo "imsms" ;;
+        */TP_newIMSMS_Agent)                    echo "imsms-agent" ;;
+        */TP_MDM)                               echo "mdm" ;;
+        */TP_TESLA_LVDS)                        echo "tesla-lvds" ;;
+        */TESLA_Status_Dashboard)               echo "tesla-dash" ;;
+        */TP_MindMap_AutoCC)                    echo "mindmap" ;;
+        */SJ_MindMap)                           echo "sj-map" ;;
+        */TP_A.iMessage_standalone_*)           echo "imessage" ;;
+        */TP_BTT)                               echo "btt" ;;
+        */TP_Infra_reduce_Project)              echo "infra" ;;
+        */TP_skills)                            echo "skills" ;;
+        */AppleTV_ScreenSaver.app)              echo "appletv" ;;
+        */imsms.im-website)                     echo "imsms-web" ;;
+        */autoRestart_ClaudeCode)               echo "auto-rst" ;;
+        *)                                      basename "$dir" | cut -c1-12 ;;
+    esac
+}
+
+PROJECT="${2:-$(_get_short_name)}"
 
 # 로그 (최대 10000줄 유지)
 LOG="$HOME/.claude/logs/tab-status-debug.log"

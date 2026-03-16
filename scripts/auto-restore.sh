@@ -1,9 +1,10 @@
 #!/bin/bash
 # Claude Code Auto-Restore Script
 # MAGI+NORN 자동 복원 시스템 - LaunchAgent에서 호출
-# tmux + smug + iTerm2 tmux integration
+# tmux + iTerm2 tmux integration (per-window, intentional-stop 제외)
 
 LOG_FILE="$HOME/.claude/logs/auto-restore.log"
+STOPS_FILE="$HOME/.claude/intentional-stops.json"
 mkdir -p "$(dirname "$LOG_FILE")"
 
 log() {
@@ -32,6 +33,83 @@ if [ -f "$HOME/.zshrc" ]; then
 fi
 unset CLAUDECODE
 
+# === iTerm2 실행 전: tmux 프로필 배경색을 TPTP(검정)로 패치 ===
+ITERM_PLIST="$HOME/Library/Preferences/com.googlecode.iterm2.plist"
+if [ -f "$ITERM_PLIST" ]; then
+    python3 << 'PYEOF'
+import subprocess, sys, os
+
+plist = os.path.expanduser("~/Library/Preferences/com.googlecode.iterm2.plist")
+
+# plist를 XML로 변환
+result = subprocess.run(["plutil", "-convert", "xml1", "-o", "-", plist],
+    capture_output=True, text=True)
+if result.returncode != 0:
+    print("[RESTORE] plist 읽기 실패", file=sys.stderr)
+    sys.exit(0)
+
+xml = result.stdout
+
+# "tmux" 프로필의 Background Color를 검정(0,0,0)으로 패치
+# Background Color dict: Red/Green/Blue = 0, Alpha = 1, Color Space = P3
+import re
+
+# tmux 프로필 블록 찾기 (key/string 구조)
+tmux_idx = xml.find('<string>tmux</string>')
+if tmux_idx == -1:
+    print("[RESTORE] tmux 프로필 없음", file=sys.stderr)
+    sys.exit(0)
+
+# tmux 프로필 시작 dict 찾기
+dict_start = xml.rfind('<dict>', 0, tmux_idx)
+
+# Background Color 키/dict 블록 찾기 (tmux_idx 이후)
+bg_key_pat = re.compile(r'<key>Background Color</key>\s*<dict>(.*?)</dict>', re.DOTALL)
+# tmux 프로필 블록만 대상으로
+profile_block = xml[dict_start:]
+match = bg_key_pat.search(profile_block)
+if not match:
+    print("[RESTORE] tmux Background Color 없음", file=sys.stderr)
+    sys.exit(0)
+
+# 기존 Background Color dict 내용을 검정으로 교체
+dark_dict = """<dict>
+			<key>Alpha Component</key>
+			<real>1</real>
+			<key>Blue Component</key>
+			<real>0.0</real>
+			<key>Color Space</key>
+			<string>P3</string>
+			<key>Green Component</key>
+			<real>0.0</real>
+			<key>Red Component</key>
+			<real>0.0</real>
+		</dict>"""
+
+new_block = bg_key_pat.sub(
+    f'<key>Background Color</key>\n\t\t{dark_dict}',
+    profile_block, count=1
+)
+new_xml = xml[:dict_start] + new_block
+
+# 임시 파일에 저장 후 binary plist로 변환
+import tempfile
+with tempfile.NamedTemporaryFile(suffix='.plist', delete=False, mode='w') as f:
+    f.write(new_xml)
+    tmp = f.name
+
+ret = subprocess.run(["plutil", "-convert", "binary1", tmp], capture_output=True)
+if ret.returncode == 0:
+    import shutil
+    shutil.move(tmp, plist)
+    print("[RESTORE] tmux 프로필 배경색 → 검정(다크모드) 패치 완료")
+else:
+    os.unlink(tmp)
+    print("[RESTORE] plist 변환 실패", file=sys.stderr)
+PYEOF
+    log "iTerm2 tmux 프로필 다크모드 패치 완료"
+fi
+
 # iTerm2 대기 (최대 60초)
 MAX_WAIT=60
 WAITED=0
@@ -57,6 +135,25 @@ if [ "$EXISTING" -gt 5 ]; then
     exit 0
 fi
 
+# 제외 목록을 변수에 저장
+STOPPED_WINDOWS=$(python3 -c "
+import json, os
+stops_path = os.path.expanduser('~/.claude/intentional-stops.json')
+try:
+    with open(stops_path, 'r') as f:
+        data = json.load(f)
+    for s in data.get('stops', []):
+        wn = s.get('window_name', '')
+        if wn:
+            print(wn)
+except Exception:
+    pass
+" 2>/dev/null)
+
+is_stopped() {
+    echo "$STOPPED_WINDOWS" | grep -qx "$1"
+}
+
 # 기존 tmux 세션 정리
 if tmux has-session -t claude-work 2>/dev/null; then
     log "기존 claude-work tmux 세션 종료"
@@ -64,60 +161,50 @@ if tmux has-session -t claude-work 2>/dev/null; then
     sleep 2
 fi
 
-# === Step 1: smug로 tmux 세션 생성 (직접 실행 + has-session polling으로 검증) ===
-log "smug start claude-work --detach 직접 실행"
-smug start claude-work --detach 2>/dev/null &
-SMUG_PID=$!
+# === Step 1: tmux 세션 생성 (per-window, intentional-stop 제외) ===
+log "tmux 세션 직접 생성 (per-window 방식)"
+tmux new-session -d -s claude-work -n monitor -c "$HOME/claude" 2>/dev/null
 
-# tmux 세션이 실제로 생성될 때까지 최대 15초 대기 (0.3초 × 50회)
-SMUG_OK=0
-for _i in $(seq 1 50); do
-    if tmux has-session -t claude-work 2>/dev/null; then
-        SMUG_OK=1
-        break
+PROJECTS=(
+    "imsms:$HOME/claude/TP_newIMSMS:0"
+    "imsms-agent:$HOME/claude/TP_newIMSMS_Agent:5"
+    "mdm:$HOME/claude/TP_MDM:10"
+    "tesla-lvds:$HOME/claude/TP_TESLA_LVDS:15"
+    "tesla-dashboard:$HOME/ralph-claude-code/TESLA_Status_Dashboard:20"
+    "mindmap:$HOME/claude/TP_MindMap_AutoCC:25"
+    "sj-mindmap:$HOME/SJ_MindMap:30"
+    "imessage:$HOME/claude/TP_A.iMessage_standalone_01067051080:35"
+    "btt:$HOME/claude/TP_BTT:40"
+    "infra:$HOME/claude/TP_Infra_reduce_Project:45"
+    "skills:$HOME/claude/TP_skills:50"
+    "appletv:$HOME/claude/AppleTV_ScreenSaver.app:55"
+    "imsms-web:$HOME/claude/imsms.im-website:60"
+    "auto-restart:$HOME/claude/autoRestart_ClaudeCode:65"
+)
+
+CREATED=0
+SKIPPED=0
+for proj in "${PROJECTS[@]}"; do
+    NAME=$(echo "$proj" | cut -d: -f1)
+    PROJ_PATH=$(echo "$proj" | cut -d: -f2)
+    DELAY=$(echo "$proj" | cut -d: -f3)
+
+    [ ! -d "$PROJ_PATH" ] && continue
+
+    # intentional-stop 제외 체크
+    if is_stopped "$NAME"; then
+        log "SKIP (intentional-stop): $NAME"
+        SKIPPED=$((SKIPPED + 1))
+        continue
     fi
-    sleep 0.3
+
+    tmux new-window -t claude-work -n "$NAME" -c "$PROJ_PATH" 2>/dev/null
+    tmux send-keys -t "claude-work:$NAME" "sleep $DELAY && unset CLAUDECODE && claude --dangerously-skip-permissions --continue" Enter
+    CREATED=$((CREATED + 1))
+    log "tmux 윈도우 생성: $NAME (delay ${DELAY}s)"
 done
-wait $SMUG_PID 2>/dev/null
 
-if [ $SMUG_OK -ne 1 ]; then
-    log "smug 실패 (15초 내 세션 미생성), tmux 직접 생성 fallback"
-    kill $SMUG_PID 2>/dev/null || true
-
-    # Fallback: tmux 직접 세션 생성
-    tmux new-session -d -s claude-work -n monitor -c "$HOME/claude" 2>/dev/null
-
-    PROJECTS=(
-        "imsms:$HOME/claude/TP_newIMSMS"
-        "imsms-agent:$HOME/claude/TP_newIMSMS_Agent"
-        "mdm:$HOME/claude/TP_MDM"
-        "tesla-lvds:$HOME/claude/TP_TESLA_LVDS"
-        "tesla-dashboard:$HOME/ralph-claude-code/TESLA_Status_Dashboard"
-        "mindmap:$HOME/claude/TP_MindMap_AutoCC"
-        "sj-mindmap:$HOME/SJ_MindMap"
-        "imessage:$HOME/claude/TP_A.iMessage_standalone_01067051080"
-        "btt:$HOME/claude/TP_BTT"
-        "infra:$HOME/claude/TP_Infra_reduce_Project"
-        "skills:$HOME/claude/TP_skills"
-        "appletv:$HOME/claude/AppleTV_ScreenSaver.app"
-        "imsms-web:$HOME/claude/imsms.im-website"
-        "auto-restart:$HOME/claude/autoRestart_ClaudeCode"
-    )
-
-    DELAY=0
-    for proj in "${PROJECTS[@]}"; do
-        NAME=$(echo "$proj" | cut -d: -f1)
-        PROJ_PATH=$(echo "$proj" | cut -d: -f2-)
-        [ ! -d "$PROJ_PATH" ] && continue
-        tmux new-window -t claude-work -n "$NAME" -c "$PROJ_PATH" 2>/dev/null
-        tmux send-keys -t "claude-work:$NAME" "sleep $DELAY && unset CLAUDECODE && claude --dangerously-skip-permissions --continue" Enter
-        DELAY=$((DELAY + 5))
-        log "tmux 윈도우 생성: $NAME"
-    done
-    log "tmux 직접 생성 완료"
-else
-    log "smug 성공 (tmux has-session 확인)"
-fi
+log "tmux 생성 완료: ${CREATED}개 생성, ${SKIPPED}개 제외 (intentional-stop)"
 
 # === Step 2: iTerm2에서 tmux -CC attach (네이티브 탭으로 표시) ===
 sleep 3
@@ -126,15 +213,9 @@ osascript << 'EOF'
 tell application "iTerm"
     activate
     delay 1
-    set newWindow to (create window with default profile)
-    tell newWindow
-        tell current session
-            write text "tmux -CC attach -t claude-work"
-        end tell
-    end tell
-    delay 2
+    set newWindow to (create window with default profile command "tmux -CC attach -t claude-work")
+    delay 4
     activate
-    set frontmost to true
 end tell
 EOF
 OSASCRIPT_RESULT=$?
@@ -147,15 +228,25 @@ fi
 # 세션 수 확인
 sleep 10
 SESSION_COUNT=$(tmux list-windows -t claude-work 2>/dev/null | wc -l | tr -d ' ')
-log "tmux 윈도우 ${SESSION_COUNT}개 생성됨"
+log "tmux 윈도우 ${SESSION_COUNT}개 활성"
+
+# 복원 완료 후 intentional-stops.json 초기화 (다음 부팅은 fresh)
+if [ -f "$STOPS_FILE" ]; then
+    echo '{"stops":[],"last_updated":"'"$(date -u '+%Y-%m-%dT%H:%M:%SZ')"'"}' > "$STOPS_FILE"
+    log "intentional-stops.json 초기화 완료"
+fi
 
 # 복원 완료 macOS 알림
-osascript -e "display notification \"Claude Code ${SESSION_COUNT}개 세션 tmux Split View 복원 완료\" with title \"MAGI+NORN\" sound name \"Glass\"" 2>/dev/null || true
+NOTIFY_MSG="Claude Code ${CREATED}개 세션 복원 완료"
+if [ "$SKIPPED" -gt 0 ]; then
+    NOTIFY_MSG="${NOTIFY_MSG} (${SKIPPED}개 의도적 종료 제외)"
+fi
+osascript -e "display notification \"${NOTIFY_MSG}\" with title \"MAGI+NORN\" sound name \"Glass\"" 2>/dev/null || true
 
 # Notion에 복원 기록
 if [ -n "$NOTION_API_KEY" ] && [ -f "$HOME/claude/TP_skills/session-manager/notion-advanced.py" ]; then
     python3 "$HOME/claude/TP_skills/session-manager/notion-advanced.py" \
-        "autoRestart_ClaudeCode" "Reboot Recovery (tmux)" "${SESSION_COUNT}개 세션 tmux Split View 복원 완료" 2>/dev/null || true
+        "autoRestart_ClaudeCode" "Reboot Recovery (tmux)" "${NOTIFY_MSG}" 2>/dev/null || true
 fi
 
-log "=== Auto-Restore 완료: ${SESSION_COUNT}개 tmux 세션 ==="
+log "=== Auto-Restore 완료: ${CREATED}개 복원, ${SKIPPED}개 제외 ==="

@@ -66,7 +66,7 @@ PYEOF
         ;;
 
     unregister)
-        # 세션 해제 (Stop hook에서 호출)
+        # 세션 해제 (내부용 — intentional-stop에서 호출)
         python3 << PYEOF
 import json
 registry_path = "$REGISTRY"
@@ -85,6 +85,87 @@ if before > after:
     print(f"[URD] Session unregistered: $PROJECT_NAME")
 else:
     print(f"[URD] Session not found: $PROJECT_NAME")
+PYEOF
+        ;;
+
+    intentional-stop)
+        # 의도적 종료 (Stop hook에서 호출) — unregister + 제외 목록 기록
+        TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+        STOPS_FILE="$HOME/.claude/intentional-stops.json"
+
+        # 먼저 unregister 실행
+        python3 << PYEOF
+import json
+registry_path = "$REGISTRY"
+with open(registry_path, 'r') as f:
+    data = json.load(f)
+
+before = len(data['sessions'])
+data['sessions'] = [s for s in data['sessions'] if s.get('dir') != "$PROJECT_DIR"]
+after = len(data['sessions'])
+data['last_updated'] = "$TIMESTAMP"
+
+with open(registry_path, 'w') as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+
+if before > after:
+    print(f"[URD] Session unregistered: $PROJECT_NAME")
+PYEOF
+
+        # intentional-stops.json에 기록
+        python3 << PYEOF
+import json, os, tempfile
+
+stops_path = "$STOPS_FILE"
+project_dir = "$PROJECT_DIR"
+timestamp = "$TIMESTAMP"
+
+# dir → window_name 매핑
+DIR_TO_WINDOW = {
+    os.path.expanduser("~/claude/TP_newIMSMS"): "imsms",
+    os.path.expanduser("~/claude/TP_newIMSMS_Agent"): "imsms-agent",
+    os.path.expanduser("~/claude/TP_MDM"): "mdm",
+    os.path.expanduser("~/claude/TP_TESLA_LVDS"): "tesla-lvds",
+    os.path.expanduser("~/ralph-claude-code/TESLA_Status_Dashboard"): "tesla-dashboard",
+    os.path.expanduser("~/claude/TP_MindMap_AutoCC"): "mindmap",
+    os.path.expanduser("~/SJ_MindMap"): "sj-mindmap",
+    os.path.expanduser("~/claude/TP_A.iMessage_standalone_01067051080"): "imessage",
+    os.path.expanduser("~/claude/TP_BTT"): "btt",
+    os.path.expanduser("~/claude/TP_Infra_reduce_Project"): "infra",
+    os.path.expanduser("~/claude/TP_skills"): "skills",
+    os.path.expanduser("~/claude/AppleTV_ScreenSaver.app"): "appletv",
+    os.path.expanduser("~/claude/imsms.im-website"): "imsms-web",
+    os.path.expanduser("~/claude/autoRestart_ClaudeCode"): "auto-restart",
+}
+
+window_name = DIR_TO_WINDOW.get(project_dir, os.path.basename(project_dir))
+
+# 기존 파일 로드 또는 초기화
+if os.path.exists(stops_path):
+    with open(stops_path, 'r') as f:
+        data = json.load(f)
+else:
+    data = {"stops": [], "last_updated": ""}
+
+# 같은 window_name 중복 제거
+data['stops'] = [s for s in data['stops'] if s.get('window_name') != window_name]
+
+# 새 항목 추가
+data['stops'].append({
+    "project": os.path.basename(project_dir),
+    "dir": project_dir,
+    "window_name": window_name,
+    "stopped_at": timestamp
+})
+data['last_updated'] = timestamp
+
+# atomic write
+tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(stops_path))
+with os.fdopen(tmp_fd, 'w') as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+os.rename(tmp_path, stops_path)
+
+print(f"[URD] Intentional stop recorded: {window_name} ({os.path.basename(project_dir)})")
 PYEOF
         ;;
 
