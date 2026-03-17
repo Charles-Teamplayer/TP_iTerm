@@ -15,7 +15,7 @@ struct SessionsView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button(action: { monitor.refresh() }) {
+                Button(action: { Task { await monitor.refresh() } }) {
                     Image(systemName: "arrow.clockwise")
                 }
                 .help("새로고침")
@@ -88,16 +88,19 @@ struct SessionsView: View {
     private func hideSession(_ session: ClaudeSession) {
         let tty = session.tty
         let script = "tell application \"iTerm2\" to repeat with w in windows\nrepeat with t in tabs of w\nrepeat with p in panes of t\nif tty of p is \"\(tty)\" then set miniaturized of w to true\nend repeat\nend repeat\nend repeat\nend tell"
-        let _ = ShellService.run("osascript <<'APPLESCRIPT'\n\(script)\nAPPLESCRIPT")
-        monitor.refresh()
+        Task {
+            await ShellService.runAsync("osascript <<'APPLESCRIPT'\n\(script)\nAPPLESCRIPT")
+            await monitor.refresh()
+        }
     }
 
     private func killSession(_ session: ClaudeSession) {
         ShellService.intentionalStop(projectDir: session.projectName)
         ShellService.kill(pid: session.pid)
         selectedSession = nil
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            monitor.refresh()
+        Task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            await monitor.refresh()
         }
     }
 }

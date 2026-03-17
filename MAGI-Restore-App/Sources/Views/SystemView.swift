@@ -19,25 +19,30 @@ final class SystemViewModel: ObservableObject {
     @Published var installLog: String = ""
     @Published var restoreLog: String = ""
 
-    func refresh() {
-        for i in daemons.indices {
-            let label = daemons[i].id
-            let result = ShellService.run("launchctl print gui/\(getuid())/\(label) 2>/dev/null")
-            daemons[i].isRunning = result.contains("state = running")
+    func refresh() async {
+        var updated = daemons
+        for i in updated.indices {
+            let label = updated[i].id
+            let result = await ShellService.runAsync("launchctl print gui/\(getuid())/\(label) 2>/dev/null")
+            updated[i].isRunning = result.contains("state = running")
         }
+        daemons = updated
 
-        let output = ShellService.run("ps aux | grep '[c]laude' | grep -v 'MAGI\\|watchdog\\|auto-restore\\|tab-focus'")
+        let output = await ShellService.runAsync("ps aux | grep '[c]laude' | grep -v 'MAGI\\|watchdog\\|auto-restore\\|tab-focus'")
         sessionCount = output.isEmpty ? 0 : output.components(separatedBy: "\n").filter { !$0.isEmpty }.count
     }
 
     func toggle(daemon: DaemonInfo) {
         let plistPath = NSHomeDirectory() + "/Library/LaunchAgents/\(daemon.id).plist"
-        if daemon.isRunning {
-            let _ = ShellService.run("launchctl bootout gui/\(getuid())/\(daemon.id)")
-        } else {
-            let _ = ShellService.run("launchctl bootstrap gui/\(getuid()) '\(plistPath)'")
+        Task {
+            if daemon.isRunning {
+                await ShellService.runAsync("launchctl bootout gui/\(getuid())/\(daemon.id)")
+            } else {
+                await ShellService.runAsync("launchctl bootstrap gui/\(getuid()) '\(plistPath)'")
+            }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            await refresh()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.refresh() }
     }
 
     func runRestore() async {
@@ -45,10 +50,9 @@ final class SystemViewModel: ObservableObject {
         isRestoring = true
         restoreLog = ""
         let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
-        let result = await ShellService.runAsync("bash '\(scriptPath)' 2>&1")
-        restoreLog = result
+        restoreLog = await ShellService.runAsync("bash '\(scriptPath)' 2>&1")
         isRestoring = false
-        refresh()
+        await refresh()
     }
 
     func runInstall() async {
@@ -59,7 +63,7 @@ final class SystemViewModel: ObservableObject {
         let result = await ShellService.runAsync("bash '\(scriptPath)' 2>&1")
         installLog = result
         isInstalling = false
-        refresh()
+        await refresh()
     }
 }
 
@@ -143,7 +147,7 @@ struct SystemView: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { vm.refresh() }
+        .onAppear { Task { await vm.refresh() } }
         .sheet(isPresented: $showRestoreLog) {
             VStack(alignment: .leading) {
                 HStack {
