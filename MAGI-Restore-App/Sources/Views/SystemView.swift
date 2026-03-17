@@ -49,11 +49,31 @@ final class SystemViewModel: ObservableObject {
         guard !isRestoring else { return }
         isRestoring = true
         restoreLog = ""
-        let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
-        restoreLog = await ShellService.runAsync("bash '\(scriptPath)' --force 2>&1")
+
+        // claude-work tmux 세션이 이미 있으면 → attach만
+        let sessionExists = await ShellService.runAsync("tmux has-session -t claude-work 2>/dev/null && echo YES || echo NO")
+        if sessionExists.contains("YES") {
+            restoreLog = "claude-work 세션 존재 → 새 창 생성 후 tmux attach 입력"
+            await ShellService.runAsync("""
+                osascript \
+                  -e 'tell application "iTerm"' \
+                  -e '  activate' \
+                  -e '  set newWin to (create window with default profile)' \
+                  -e '  delay 0.5' \
+                  -e '  activate' \
+                  -e '  tell current session of newWin' \
+                  -e '    write text "tmux -CC attach -t claude-work"' \
+                  -e '  end tell' \
+                  -e 'end tell'
+                """)
+        } else {
+            // 세션 없음 → 전체 복원
+            let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
+            restoreLog = await ShellService.runAsync("bash '\(scriptPath)' --force 2>&1")
+            await ShellService.runAsync("open -a iTerm")
+        }
+
         isRestoring = false
-        // 복원 완료 후 iTerm2 앞으로 올리기
-        await ShellService.runAsync("open -a iTerm")
         await refresh()
     }
 
