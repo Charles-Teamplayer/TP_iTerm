@@ -52,6 +52,8 @@ final class SystemViewModel: ObservableObject {
         let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
         restoreLog = await ShellService.runAsync("bash '\(scriptPath)' --force 2>&1")
         isRestoring = false
+        // 복원 완료 후 iTerm2 앞으로 올리기
+        await ShellService.runAsync("open -a iTerm")
         await refresh()
     }
 
