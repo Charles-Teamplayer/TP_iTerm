@@ -39,6 +39,7 @@ final class SessionMonitor: ObservableObject {
             guard let pid = Int(parts[1]) else { continue }
 
             let tty = String(parts[6])
+            guard tty != "??" else { continue }  // TTY 없는 프로세스 제외 (배경 데몬)
             let startTime = String(parts[8])
             let projectName = resolveProjectName(tty: tty)
             result.append(ClaudeSession(pid: pid, tty: tty, projectName: projectName, startTime: startTime))
