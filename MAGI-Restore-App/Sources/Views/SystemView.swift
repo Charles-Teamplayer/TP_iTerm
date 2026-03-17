@@ -19,6 +19,7 @@ final class SystemViewModel: ObservableObject {
     @Published var isRestoring: Bool = false
     @Published var installLog: String = ""
     @Published var restoreLog: String = ""
+    @Published var tmuxSessionExists: Bool = false
 
     func refresh() async {
         var updated = daemons
@@ -31,6 +32,9 @@ final class SystemViewModel: ObservableObject {
 
         let output = await ShellService.runAsync("ps aux | grep '[c]laude' | grep -v 'MAGI\\|watchdog\\|auto-restore\\|tab-focus'")
         sessionCount = output.isEmpty ? 0 : output.components(separatedBy: "\n").filter { !$0.isEmpty }.count
+
+        let tmuxCheck = await ShellService.runAsync("tmux has-session -t claude-work 2>/dev/null && echo YES || echo NO")
+        tmuxSessionExists = tmuxCheck.contains("YES")
     }
 
     func toggle(daemon: DaemonInfo) {
@@ -224,8 +228,10 @@ struct SystemView: View {
                             ProgressView().scaleEffect(0.8)
                             Text("복원 중...")
                         }
+                    } else if vm.tmuxSessionExists {
+                        Label("Attach (세션 있음)", systemImage: "terminal.fill")
                     } else {
-                        Label("지금 복원", systemImage: "arrow.clockwise.circle.fill")
+                        Label("전체 복원 (~60초)", systemImage: "arrow.clockwise.circle.fill")
                     }
                 }
                 .buttonStyle(.borderedProminent)

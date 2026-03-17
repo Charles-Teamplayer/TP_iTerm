@@ -30,11 +30,11 @@ final class BackupService: ObservableObject {
         let expandedPath = config.path.replacingOccurrences(of: "~", with: NSHomeDirectory())
         let sourceDir = NSHomeDirectory() + "/.claude"
         let result = await ShellService.runAsync(
-            "rsync -a --delete '\(sourceDir)/' '\(expandedPath)/'"
+            "rsync -av --exclude='logs/' --exclude='*.tmp' '\(sourceDir)/' '\(expandedPath)/' && echo '__RSYNC_OK__'"
         )
 
         var updated = config
-        if result.isEmpty || !result.lowercased().contains("error") {
+        if result.contains("__RSYNC_OK__") {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
             updated.lastBackup = formatter.string(from: Date())

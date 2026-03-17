@@ -98,7 +98,7 @@
           },
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/scripts/session-registry.sh\" unregister",
+            "command": "bash \"$HOME/.claude/scripts/session-registry.sh\" intentional-stop",
             "timeout": 5000
           },
           {
@@ -138,17 +138,12 @@
         ]
       },
       {
-        "matcher": "Agent",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/scripts/agent-log.sh\" start || true",
-            "timeout": 2000
-          },
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/scripts/agent-split.sh\" \"$(basename \"$PWD\")\" || true",
-            "timeout": 3000
+            "command": "echo \"$CLAUDE_TOOL_INPUT\" | grep -q 'screencapture\\|cliclick\\|computer_use\\|mn_computer_use' && bash \"$HOME/.claude/scripts/computer-use-overlay.sh\" start || true",
+            "timeout": 5000
           }
         ]
       }
@@ -170,21 +165,6 @@
         ]
       },
       {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/scripts/agent-log.sh\" end || true",
-            "timeout": 2000
-          },
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/scripts/agent-split-close.sh\" || true",
-            "timeout": 2000
-          }
-        ]
-      },
-      {
         "matcher": "Read",
         "hooks": [
           {
@@ -193,11 +173,23 @@
             "timeout": 5000
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/tab-status.sh\" working \"$(basename \"$PWD\")\" || true",
+            "timeout": 3000
+          }
+        ]
       }
     ]
   },
   "enabledPlugins": {
-    "swift-lsp@claude-plugins-official": true
+    "swift-lsp@claude-plugins-official": true,
+    "ralph-loop@claude-plugins-official": true
   },
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "teammateMode": "tmux"
 }

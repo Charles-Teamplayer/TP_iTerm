@@ -47,7 +47,7 @@ Mac 부팅
 
 ## 컴포넌트
 
-### scripts/ (8개)
+### scripts/ (7개)
 | 스크립트 | 역할 |
 |---------|------|
 | auto-restore.sh | 부팅 복원 (smug + tmux -CC) |
@@ -55,9 +55,8 @@ Mac 부팅
 | tab-focus-monitor.sh | 1초 탭 전환 감지 → 초록 복귀 |
 | tab-status.sh | 탭 배경색 + 제목 설정 (7개 상태) |
 | session-registry.sh | 세션 레지스트리 (register/unregister/crash-detect/heartbeat) |
-| agent-split.sh | Agent 실행 시 pane 자동 분할 |
-| agent-split-close.sh | Agent 완료 시 pane 닫기 |
-| agent-log.sh | Agent 활동 로그 |
+| health-check.sh | 전체 시스템 상태 확인 (LaunchAgent, scripts, sessions) |
+| stop-session.sh | intentional-stop CLI (복원 스킵 등록/제거) |
 
 ### LaunchAgent 데몬 (3개)
 | 데몬 | KeepAlive | 역할 |
@@ -71,10 +70,13 @@ Mac 부팅
 |--------|-------------|
 | SessionStart | session-start, tp-skills-update, Notion, registry register, tab-status active |
 | UserPromptSubmit | tab-status working, registry heartbeat |
-| PreToolUse(Agent) | agent-log start, agent-split |
-| PostToolUse(Agent) | agent-log end, agent-split-close |
-| PostToolUse(Write/Edit) | TP_history 기록, Notion 주기 로그 |
-| Stop | tab-status waiting, registry unregister, Notion |
+| PreToolUse(Bash\|Write\|Edit\|Agent\|Read\|Glob\|Grep) | tab-status working |
+| PostToolUse(Write\|Edit) | TP_history 기록, Notion 주기 로그 |
+| PostToolUse(Read) | skill-usage-tracker |
+| PostToolUse(Bash) | tab-status working |
+| Stop | tab-status waiting, registry intentional-stop, Notion |
+
+> Agent 분할은 네이티브 tmux teammate mode로 처리됨 (agent-split.sh/agent-split-close.sh/agent-log.sh 삭제).
 
 ## 설치 (다른 Mac)
 

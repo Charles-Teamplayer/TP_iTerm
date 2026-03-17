@@ -187,10 +187,19 @@ for session in data['sessions']:
         try:
             os.kill(int(pid), 0)
             alive.append(session)
+        except PermissionError:
+            alive.append(session)  # 다른 유저 프로세스지만 살아있음
         except (ProcessLookupError, ValueError):
             crashed.append(session)
     else:
-        crashed.append(session)
+        # PID 모를 때는 프로젝트 이름으로 확인
+        import subprocess
+        project = session.get('project', '')
+        result = subprocess.run(['pgrep', '-f', f'claude.*{project}'], capture_output=True)
+        if result.returncode == 0:
+            alive.append(session)
+        else:
+            crashed.append(session)
 
 if crashed:
     for s in crashed:

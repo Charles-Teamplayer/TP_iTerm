@@ -161,7 +161,7 @@ while true; do
                 fi
 
                 tmux new-window -t claude-work -n "$WINDOW_NAME" -c "$PROJ_PATH" 2>/dev/null
-                tmux send-keys -t "claude-work:$WINDOW_NAME" "bash ~/.claude/scripts/tab-status.sh starting $WINDOW_NAME && unset CLAUDECODE && claude --dangerously-skip-permissions --continue" Enter
+                tmux send-keys -t "claude-work:$WINDOW_NAME" "bash ~/.claude/scripts/tab-status.sh starting $WINDOW_NAME && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
 
                 log "AUTO-RESTART: $RESTART_PROJECT → tmux window $WINDOW_NAME"
                 notify "세션 자동 복구: $RESTART_PROJECT"
