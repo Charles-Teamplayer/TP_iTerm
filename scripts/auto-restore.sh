@@ -128,10 +128,11 @@ if ! pgrep -x "iTerm2" > /dev/null; then
     sleep 5
 fi
 
-# 이미 claude 프로세스가 다수 실행 중이면 스킵 (수동 실행 상태)
+# 이미 claude 프로세스가 다수 실행 중이면 스킵 (--force 옵션으로 우회 가능)
+FORCE_MODE="${1:-}"
 EXISTING=$(ps aux | grep "[c]laude" | grep -v "Claude.app\|Helper\|ShipIt\|watchdog\|auto-restore" | grep -v "??" | wc -l | tr -d ' ')
-if [ "$EXISTING" -gt 5 ]; then
-    log "이미 claude 프로세스 ${EXISTING}개 실행 중, 스킵"
+if [ "$EXISTING" -gt 5 ] && [ "$FORCE_MODE" != "--force" ]; then
+    log "이미 claude 프로세스 ${EXISTING}개 실행 중, 스킵 (강제 실행: bash auto-restore.sh --force)"
     exit 0
 fi
 
@@ -209,16 +210,20 @@ log "tmux 생성 완료: ${CREATED}개 생성, ${SKIPPED}개 제외 (intentional
 # === Step 2: iTerm2에서 tmux -CC attach (네이티브 탭으로 표시) ===
 sleep 3
 log "iTerm2에서 tmux -CC attach 실행"
-osascript << 'EOF'
-tell application "iTerm"
-    activate
-    delay 1
-    set newWindow to (create window with default profile command "tmux -CC attach -t claude-work")
-    delay 4
-    activate
-end tell
-EOF
+
+# 새 iTerm2 창을 만들고, 그 창의 fresh shell에 tmux attach 입력
+osascript \
+    -e 'tell application "iTerm"' \
+    -e '  activate' \
+    -e '  set newWin to (create window with default profile)' \
+    -e '  delay 0.5' \
+    -e '  activate' \
+    -e '  tell current session of newWin' \
+    -e '    write text "tmux -CC attach -t claude-work"' \
+    -e '  end tell' \
+    -e 'end tell' 2>/dev/null
 OSASCRIPT_RESULT=$?
+
 if [ $OSASCRIPT_RESULT -ne 0 ]; then
     log "ERROR: iTerm2 attach 실패 (osascript exit $OSASCRIPT_RESULT)"
 else
