@@ -48,7 +48,11 @@ final class SessionMonitor: ObservableObject {
     }
 
     private func resolveProjectName(tty: String) -> String {
-        let ttyClean = tty.replacingOccurrences(of: "/dev/", with: "").replacingOccurrences(of: "/", with: "-")
+        var ttyClean = tty.replacingOccurrences(of: "/dev/", with: "").replacingOccurrences(of: "/", with: "-")
+        // ps aux TTY는 "s007" 형태, tab-states 파일명은 "ttys007" 형태 — 접두사 보정
+        if ttyClean.hasPrefix("s") && !ttyClean.hasPrefix("tty") {
+            ttyClean = "tty" + ttyClean
+        }
         let stateFile = tabStatesDir + "/" + ttyClean
         if let content = try? String(contentsOfFile: stateFile, encoding: .utf8) {
             let parts = content.components(separatedBy: "|")

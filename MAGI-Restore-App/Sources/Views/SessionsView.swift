@@ -87,7 +87,7 @@ struct SessionsView: View {
 
     private func hideSession(_ session: ClaudeSession) {
         let tty = session.tty
-        let script = "tell application \"iTerm2\" to repeat with w in windows\nrepeat with t in tabs of w\nrepeat with p in panes of t\nif tty of p is \"\(tty)\" then set miniaturized of w to true\nend repeat\nend repeat\nend repeat\nend tell"
+        let script = "tell application \"iTerm2\" to repeat with w in windows\nrepeat with t in tabs of w\nrepeat with s in sessions of t\nif tty of s is \"\(tty)\" then set miniaturized of w to true\nend repeat\nend repeat\nend repeat\nend tell"
         Task {
             await ShellService.runAsync("osascript <<'APPLESCRIPT'\n\(script)\nAPPLESCRIPT")
             await monitor.refresh()

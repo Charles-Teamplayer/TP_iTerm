@@ -207,19 +207,36 @@ done
 
 log "tmux 생성 완료: ${CREATED}개 생성, ${SKIPPED}개 제외 (intentional-stop)"
 
-# === Step 2: iTerm2에서 tmux -CC attach (네이티브 탭으로 표시) ===
+# === Step 2: iTerm2에서 tmux -CC attach (AppleScript — 새 탭 자동 실행) ===
 sleep 3
-log "iTerm2에서 tmux -CC attach 실행"
+log "iTerm2에서 tmux -CC attach 실행 (AppleScript)"
 
-# iTerm2 앞으로 올리기 + 클립보드에 attach 명령 복사
-echo -n "tmux -CC attach -t claude-work" | pbcopy
-open -a iTerm 2>/dev/null || true
+osascript << 'ASEOF'
+tell application "iTerm2"
+    activate
+    if (count windows) > 0 then
+        tell current window
+            set newTab to (create tab with default profile)
+            tell current session of newTab
+                write text "tmux -CC attach -t claude-work"
+            end tell
+        end tell
+    else
+        set newWin to (create window with default profile)
+        tell current session of newWin
+            write text "tmux -CC attach -t claude-work"
+        end tell
+    end if
+end tell
+ASEOF
 OSASCRIPT_RESULT=$?
 
 if [ $OSASCRIPT_RESULT -ne 0 ]; then
-    log "ERROR: iTerm2 attach 실패 (osascript exit $OSASCRIPT_RESULT)"
+    log "ERROR: AppleScript attach 실패 (exit $OSASCRIPT_RESULT) — fallback: pbcopy"
+    echo -n "tmux -CC attach -t claude-work" | pbcopy 2>/dev/null || true
+    log "Fallback: 클립보드에 복사됨 (iTerm2에서 수동 Cmd+V 필요)"
 else
-    log "iTerm2 tmux -CC attach 완료"
+    log "iTerm2 tmux -CC attach 완료 (AppleScript 자동 실행)"
 fi
 
 # 세션 수 확인

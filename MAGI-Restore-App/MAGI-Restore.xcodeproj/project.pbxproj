@@ -30,6 +30,7 @@
 		45C00A1B08A2EF5CE82EB47F /* MAGIRestoreApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MAGIRestoreApp.swift; sourceTree = "<group>"; };
 		4C597A22ED5D394EC132C1B8 /* ClaudeSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeSession.swift; sourceTree = "<group>"; };
 		4CEAD9A242DC6E03A089F1F8 /* BackupConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupConfig.swift; sourceTree = "<group>"; };
+		579870DA5E6AA424703DE863 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		604EC53E38C185DFD3A4C840 /* MAGI-Restore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "MAGI-Restore.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		814FC5BD1A6E5540B64A0E22 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		B373DDFD3F09DD9CEEAC0466 /* BackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupView.swift; sourceTree = "<group>"; };
@@ -84,6 +85,7 @@
 			isa = PBXGroup;
 			children = (
 				814FC5BD1A6E5540B64A0E22 /* ContentView.swift */,
+				579870DA5E6AA424703DE863 /* Info.plist */,
 				45C00A1B08A2EF5CE82EB47F /* MAGIRestoreApp.swift */,
 				7F94A6054257441DA1851117 /* Models */,
 				1468FF6EEF020B60D1754B50 /* Services */,
@@ -177,6 +179,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Sources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -233,7 +236,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Sources/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -301,7 +304,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Sources/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -320,6 +323,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Sources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

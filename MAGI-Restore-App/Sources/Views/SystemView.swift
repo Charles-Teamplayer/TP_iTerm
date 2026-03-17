@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct DaemonInfo: Identifiable {
     let id: String        // launchctl label
@@ -50,15 +51,40 @@ final class SystemViewModel: ObservableObject {
         isRestoring = true
         restoreLog = ""
 
-        // claude-work tmux 세션이 이미 있으면 → attach만
         let sessionExists = await ShellService.runAsync("tmux has-session -t claude-work 2>/dev/null && echo YES || echo NO")
+
         if sessionExists.contains("YES") {
-            // 클립보드에 attach 명령어 복사 + iTerm2 앞으로
             let cmd = "tmux -CC attach -t claude-work"
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(cmd, forType: .string)
-            await ShellService.runAsync("open -a iTerm")
-            restoreLog = "✅ claude-work 세션 있음\n\niTerm2에서 ⌘V 붙여넣기 하세요:\n\(cmd)"
+
+            // iTerm2에 새 탭 열고 명령 직접 실행
+            let appleScript = """
+tell application "iTerm2"
+  activate
+  if (count of windows) = 0 then
+    create window with default profile
+    tell current session of current tab of current window
+      write text "\(cmd)"
+    end tell
+  else
+    tell current window
+      create tab with default profile
+      tell current session of current tab
+        write text "\(cmd)"
+      end tell
+    end tell
+  end if
+end tell
+"""
+            let asResult = await ShellService.runAsync("osascript <<'APPLESCRIPT'\n\(appleScript)\nAPPLESCRIPT 2>&1")
+
+            if asResult.lowercased().contains("error") {
+                // Fallback: 클립보드 복사
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(cmd, forType: .string)
+                restoreLog = "✅ claude-work 세션 있음\n⚠️ iTerm2 자동화 실패 — ⌘V로 붙여넣기:\n\(cmd)"
+            } else {
+                restoreLog = "✅ claude-work 세션에 attach 완료\n새 탭에서 tmux integration 시작됩니다."
+            }
         } else {
             // 세션 없음 → 전체 복원
             let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
@@ -86,6 +112,7 @@ struct SystemView: View {
     @StateObject private var vm = SystemViewModel()
     @State private var showInstallLog = false
     @State private var showRestoreLog = false
+    @State private var showRestoreAlert = false
 
     var body: some View {
         Form {
@@ -118,7 +145,10 @@ struct SystemView: View {
 
             Section("세션 복원") {
                 Button(action: {
-                    Task { await vm.runRestore() }
+                    Task {
+                        await vm.runRestore()
+                        showRestoreAlert = true
+                    }
                 }) {
                     if vm.isRestoring {
                         HStack(spacing: 8) {
@@ -134,8 +164,10 @@ struct SystemView: View {
                 .disabled(vm.isRestoring)
 
                 if !vm.restoreLog.isEmpty {
-                    Button("복원 로그 보기") { showRestoreLog.toggle() }
-                        .buttonStyle(.link)
+                    Text(vm.restoreLog)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 4)
                 }
             }
 
@@ -163,6 +195,11 @@ struct SystemView: View {
         }
         .formStyle(.grouped)
         .onAppear { Task { await vm.refresh() } }
+        .alert("복원 결과", isPresented: $showRestoreAlert) {
+            Button("확인") { showRestoreAlert = false }
+        } message: {
+            Text(vm.restoreLog)
+        }
         .sheet(isPresented: $showRestoreLog) {
             VStack(alignment: .leading) {
                 HStack {
