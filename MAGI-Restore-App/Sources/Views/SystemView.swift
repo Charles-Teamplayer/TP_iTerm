@@ -103,7 +103,7 @@ final class SystemViewModel: ObservableObject {
             guard dirExists.contains("YES") else { continue }
 
             await ShellService.runAsync("tmux new-window -t claude-work -n '\(proj.name)' -c '\(expandedPath)'")
-            await ShellService.runAsync("tmux send-keys -t 'claude-work:\(proj.name)' 'unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)' Enter")
+            await ShellService.runAsync("tmux send-keys -t 'claude-work:\(proj.name)' 'bash ~/.claude/scripts/tab-status.sh starting \(proj.name) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)' Enter")
             restored += 1
         }
 
@@ -186,8 +186,6 @@ struct SystemView: View {
     @StateObject private var vm = SystemViewModel()
     @State private var showInstallLog = false
     @State private var showRestoreLog = false
-    @State private var showRestoreAlert = false
-
     var body: some View {
         Form {
             Section("Claude 세션") {
@@ -219,10 +217,7 @@ struct SystemView: View {
 
             Section("세션 복원") {
                 Button(action: {
-                    Task {
-                        await vm.runRestore()
-                        showRestoreAlert = true
-                    }
+                    Task { await vm.runRestore() }
                 }) {
                     if vm.isRestoring {
                         HStack(spacing: 8) {
@@ -242,6 +237,8 @@ struct SystemView: View {
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 4)
+                    Button("전체 로그 보기") { showRestoreLog = true }
+                        .buttonStyle(.link)
                 }
             }
 
@@ -269,11 +266,6 @@ struct SystemView: View {
         }
         .formStyle(.grouped)
         .onAppear { Task { await vm.refresh() } }
-        .alert("복원 결과", isPresented: $showRestoreAlert) {
-            Button("확인") { showRestoreAlert = false }
-        } message: {
-            Text(vm.restoreLog)
-        }
         .sheet(isPresented: $showRestoreLog) {
             VStack(alignment: .leading) {
                 HStack {
