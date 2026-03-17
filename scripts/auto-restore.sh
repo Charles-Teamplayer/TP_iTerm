@@ -180,7 +180,7 @@ PROJECTS=(
     "skills:$HOME/claude/TP_skills:50"
     "appletv:$HOME/claude/AppleTV_ScreenSaver.app:55"
     "imsms-web:$HOME/claude/imsms.im-website:60"
-    "auto-restart:$HOME/claude/autoRestart_ClaudeCode:65"
+    "auto-restart:$HOME/claude/TP_iTerm:65"
 )
 
 CREATED=0
@@ -284,7 +284,7 @@ osascript -e "display notification \"${NOTIFY_MSG}\" with title \"MAGI+NORN\" so
 # Notion에 복원 기록
 if [ -n "$NOTION_API_KEY" ] && [ -f "$HOME/claude/TP_skills/session-manager/notion-advanced.py" ]; then
     python3 "$HOME/claude/TP_skills/session-manager/notion-advanced.py" \
-        "autoRestart_ClaudeCode" "Reboot Recovery (tmux)" "${NOTIFY_MSG}" 2>/dev/null || true
+        "TP_iTerm" "Reboot Recovery (tmux)" "${NOTIFY_MSG}" 2>/dev/null || true
 fi
 
 log "=== Auto-Restore 완료: ${CREATED}개 복원, ${SKIPPED}개 제외 ==="

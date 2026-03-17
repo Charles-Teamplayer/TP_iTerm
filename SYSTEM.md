@@ -1,4 +1,4 @@
-# MAGI+NORN AutoRestart ClaudeCode
+# TP_iTerm
 
 > v2.0 | 2026-03-14 | MAGI+NORN 6축 감사 완료
 

@@ -30,7 +30,7 @@ _get_short_name() {
         */TP_skills)                            echo "skills" ;;
         */AppleTV_ScreenSaver.app)              echo "appletv" ;;
         */imsms.im-website)                     echo "imsms-web" ;;
-        */autoRestart_ClaudeCode)               echo "auto-rst" ;;
+        */TP_iTerm)               echo "auto-rst" ;;
         *)                                      basename "$dir" | cut -c1-12 ;;
     esac
 }

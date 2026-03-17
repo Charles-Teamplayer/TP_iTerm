@@ -140,7 +140,7 @@ while true; do
                     TP_skills)            WINDOW_NAME="skills";          PROJ_PATH="$HOME/claude/TP_skills" ;;
                     AppleTV_ScreenSaver.app) WINDOW_NAME="appletv";     PROJ_PATH="$HOME/claude/AppleTV_ScreenSaver.app" ;;
                     imsms.im-website)     WINDOW_NAME="imsms-web";       PROJ_PATH="$HOME/claude/imsms.im-website" ;;
-                    autoRestart_ClaudeCode) WINDOW_NAME="auto-restart";  PROJ_PATH="$HOME/claude/autoRestart_ClaudeCode" ;;
+                    TP_iTerm) WINDOW_NAME="auto-restart";  PROJ_PATH="$HOME/claude/TP_iTerm" ;;
                 esac
 
                 if [ -z "$WINDOW_NAME" ] || [ ! -d "$PROJ_PATH" ]; then

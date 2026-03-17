@@ -88,7 +88,7 @@ final class SystemViewModel: ObservableObject {
             ("skills", "~/claude/TP_skills"),
             ("appletv", "~/claude/AppleTV_ScreenSaver.app"),
             ("imsms-web", "~/claude/imsms.im-website"),
-            ("auto-restart", "~/claude/autoRestart_ClaudeCode"),
+            ("auto-restart", "~/claude/TP_iTerm"),
         ]
 
         let existingWindows = await ShellService.runAsync("tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null")
@@ -158,7 +158,7 @@ final class SystemViewModel: ObservableObject {
         guard !isInstalling else { return }
         isInstalling = true
         installLog = ""
-        let scriptPath = NSHomeDirectory() + "/claude/autoRestart_ClaudeCode/install.sh"
+        let scriptPath = NSHomeDirectory() + "/claude/TP_iTerm/install.sh"
         let result = await ShellService.runAsync("bash '\(scriptPath)' 2>&1")
         installLog = result
         isInstalling = false

@@ -135,7 +135,7 @@ DIR_TO_WINDOW = {
     os.path.expanduser("~/claude/TP_skills"): "skills",
     os.path.expanduser("~/claude/AppleTV_ScreenSaver.app"): "appletv",
     os.path.expanduser("~/claude/imsms.im-website"): "imsms-web",
-    os.path.expanduser("~/claude/autoRestart_ClaudeCode"): "auto-restart",
+    os.path.expanduser("~/claude/TP_iTerm"): "auto-restart",
 }
 
 window_name = DIR_TO_WINDOW.get(project_dir, os.path.basename(project_dir))

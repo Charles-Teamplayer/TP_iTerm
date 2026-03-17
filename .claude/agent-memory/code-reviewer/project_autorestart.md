@@ -1,6 +1,6 @@
 ---
 name: project_autorestart
-description: autoRestart_ClaudeCode 프로젝트의 핵심 보안 취약점 및 구조적 문제
+description: TP_iTerm 프로젝트의 핵심 보안 취약점 및 구조적 문제
 type: project
 ---
 

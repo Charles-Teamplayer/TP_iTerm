@@ -67,7 +67,7 @@ windows:
       - sleep 60 && bash ~/.claude/scripts/tab-status.sh starting imsms-web && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
 
   - name: auto-restart
-    root: ~/claude/autoRestart_ClaudeCode
+    root: ~/claude/TP_iTerm
     commands:
       - sleep 65 && bash ~/.claude/scripts/tab-status.sh starting auto-restart && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
 
