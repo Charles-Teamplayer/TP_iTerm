@@ -50,7 +50,7 @@ final class SystemViewModel: ObservableObject {
         isRestoring = true
         restoreLog = ""
         let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
-        restoreLog = await ShellService.runAsync("bash '\(scriptPath)' 2>&1")
+        restoreLog = await ShellService.runAsync("bash '\(scriptPath)' --force 2>&1")
         isRestoring = false
         await refresh()
     }
