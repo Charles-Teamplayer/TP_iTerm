@@ -58,15 +58,15 @@ final class SystemViewModel: ObservableObject {
         let sessionExists = await ShellService.runAsync("tmux has-session -t claude-work 2>/dev/null && echo YES || echo NO")
 
         if sessionExists.contains("YES") {
-            // 기존 세션 있음 → 먼저 죽은 윈도우 복구 후 attach
+            // 기존 세션 있음 → 죽은 창만 복구 + iTerm2 앞으로 (새 탭 X)
             let repairResult = await repairDeadWindows()
-            let attachResult = await attachToTmux()
-            restoreLog = repairResult + "\n" + attachResult
+            await ShellService.runAsync("open -a iTerm")
+            restoreLog = repairResult.isEmpty ? "✅ iTerm2 앞으로 가져옴" : repairResult
         } else {
             // 세션 없음 → 전체 복원
             let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
             restoreLog = await ShellService.runAsync("bash '\(scriptPath)' --force 2>&1")
-            await attachToiTerm()
+            await ShellService.runAsync("open -a iTerm")
         }
 
         isRestoring = false
@@ -148,14 +148,10 @@ final class SystemViewModel: ObservableObject {
           end if
         end tell
         """
-        let script = NSAppleScript(source: source)
+        guard let script = NSAppleScript(source: source) else { return false }
         var errorInfo: NSDictionary?
-        script?.executeAndReturnError(&errorInfo)
-        if let err = errorInfo {
-            let code = (err["NSAppleScriptErrorNumber"] as? Int) ?? 0
-            return code == 0
-        }
-        return true
+        script.executeAndReturnError(&errorInfo)
+        return errorInfo == nil
     }
 
     func runInstall() async {

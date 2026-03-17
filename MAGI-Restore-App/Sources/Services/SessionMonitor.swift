@@ -65,16 +65,11 @@ final class SessionMonitor: ObservableObject {
     }
 
     private func resolveProjectName(tty: String, pid: Int, tmuxWindowMap: [Int: String]) -> String {
-        // tmux 내 프로세스: TTY == "??" → tmux pane pid로 window name 조회
         if tty == "??" {
             if let windowName = tmuxWindowMap[pid] { return windowName }
-            // 직접 pane pid가 아닌 경우 — PPID 체인 최대 5단계 탐색
-            if let name = findTmuxWindowByPPID(pid: pid, tmuxWindowMap: tmuxWindowMap) { return name }
             return "tmux-session"
         }
-
         var ttyClean = tty.replacingOccurrences(of: "/dev/", with: "").replacingOccurrences(of: "/", with: "-")
-        // ps aux TTY는 "s007" 형태, tab-states 파일명은 "ttys007" 형태 — 접두사 보정
         if ttyClean.hasPrefix("s") && !ttyClean.hasPrefix("tty") {
             ttyClean = "tty" + ttyClean
         }
@@ -84,17 +79,5 @@ final class SessionMonitor: ObservableObject {
             if parts.count >= 2 { return parts[1] }
         }
         return ttyClean
-    }
-
-    // PPID 체인 탐색 — claude 프로세스가 pane의 자식인 경우
-    private func findTmuxWindowByPPID(pid: Int, tmuxWindowMap: [Int: String]) -> String? {
-        var current = pid
-        for _ in 0..<5 {
-            let ppidOutput = ShellService.run("ps -o ppid= -p \(current) 2>/dev/null")
-            guard let ppid = Int(ppidOutput.trimmingCharacters(in: .whitespacesAndNewlines)), ppid > 1 else { break }
-            if let name = tmuxWindowMap[ppid] { return name }
-            current = ppid
-        }
-        return nil
     }
 }

@@ -31,26 +31,6 @@ final class ProfileService: ObservableObject {
         save(updated)
     }
 
-    private func deterministicUUID(for name: String) -> UUID {
-        // 이름 기반 고정 UUID — 같은 이름은 항상 같은 UUID (편집 시 id 일치 보장)
-        let seed = "smug-profile-\(name)"
-        var hash: UInt64 = 14695981039346656037
-        for byte in seed.utf8 {
-            hash ^= UInt64(byte)
-            hash = hash &* 1099511628211
-        }
-        let hi = hash
-        let lo = hash &* 6364136223846793005 &+ 1442695040888963407
-        let uuidString = String(format: "%08X-%04X-%04X-%04X-%012X",
-            UInt32(hi >> 32),
-            UInt16(hi >> 16) & 0xFFFF,
-            (UInt16(hi) & 0x0FFF) | 0x4000,
-            (UInt16(lo >> 48) & 0x3FFF) | 0x8000,
-            lo & 0xFFFFFFFFFFFF
-        )
-        return UUID(uuidString: uuidString) ?? UUID()
-    }
-
     private func parseYml(_ contents: String) -> [SmugProfile] {
         var result: [SmugProfile] = []
         let lines = contents.components(separatedBy: "\n")
@@ -65,7 +45,7 @@ final class ProfileService: ObservableObject {
             if trimmed.hasPrefix("- name:") {
                 if let name = currentName {
                     let profile = SmugProfile(
-                        id: deterministicUUID(for: name),
+                        id: UUID(),
                         name: name,
                         root: currentRoot ?? "",
                         delay: currentDelay,
@@ -90,7 +70,7 @@ final class ProfileService: ObservableObject {
 
         if let name = currentName {
             let profile = SmugProfile(
-                id: deterministicUUID(for: name),
+                id: UUID(),
                 name: name,
                 root: currentRoot ?? "",
                 delay: currentDelay,
