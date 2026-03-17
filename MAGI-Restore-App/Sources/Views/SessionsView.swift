@@ -95,10 +95,10 @@ struct SessionsView: View {
     }
 
     private func killSession(_ session: ClaudeSession) {
-        ShellService.intentionalStop(projectDir: session.projectName)
-        ShellService.kill(pid: session.pid)
-        selectedSession = nil
         Task {
+            await ShellService.intentionalStopAsync(projectDir: session.projectName)
+            await ShellService.killAsync(pid: session.pid)
+            selectedSession = nil
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             await monitor.refresh()
         }

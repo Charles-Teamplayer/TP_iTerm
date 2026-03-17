@@ -200,7 +200,7 @@ for proj in "${PROJECTS[@]}"; do
     fi
 
     tmux new-window -t claude-work -n "$NAME" -c "$PROJ_PATH" 2>/dev/null
-    tmux send-keys -t "claude-work:$NAME" "sleep $DELAY && unset CLAUDECODE && claude --dangerously-skip-permissions --continue" Enter
+    tmux send-keys -t "claude-work:$NAME" "sleep $DELAY && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)" Enter
     CREATED=$((CREATED + 1))
     log "tmux 윈도우 생성: $NAME (delay ${DELAY}s)"
 done
@@ -232,9 +232,9 @@ ASEOF
 OSASCRIPT_RESULT=$?
 
 if [ $OSASCRIPT_RESULT -ne 0 ]; then
-    log "ERROR: AppleScript attach 실패 (exit $OSASCRIPT_RESULT) — fallback: pbcopy"
-    echo -n "tmux -CC attach -t claude-work" | pbcopy 2>/dev/null || true
-    log "Fallback: 클립보드에 복사됨 (iTerm2에서 수동 Cmd+V 필요)"
+    log "ERROR: AppleScript attach 실패 (exit $OSASCRIPT_RESULT) — fallback: tmux -CC 직접 실행 시도"
+    tmux -CC attach -t claude-work 2>/dev/null || true
+    log "Fallback: tmux -CC attach 직접 실행 완료"
 else
     log "iTerm2 tmux -CC attach 완료 (AppleScript 자동 실행)"
 fi

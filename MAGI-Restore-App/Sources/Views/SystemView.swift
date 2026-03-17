@@ -54,46 +54,105 @@ final class SystemViewModel: ObservableObject {
         let sessionExists = await ShellService.runAsync("tmux has-session -t claude-work 2>/dev/null && echo YES || echo NO")
 
         if sessionExists.contains("YES") {
-            let cmd = "tmux -CC attach -t claude-work"
-
-            // iTerm2에 새 탭 열고 명령 직접 실행
-            let appleScript = """
-tell application "iTerm2"
-  activate
-  if (count of windows) = 0 then
-    create window with default profile
-    tell current session of current tab of current window
-      write text "\(cmd)"
-    end tell
-  else
-    tell current window
-      create tab with default profile
-      tell current session of current tab
-        write text "\(cmd)"
-      end tell
-    end tell
-  end if
-end tell
-"""
-            let asResult = await ShellService.runAsync("osascript <<'APPLESCRIPT'\n\(appleScript)\nAPPLESCRIPT 2>&1")
-
-            if asResult.lowercased().contains("error") {
-                // Fallback: 클립보드 복사
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(cmd, forType: .string)
-                restoreLog = "✅ claude-work 세션 있음\n⚠️ iTerm2 자동화 실패 — ⌘V로 붙여넣기:\n\(cmd)"
-            } else {
-                restoreLog = "✅ claude-work 세션에 attach 완료\n새 탭에서 tmux integration 시작됩니다."
-            }
+            // 기존 세션 있음 → 먼저 죽은 윈도우 복구 후 attach
+            let repairResult = await repairDeadWindows()
+            let attachResult = await attachToTmux()
+            restoreLog = repairResult + "\n" + attachResult
         } else {
             // 세션 없음 → 전체 복원
             let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
             restoreLog = await ShellService.runAsync("bash '\(scriptPath)' --force 2>&1")
-            await ShellService.runAsync("open -a iTerm")
+            await attachToiTerm()
         }
 
         isRestoring = false
         await refresh()
+    }
+
+    private func repairDeadWindows() async -> String {
+        let projects: [(name: String, path: String)] = [
+            ("imsms", "~/claude/TP_newIMSMS"),
+            ("imsms-agent", "~/claude/TP_newIMSMS_Agent"),
+            ("mdm", "~/claude/TP_MDM"),
+            ("tesla-lvds", "~/claude/TP_TESLA_LVDS"),
+            ("tesla-dashboard", "~/ralph-claude-code/TESLA_Status_Dashboard"),
+            ("mindmap", "~/claude/TP_MindMap_AutoCC"),
+            ("sj-mindmap", "~/SJ_MindMap"),
+            ("imessage", "~/claude/TP_A.iMessage_standalone_01067051080"),
+            ("btt", "~/claude/TP_BTT"),
+            ("infra", "~/claude/TP_Infra_reduce_Project"),
+            ("skills", "~/claude/TP_skills"),
+            ("appletv", "~/claude/AppleTV_ScreenSaver.app"),
+            ("imsms-web", "~/claude/imsms.im-website"),
+            ("auto-restart", "~/claude/autoRestart_ClaudeCode"),
+        ]
+
+        let existingWindows = await ShellService.runAsync("tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null")
+        let windowSet = Set(existingWindows.components(separatedBy: "\n").filter { !$0.isEmpty })
+
+        // "지금 복원" 버튼은 사용자의 명시적 의도이므로 intentional-stops를 초기화
+        let stopsFile = NSHomeDirectory() + "/.claude/intentional-stops.json"
+        let resetJson = "{\"stops\":[],\"last_updated\":\"\(ISO8601DateFormatter().string(from: Date()))\"}"
+        try? resetJson.write(toFile: stopsFile, atomically: true, encoding: .utf8)
+
+        var restored = 0
+        for proj in projects {
+            guard !windowSet.contains(proj.name) else { continue }
+            let expandedPath = proj.path.replacingOccurrences(of: "~", with: NSHomeDirectory())
+            let dirExists = await ShellService.runAsync("[ -d '\(expandedPath)' ] && echo YES || echo NO")
+            guard dirExists.contains("YES") else { continue }
+
+            await ShellService.runAsync("tmux new-window -t claude-work -n '\(proj.name)' -c '\(expandedPath)'")
+            await ShellService.runAsync("tmux send-keys -t 'claude-work:\(proj.name)' 'unset CLAUDECODE && claude --dangerously-skip-permissions --continue' Enter")
+            restored += 1
+        }
+
+        if restored > 0 {
+            return "🔧 죽은 윈도우 \(restored)개 복구 + intentional-stops 초기화"
+        }
+        return "✅ 모든 윈도우 정상"
+    }
+
+    @discardableResult
+    private func attachToTmux() async -> String {
+        let cmd = "tmux -CC attach -t claude-work"
+        let exitCode = await runAppleScriptInITerm(command: cmd)
+        if exitCode {
+            return "✅ claude-work 세션에 attach 완료"
+        } else {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(cmd, forType: .string)
+            return "⚠️ iTerm2 자동화 실패 — ⌘V로 붙여넣기:\n\(cmd)"
+        }
+    }
+
+    private func attachToiTerm() async {
+        await ShellService.runAsync("open -a iTerm")
+    }
+
+    private func runAppleScriptInITerm(command: String) async -> Bool {
+        let source = """
+        tell application "iTerm2"
+          activate
+          if (count of windows) = 0 then
+            create window with default profile
+            tell current session of current tab of current window
+              write text "\(command)"
+            end tell
+          else
+            tell current window
+              create tab with default profile
+              tell current session of current tab
+                write text "\(command)"
+              end tell
+            end tell
+          end if
+        end tell
+        """
+        let script = NSAppleScript(source: source)
+        var errorInfo: NSDictionary?
+        script?.executeAndReturnError(&errorInfo)
+        return errorInfo == nil
     }
 
     func runInstall() async {

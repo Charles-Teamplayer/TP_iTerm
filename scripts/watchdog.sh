@@ -17,11 +17,33 @@ log() {
     fi
 }
 
-# 원자적 파일 쓰기
+# 디스크 여유 공간 체크 (MB)
+disk_free_mb() {
+    df -k "$HOME" 2>/dev/null | awk 'NR==2 {print int($4/1024)}'
+}
+
+# 원자적 파일 쓰기 (디스크 부족 시 스킵)
 atomic_write() {
     local file="$1" content="$2"
     local tmp="${file}.$$"
+    local free_mb
+    free_mb=$(disk_free_mb)
+    if [ "${free_mb:-0}" -lt 200 ]; then
+        return 0  # 디스크 부족 시 조용히 스킵
+    fi
     echo "$content" > "$tmp" 2>/dev/null && mv "$tmp" "$file" 2>/dev/null
+}
+
+# stderr.log 자체 로테이션 (10MB 초과 시)
+rotate_stderr_log() {
+    local stderr_log="$HOME/.claude/logs/watchdog.stderr.log"
+    if [ -f "$stderr_log" ]; then
+        local size
+        size=$(stat -f%z "$stderr_log" 2>/dev/null || echo 0)
+        if [ "${size:-0}" -gt 10485760 ]; then  # 10MB
+            > "$stderr_log"
+        fi
+    fi
 }
 
 notify() {
@@ -157,6 +179,9 @@ while true; do
     if ! pgrep -x "iTerm2" > /dev/null; then
         log "WARNING: iTerm2 not running"
     fi
+
+    # stderr.log 로테이션 (매 루프마다 체크)
+    rotate_stderr_log
 
     # 30초 대기
     sleep 30

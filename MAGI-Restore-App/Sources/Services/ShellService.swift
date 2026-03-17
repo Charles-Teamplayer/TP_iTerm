@@ -14,6 +14,7 @@ struct ShellService {
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
+    @discardableResult
     static func runAsync(_ command: String) async -> String {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
@@ -26,8 +27,17 @@ struct ShellService {
         let _ = run("kill -TERM \(pid)")
     }
 
+    static func killAsync(pid: Int) async {
+        await runAsync("kill -TERM \(pid)")
+    }
+
     static func intentionalStop(projectDir: String) {
         let registryScript = "~/.claude/scripts/session-registry.sh"
         let _ = run("bash \(registryScript) intentional-stop '\(projectDir)'")
+    }
+
+    static func intentionalStopAsync(projectDir: String) async {
+        let registryScript = "~/.claude/scripts/session-registry.sh"
+        await runAsync("bash \(registryScript) intentional-stop '\(projectDir)'")
     }
 }
