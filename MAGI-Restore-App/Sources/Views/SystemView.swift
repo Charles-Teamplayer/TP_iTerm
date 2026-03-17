@@ -53,19 +53,12 @@ final class SystemViewModel: ObservableObject {
         // claude-work tmux 세션이 이미 있으면 → attach만
         let sessionExists = await ShellService.runAsync("tmux has-session -t claude-work 2>/dev/null && echo YES || echo NO")
         if sessionExists.contains("YES") {
-            restoreLog = "claude-work 세션 존재 → 새 창 생성 후 tmux attach 입력"
-            await ShellService.runAsync("""
-                osascript \
-                  -e 'tell application "iTerm"' \
-                  -e '  activate' \
-                  -e '  set newWin to (create window with default profile)' \
-                  -e '  delay 0.5' \
-                  -e '  activate' \
-                  -e '  tell current session of newWin' \
-                  -e '    write text "tmux -CC attach -t claude-work"' \
-                  -e '  end tell' \
-                  -e 'end tell'
-                """)
+            // 클립보드에 attach 명령어 복사 + iTerm2 앞으로
+            let cmd = "tmux -CC attach -t claude-work"
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(cmd, forType: .string)
+            await ShellService.runAsync("open -a iTerm")
+            restoreLog = "✅ claude-work 세션 있음\n\niTerm2에서 ⌘V 붙여넣기 하세요:\n\(cmd)"
         } else {
             // 세션 없음 → 전체 복원
             let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"

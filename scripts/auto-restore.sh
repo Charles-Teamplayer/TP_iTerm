@@ -211,17 +211,9 @@ log "tmux 생성 완료: ${CREATED}개 생성, ${SKIPPED}개 제외 (intentional
 sleep 3
 log "iTerm2에서 tmux -CC attach 실행"
 
-# 새 iTerm2 창을 만들고, 그 창의 fresh shell에 tmux attach 입력
-osascript \
-    -e 'tell application "iTerm"' \
-    -e '  activate' \
-    -e '  set newWin to (create window with default profile)' \
-    -e '  delay 0.5' \
-    -e '  activate' \
-    -e '  tell current session of newWin' \
-    -e '    write text "tmux -CC attach -t claude-work"' \
-    -e '  end tell' \
-    -e 'end tell' 2>/dev/null
+# iTerm2 앞으로 올리기 + 클립보드에 attach 명령 복사
+echo -n "tmux -CC attach -t claude-work" | pbcopy
+open -a iTerm 2>/dev/null || true
 OSASCRIPT_RESULT=$?
 
 if [ $OSASCRIPT_RESULT -ne 0 ]; then
