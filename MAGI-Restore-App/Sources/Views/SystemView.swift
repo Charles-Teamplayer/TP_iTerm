@@ -15,7 +15,9 @@ final class SystemViewModel: ObservableObject {
     ]
     @Published var sessionCount: Int = 0
     @Published var isInstalling: Bool = false
+    @Published var isRestoring: Bool = false
     @Published var installLog: String = ""
+    @Published var restoreLog: String = ""
 
     func refresh() {
         for i in daemons.indices {
@@ -38,6 +40,17 @@ final class SystemViewModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.refresh() }
     }
 
+    func runRestore() async {
+        guard !isRestoring else { return }
+        isRestoring = true
+        restoreLog = ""
+        let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
+        let result = await ShellService.runAsync("bash '\(scriptPath)' 2>&1")
+        restoreLog = result
+        isRestoring = false
+        refresh()
+    }
+
     func runInstall() async {
         guard !isInstalling else { return }
         isInstalling = true
@@ -53,6 +66,7 @@ final class SystemViewModel: ObservableObject {
 struct SystemView: View {
     @StateObject private var vm = SystemViewModel()
     @State private var showInstallLog = false
+    @State private var showRestoreLog = false
 
     var body: some View {
         Form {
@@ -83,6 +97,29 @@ struct SystemView: View {
                 }
             }
 
+            Section("세션 복원") {
+                Button(action: {
+                    Task { await vm.runRestore() }
+                }) {
+                    if vm.isRestoring {
+                        HStack(spacing: 8) {
+                            ProgressView().scaleEffect(0.8)
+                            Text("복원 중...")
+                        }
+                    } else {
+                        Label("지금 복원", systemImage: "arrow.clockwise.circle.fill")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+                .disabled(vm.isRestoring)
+
+                if !vm.restoreLog.isEmpty {
+                    Button("복원 로그 보기") { showRestoreLog.toggle() }
+                        .buttonStyle(.link)
+                }
+            }
+
             Section("업데이트") {
                 Button(action: {
                     Task { await vm.runInstall() }
@@ -107,6 +144,25 @@ struct SystemView: View {
         }
         .formStyle(.grouped)
         .onAppear { vm.refresh() }
+        .sheet(isPresented: $showRestoreLog) {
+            VStack(alignment: .leading) {
+                HStack {
+                    Text("복원 로그")
+                        .font(.headline)
+                    Spacer()
+                    Button("닫기") { showRestoreLog = false }
+                }
+                .padding()
+                Divider()
+                ScrollView {
+                    Text(vm.restoreLog)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                }
+            }
+            .frame(width: 500, height: 400)
+        }
         .sheet(isPresented: $showInstallLog) {
             VStack(alignment: .leading) {
                 HStack {

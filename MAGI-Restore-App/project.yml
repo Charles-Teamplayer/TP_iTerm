@@ -11,6 +11,8 @@ settings:
     CODE_SIGNING_REQUIRED: "NO"
     GENERATE_INFOPLIST_FILE: "YES"
     PRODUCT_BUNDLE_IDENTIFIER: "com.teample.MAGI-Restore"
+    ARCHS: "arm64"
+    ONLY_ACTIVE_ARCH: "NO"
 targets:
   MAGI-Restore:
     type: application
