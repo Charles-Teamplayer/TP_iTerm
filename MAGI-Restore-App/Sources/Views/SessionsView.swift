@@ -5,16 +5,51 @@ struct SessionsView: View {
     @State private var selectedSession: ClaudeSession?
     @State private var showKillConfirm = false
     @State private var showHideConfirm = false
+    @State private var isRestoring = false
+
+    private var runningCount: Int { monitor.sessions.filter(\.isRunning).count }
+    private var stoppedCount: Int { monitor.sessions.filter { !$0.isRunning }.count }
 
     var body: some View {
         HSplitView {
             sessionList
-                .frame(minWidth: 260, idealWidth: 300)
+                .frame(minWidth: 280, idealWidth: 320)
             detailPanel
                 .frame(minWidth: 300)
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                if stoppedCount > 0 {
+                    Button(action: {
+                        if monitor.selectedForRestore.isEmpty {
+                            monitor.selectAllStopped()
+                        } else {
+                            monitor.deselectAll()
+                        }
+                    }) {
+                        Image(systemName: monitor.selectedForRestore.isEmpty
+                              ? "checkmark.circle" : "checkmark.circle.fill")
+                    }
+                    .help(monitor.selectedForRestore.isEmpty ? "중단된 세션 전체 선택" : "선택 해제")
+
+                    Button(action: {
+                        Task {
+                            isRestoring = true
+                            await monitor.restoreSelected()
+                            isRestoring = false
+                        }
+                    }) {
+                        if isRestoring {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise.circle.fill")
+                        }
+                    }
+                    .disabled(monitor.selectedForRestore.isEmpty || isRestoring)
+                    .help("선택한 세션 복원 (\(monitor.selectedForRestore.count)개)")
+                }
+
                 Button(action: { Task { await monitor.refresh() } }) {
                     Image(systemName: "arrow.clockwise")
                 }
@@ -23,67 +58,132 @@ struct SessionsView: View {
         }
     }
 
+    // MARK: - Session List
+
     private var sessionList: some View {
-        List(monitor.sessions, selection: $selectedSession) { session in
-            SessionRowView(session: session)
+        VStack(spacing: 0) {
+            List(monitor.sessions, selection: $selectedSession) { session in
+                SessionRowView(
+                    session: session,
+                    isSelected: monitor.selectedForRestore.contains(session.id),
+                    onToggle: { monitor.toggleSelection(session.id) }
+                )
                 .tag(session as ClaudeSession?)
-        }
-        .listStyle(.sidebar)
-        .overlay {
-            if monitor.sessions.isEmpty {
-                EmptyStateView(title: "실행 중인 세션 없음", systemImage: "terminal")
             }
+            .listStyle(.sidebar)
+            .overlay {
+                if monitor.sessions.isEmpty {
+                    EmptyStateView(title: "tmux 세션 없음", systemImage: "terminal")
+                }
+            }
+
+            HStack {
+                Circle()
+                    .fill(.green)
+                    .frame(width: 8, height: 8)
+                Text("실행 \(runningCount)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Circle()
+                    .fill(.red)
+                    .frame(width: 8, height: 8)
+                Text("중단 \(stoppedCount)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.bar)
         }
     }
+
+    // MARK: - Detail Panel
 
     private var detailPanel: some View {
         Group {
             if let session = selectedSession {
-                VStack(alignment: .leading, spacing: 16) {
-                    GroupBox("세션 정보") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            LabeledContent("프로젝트", value: session.projectName)
-                            LabeledContent("PID", value: "\(session.pid)")
-                            LabeledContent("TTY", value: session.tty)
-                            LabeledContent("시작 시각", value: session.startTime)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Circle()
+                                .fill(session.isRunning ? .green : .red)
+                                .frame(width: 12, height: 12)
+                            Text(session.isRunning ? "실행 중" : "중단됨")
+                                .font(.headline)
+                                .foregroundStyle(session.isRunning ? Color.primary : Color.red)
                         }
-                        .padding(4)
+
+                        GroupBox("세션 정보") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                LabeledContent("프로젝트", value: session.projectName)
+                                LabeledContent("tmux 윈도우", value: session.windowName)
+                                if session.windowIndex >= 0 {
+                                    LabeledContent("윈도우 #", value: "\(session.windowIndex)")
+                                }
+                                LabeledContent("PID", value: "\(session.pid)")
+                                LabeledContent("TTY", value: session.tty)
+                                if !session.startTime.isEmpty {
+                                    LabeledContent("시작 시각", value: session.startTime)
+                                }
+                                if !session.directory.isEmpty {
+                                    LabeledContent("경로", value: session.directory)
+                                }
+                            }
+                            .padding(4)
+                        }
+
+                        HStack(spacing: 12) {
+                            if session.isRunning {
+                                Button("Hide") {
+                                    showHideConfirm = true
+                                }
+                                .confirmationDialog(
+                                    "iTerm2 창을 최소화하시겠습니까?",
+                                    isPresented: $showHideConfirm,
+                                    titleVisibility: .visible
+                                ) {
+                                    Button("최소화") { hideSession(session) }
+                                    Button("취소", role: .cancel) {}
+                                }
+
+                                Button("Kill", role: .destructive) {
+                                    showKillConfirm = true
+                                }
+                                .confirmationDialog(
+                                    "PID \(session.pid) 세션을 종료하시겠습니까?",
+                                    isPresented: $showKillConfirm,
+                                    titleVisibility: .visible
+                                ) {
+                                    Button("종료", role: .destructive) { killSession(session) }
+                                    Button("취소", role: .cancel) {}
+                                }
+                            } else {
+                                Button {
+                                    Task {
+                                        monitor.selectedForRestore = [session.id]
+                                        isRestoring = true
+                                        await monitor.restoreSelected()
+                                        isRestoring = false
+                                    }
+                                } label: {
+                                    Label("이 세션 복원", systemImage: "arrow.clockwise")
+                                }
+                                .disabled(isRestoring)
+                            }
+                        }
+
+                        Spacer()
                     }
-
-                    HStack(spacing: 12) {
-                        Button("Hide") {
-                            showHideConfirm = true
-                        }
-                        .confirmationDialog(
-                            "iTerm2 창을 최소화하시겠습니까?",
-                            isPresented: $showHideConfirm,
-                            titleVisibility: .visible
-                        ) {
-                            Button("최소화") { hideSession(session) }
-                            Button("취소", role: .cancel) {}
-                        }
-
-                        Button("Kill", role: .destructive) {
-                            showKillConfirm = true
-                        }
-                        .confirmationDialog(
-                            "PID \(session.pid) 세션을 종료하시겠습니까?",
-                            isPresented: $showKillConfirm,
-                            titleVisibility: .visible
-                        ) {
-                            Button("종료", role: .destructive) { killSession(session) }
-                            Button("취소", role: .cancel) {}
-                        }
-                    }
-
-                    Spacer()
+                    .padding()
                 }
-                .padding()
             } else {
                 EmptyStateView(title: "세션을 선택하세요", systemImage: "cursorarrow.click")
             }
         }
     }
+
+    // MARK: - Actions
 
     private func hideSession(_ session: ClaudeSession) {
         let tty = session.tty
@@ -121,22 +221,52 @@ end tell
     }
 }
 
+// MARK: - Row View
+
 struct SessionRowView: View {
     let session: ClaudeSession
+    let isSelected: Bool
+    let onToggle: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(session.projectName)
-                .font(.headline)
-            HStack {
-                Text("PID: \(session.pid)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("·")
-                    .foregroundStyle(.secondary)
-                Text(session.tty)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 8) {
+            if !session.isRunning {
+                Button(action: onToggle) {
+                    Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                        .foregroundStyle(isSelected ? .blue : .secondary)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Circle()
+                    .fill(.green)
+                    .frame(width: 8, height: 8)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(session.projectName)
+                        .font(.headline)
+                        .foregroundStyle(session.isRunning ? .primary : .secondary)
+                    if !session.isRunning {
+                        Text("중단")
+                            .font(.caption2)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(.red.opacity(0.15))
+                            .foregroundStyle(.red)
+                            .clipShape(Capsule())
+                    }
+                }
+                HStack {
+                    Text("PID: \(session.pid)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if session.windowIndex >= 0 {
+                        Text("W:\(session.windowIndex)")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
         }
         .padding(.vertical, 2)

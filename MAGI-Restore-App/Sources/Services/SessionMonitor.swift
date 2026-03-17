@@ -4,14 +4,10 @@ import Combine
 @MainActor
 final class SessionMonitor: ObservableObject {
     @Published var sessions: [ClaudeSession] = []
+    @Published var selectedForRestore: Set<String> = []
 
     private var timer: Timer?
-    private let tabStatesDir = NSHomeDirectory() + "/.claude/tab-states"
-
-    private let excludePatterns = [
-        "Claude.app", "Claude Helper", "watchdog", "auto-restore",
-        "tab-focus", "session-registry", "MAGI", "xcodebuild", "xcodegen"
-    ]
+    private let activeSessionsPath = NSHomeDirectory() + "/.claude/active-sessions.json"
 
     func start() {
         Task { await refresh() }
@@ -26,58 +22,171 @@ final class SessionMonitor: ObservableObject {
     }
 
     func refresh() async {
-        let output = await ShellService.runAsync("ps aux")
-        let lines = output.components(separatedBy: "\n")
-
-        // tmux 내 프로세스는 TTY가 "??" — pane pid → window name 맵으로 fallback
-        let tmuxWindowMap = await buildTmuxWindowMap()
+        let tmuxWindows = await loadTmuxWindows()
+        let activeSessions = await loadActiveSessions()
 
         var result: [ClaudeSession] = []
-        for line in lines {
-            guard line.contains("claude") else { continue }
-            guard !excludePatterns.contains(where: { line.contains($0) }) else { continue }
+        var matchedProjects = Set<String>()
 
-            let parts = line.split(separator: " ", omittingEmptySubsequences: true)
-            guard parts.count >= 11 else { continue }
-            guard let pid = Int(parts[1]) else { continue }
+        for tw in tmuxWindows {
+            let claudePid = await findClaudePid(panePid: tw.panePid)
+            let isRunning = claudePid != nil
 
-            let tty = String(parts[6])
-            let startTime = String(parts[8])
-            let projectName = resolveProjectName(tty: tty, pid: pid, tmuxWindowMap: tmuxWindowMap)
-            result.append(ClaudeSession(pid: pid, tty: tty, projectName: projectName, startTime: startTime))
+            let activeInfo = activeSessions.first { info in
+                info.project == tw.windowName
+                || info.dir.hasSuffix("/\(tw.windowName)")
+                || tw.windowName.contains(info.project.lowercased())
+                || info.project.lowercased().contains(tw.windowName.lowercased())
+            }
+
+            if let info = activeInfo {
+                matchedProjects.insert(info.project)
+            }
+
+            result.append(ClaudeSession(
+                id: tw.windowName,
+                pid: claudePid ?? tw.panePid,
+                tty: tw.paneTty,
+                projectName: activeInfo?.project ?? tw.windowName,
+                startTime: activeInfo?.started ?? "",
+                directory: activeInfo?.dir ?? tw.rootDir,
+                windowName: tw.windowName,
+                windowIndex: tw.windowIndex,
+                isRunning: isRunning
+            ))
         }
 
-        sessions = result
+        for info in activeSessions where !matchedProjects.contains(info.project) {
+            guard let pid = Int(info.pid) else { continue }
+            let alive = await isProcessAlive(pid: pid)
+            if alive {
+                result.append(ClaudeSession(
+                    id: "json-\(info.project)",
+                    pid: pid,
+                    tty: info.tty,
+                    projectName: info.project,
+                    startTime: info.started,
+                    directory: info.dir,
+                    windowName: info.project,
+                    windowIndex: -1,
+                    isRunning: true
+                ))
+            }
+        }
+
+        sessions = result.sorted { $0.windowIndex < $1.windowIndex }
     }
 
-    // tmux list-panes로 pane_pid → window_name 맵 구성
-    private func buildTmuxWindowMap() async -> [Int: String] {
+    // MARK: - Restore
+
+    func restoreSelected() async {
+        let toRestore = sessions.filter { selectedForRestore.contains($0.id) && !$0.isRunning }
+        for (i, session) in toRestore.enumerated() {
+            let delay = i * 5
+            let windowName = session.windowName
+            let dir = session.directory.isEmpty
+                ? "~/claude/\(windowName)"
+                : session.directory
+
+            let cmd = """
+            tmux send-keys -t claude-work:\(windowName) \
+            "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting \(windowName) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue" Enter \
+            2>/dev/null || \
+            tmux new-window -t claude-work -n '\(windowName)' -c '\(dir)' \\; \
+            send-keys "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting \(windowName) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue" Enter
+            """
+            await ShellService.runAsync(cmd)
+        }
+        selectedForRestore.removeAll()
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        await refresh()
+    }
+
+    func toggleSelection(_ id: String) {
+        if selectedForRestore.contains(id) {
+            selectedForRestore.remove(id)
+        } else {
+            selectedForRestore.insert(id)
+        }
+    }
+
+    func selectAllStopped() {
+        for session in sessions where !session.isRunning {
+            selectedForRestore.insert(session.id)
+        }
+    }
+
+    func deselectAll() {
+        selectedForRestore.removeAll()
+    }
+
+    // MARK: - Data Loading
+
+    private struct TmuxWindow {
+        let windowIndex: Int
+        let windowName: String
+        let panePid: Int
+        let paneTty: String
+        let rootDir: String
+    }
+
+    private struct ActiveSessionInfo {
+        let project: String
+        let dir: String
+        let pid: String
+        let tty: String
+        let started: String
+    }
+
+    private func loadTmuxWindows() async -> [TmuxWindow] {
         let output = await ShellService.runAsync(
-            "tmux list-panes -t claude-work -a -F '#{pane_pid} #{window_name}' 2>/dev/null"
+            "tmux list-windows -t claude-work -F '#{window_index}|#{window_name}|#{pane_pid}|#{pane_tty}|#{pane_current_path}' 2>/dev/null"
         )
-        var map: [Int: String] = [:]
+        guard !output.isEmpty else { return [] }
+        var result: [TmuxWindow] = []
         for line in output.components(separatedBy: "\n") {
-            let parts = line.split(separator: " ", omittingEmptySubsequences: true)
-            guard parts.count >= 2, let panePid = Int(parts[0]) else { continue }
-            map[panePid] = String(parts[1])
+            let parts = line.components(separatedBy: "|")
+            guard parts.count >= 4 else { continue }
+            guard let idx = Int(parts[0]), let pid = Int(parts[2]) else { continue }
+            result.append(TmuxWindow(
+                windowIndex: idx,
+                windowName: parts[1],
+                panePid: pid,
+                paneTty: parts[3],
+                rootDir: parts.count >= 5 ? parts[4] : ""
+            ))
         }
-        return map
+        return result
     }
 
-    private func resolveProjectName(tty: String, pid: Int, tmuxWindowMap: [Int: String]) -> String {
-        if tty == "??" {
-            if let windowName = tmuxWindowMap[pid] { return windowName }
-            return "tmux-session"
+    private func loadActiveSessions() async -> [ActiveSessionInfo] {
+        guard let data = FileManager.default.contents(atPath: activeSessionsPath),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sessions = json["sessions"] as? [[String: Any]] else {
+            return []
         }
-        var ttyClean = tty.replacingOccurrences(of: "/dev/", with: "").replacingOccurrences(of: "/", with: "-")
-        if ttyClean.hasPrefix("s") && !ttyClean.hasPrefix("tty") {
-            ttyClean = "tty" + ttyClean
+        return sessions.compactMap { s in
+            guard let project = s["project"] as? String else { return nil }
+            return ActiveSessionInfo(
+                project: project,
+                dir: (s["dir"] as? String) ?? "",
+                pid: (s["pid"] as? String) ?? "",
+                tty: (s["tty"] as? String) ?? "??",
+                started: (s["started"] as? String) ?? ""
+            )
         }
-        let stateFile = tabStatesDir + "/" + ttyClean
-        if let content = try? String(contentsOfFile: stateFile, encoding: .utf8) {
-            let parts = content.components(separatedBy: "|")
-            if parts.count >= 2 { return parts[1] }
-        }
-        return ttyClean
+    }
+
+    private func findClaudePid(panePid: Int) async -> Int? {
+        let output = await ShellService.runAsync(
+            "pgrep -P \(panePid) -f claude 2>/dev/null || ps -o pid= -o comm= -p $(pgrep -P \(panePid) 2>/dev/null | tr '\\n' ',')0 2>/dev/null | grep claude | awk '{print $1}'"
+        )
+        let firstLine = output.components(separatedBy: "\n").first ?? ""
+        return Int(firstLine.trimmingCharacters(in: .whitespaces))
+    }
+
+    private func isProcessAlive(pid: Int) async -> Bool {
+        let result = await ShellService.runAsync("kill -0 \(pid) 2>/dev/null && echo alive")
+        return result == "alive"
     }
 }

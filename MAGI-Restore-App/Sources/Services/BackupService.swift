@@ -26,11 +26,12 @@ final class BackupService: ObservableObject {
     func runBackup() async {
         guard !isRunning else { return }
         isRunning = true
+        defer { isRunning = false }
 
         let expandedPath = config.path.replacingOccurrences(of: "~", with: NSHomeDirectory())
         let sourceDir = NSHomeDirectory() + "/.claude"
         let result = await ShellService.runAsync(
-            "rsync -av --exclude='logs/' --exclude='*.tmp' '\(sourceDir)/' '\(expandedPath)/' && echo '__RSYNC_OK__'"
+            "mkdir -p '\(expandedPath)' && rsync -av --exclude='logs/' --exclude='*.tmp' --exclude='backups/' '\(sourceDir)/' '\(expandedPath)/' && echo '__RSYNC_OK__'"
         )
 
         var updated = config
@@ -40,6 +41,5 @@ final class BackupService: ObservableObject {
             updated.lastBackup = formatter.string(from: Date())
         }
         save(updated)
-        isRunning = false
     }
 }
