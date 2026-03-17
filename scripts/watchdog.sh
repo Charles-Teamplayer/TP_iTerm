@@ -105,9 +105,67 @@ while true; do
                 fi
             done
 
-            # 크래시된 세션 재시작은 auto-restore.sh가 담당
-            # watchdog은 감지 + 알림만
+            # 크래시된 세션 자동 재시작 (P0 수정: watchdog이 직접 복구)
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] $CRASHED" >> "$RESTART_LOG"
+
+            echo "$CRASHED" | while IFS= read -r line; do
+                RESTART_PROJECT=$(echo "$line" | sed -n 's/.*CRASH DETECTED: \([^ ]*\).*/\1/p')
+                [ -z "$RESTART_PROJECT" ] && continue
+
+                # cooldown 체크 (같은 프로젝트 60초 내 재시작 방지)
+                LAST_RESTART=$(grep "$RESTART_PROJECT" "$RESTART_LOG" 2>/dev/null | tail -2 | head -1 | sed 's/\[//' | sed 's/\].*//')
+                if [ -n "$LAST_RESTART" ]; then
+                    LAST_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$LAST_RESTART" +%s 2>/dev/null || echo 0)
+                    NOW_EPOCH=$(date +%s)
+                    if [ $((NOW_EPOCH - LAST_EPOCH)) -lt $RESTART_COOLDOWN ]; then
+                        log "SKIP restart $RESTART_PROJECT (cooldown ${RESTART_COOLDOWN}s)"
+                        continue
+                    fi
+                fi
+
+                # 프로젝트명 → tmux 윈도우명 + 경로 매핑
+                WINDOW_NAME=""
+                PROJ_PATH=""
+                case "$RESTART_PROJECT" in
+                    TP_newIMSMS)           WINDOW_NAME="imsms";           PROJ_PATH="$HOME/claude/TP_newIMSMS" ;;
+                    TP_newIMSMS_Agent)     WINDOW_NAME="imsms-agent";     PROJ_PATH="$HOME/claude/TP_newIMSMS_Agent" ;;
+                    TP_MDM)               WINDOW_NAME="mdm";             PROJ_PATH="$HOME/claude/TP_MDM" ;;
+                    TP_TESLA_LVDS)        WINDOW_NAME="tesla-lvds";      PROJ_PATH="$HOME/claude/TP_TESLA_LVDS" ;;
+                    TESLA_Status_Dashboard) WINDOW_NAME="tesla-dashboard"; PROJ_PATH="$HOME/ralph-claude-code/TESLA_Status_Dashboard" ;;
+                    TP_MindMap_AutoCC)    WINDOW_NAME="mindmap";         PROJ_PATH="$HOME/claude/TP_MindMap_AutoCC" ;;
+                    SJ_MindMap)           WINDOW_NAME="sj-mindmap";      PROJ_PATH="$HOME/SJ_MindMap" ;;
+                    TP_A.iMessage_standalone_01067051080) WINDOW_NAME="imessage"; PROJ_PATH="$HOME/claude/TP_A.iMessage_standalone_01067051080" ;;
+                    TP_BTT)               WINDOW_NAME="btt";             PROJ_PATH="$HOME/claude/TP_BTT" ;;
+                    TP_Infra_reduce_Project) WINDOW_NAME="infra";        PROJ_PATH="$HOME/claude/TP_Infra_reduce_Project" ;;
+                    TP_skills)            WINDOW_NAME="skills";          PROJ_PATH="$HOME/claude/TP_skills" ;;
+                    AppleTV_ScreenSaver.app) WINDOW_NAME="appletv";     PROJ_PATH="$HOME/claude/AppleTV_ScreenSaver.app" ;;
+                    imsms.im-website)     WINDOW_NAME="imsms-web";       PROJ_PATH="$HOME/claude/imsms.im-website" ;;
+                    autoRestart_ClaudeCode) WINDOW_NAME="auto-restart";  PROJ_PATH="$HOME/claude/autoRestart_ClaudeCode" ;;
+                esac
+
+                if [ -z "$WINDOW_NAME" ] || [ ! -d "$PROJ_PATH" ]; then
+                    log "SKIP restart: unknown project or missing path: $RESTART_PROJECT"
+                    continue
+                fi
+
+                # tmux claude-work 세션이 있는지 확인
+                if ! tmux has-session -t claude-work 2>/dev/null; then
+                    log "SKIP restart: claude-work tmux session not found"
+                    continue
+                fi
+
+                # 해당 윈도우가 이미 있으면 kill 후 재생성, 없으면 새로 생성
+                if tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null | grep -qx "$WINDOW_NAME"; then
+                    tmux kill-window -t "claude-work:$WINDOW_NAME" 2>/dev/null
+                    sleep 1
+                fi
+
+                tmux new-window -t claude-work -n "$WINDOW_NAME" -c "$PROJ_PATH" 2>/dev/null
+                tmux send-keys -t "claude-work:$WINDOW_NAME" "bash ~/.claude/scripts/tab-status.sh starting $WINDOW_NAME && unset CLAUDECODE && claude --dangerously-skip-permissions --continue" Enter
+
+                log "AUTO-RESTART: $RESTART_PROJECT → tmux window $WINDOW_NAME"
+                notify "세션 자동 복구: $RESTART_PROJECT"
+            done
         fi
     fi
 

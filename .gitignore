@@ -28,3 +28,4 @@ build/
 # Logs
 *.log
 logs/
+MAGI-Restore-App/.build/

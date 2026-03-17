@@ -200,7 +200,7 @@ for proj in "${PROJECTS[@]}"; do
     fi
 
     tmux new-window -t claude-work -n "$NAME" -c "$PROJ_PATH" 2>/dev/null
-    tmux send-keys -t "claude-work:$NAME" "sleep $DELAY && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)" Enter
+    tmux send-keys -t "claude-work:$NAME" "sleep $DELAY && bash ~/.claude/scripts/tab-status.sh starting $NAME && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)" Enter
     CREATED=$((CREATED + 1))
     log "tmux 윈도우 생성: $NAME (delay ${DELAY}s)"
 done
@@ -243,6 +243,20 @@ fi
 sleep 10
 SESSION_COUNT=$(tmux list-windows -t claude-work 2>/dev/null | wc -l | tr -d ' ')
 log "tmux 윈도우 ${SESSION_COUNT}개 활성"
+
+# Health check: 최대 delay(65초) + 여유 30초 후 claude 프로세스 확인
+(
+    sleep 100
+    CLAUDE_COUNT=$(ps aux | grep '[c]laude' | grep -v 'Claude.app\|Helper\|ShipIt\|watchdog\|auto-restore\|tab-focus' | grep -v '??' | wc -l | tr -d ' ')
+    EXPECTED=$CREATED
+    if [ "$CLAUDE_COUNT" -lt "$EXPECTED" ]; then
+        MISSING=$((EXPECTED - CLAUDE_COUNT))
+        log "HEALTH CHECK WARNING: ${CLAUDE_COUNT}/${EXPECTED} claude 프로세스 실행 중 (${MISSING}개 미시작)"
+        osascript -e "display notification \"${MISSING}개 세션 시작 실패 확인 필요\" with title \"MAGI+NORN Health Check\" sound name \"Basso\"" 2>/dev/null || true
+    else
+        log "HEALTH CHECK OK: ${CLAUDE_COUNT}/${EXPECTED} claude 프로세스 정상"
+    fi
+) &
 
 # 복원 완료 후 intentional-stops.json 초기화 (다음 부팅은 fresh)
 if [ -f "$STOPS_FILE" ]; then
