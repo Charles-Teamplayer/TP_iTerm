@@ -212,20 +212,30 @@ sleep 3
 log "iTerm2에서 tmux -CC attach 실행 (AppleScript)"
 
 osascript << 'ASEOF'
+-- tmux -CC attach은 blocking 명령 → write text가 timeout(-1712) 됨
+-- with timeout + try로 send 후 즉시 반환
 tell application "iTerm2"
     activate
     if (count windows) > 0 then
         tell current window
             set newTab to (create tab with default profile)
-            tell current session of newTab
-                write text "tmux -CC attach -t claude-work"
-            end tell
+            try
+                with timeout of 2 seconds
+                    tell current session of newTab
+                        write text "tmux -CC attach -t claude-work"
+                    end tell
+                end timeout
+            end try
         end tell
     else
         set newWin to (create window with default profile)
-        tell current session of newWin
-            write text "tmux -CC attach -t claude-work"
-        end tell
+        try
+            with timeout of 2 seconds
+                tell current session of newWin
+                    write text "tmux -CC attach -t claude-work"
+                end tell
+            end timeout
+        end try
     end if
 end tell
 ASEOF

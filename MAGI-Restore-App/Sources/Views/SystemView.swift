@@ -103,7 +103,7 @@ final class SystemViewModel: ObservableObject {
             guard dirExists.contains("YES") else { continue }
 
             await ShellService.runAsync("tmux new-window -t claude-work -n '\(proj.name)' -c '\(expandedPath)'")
-            await ShellService.runAsync("tmux send-keys -t 'claude-work:\(proj.name)' 'unset CLAUDECODE && claude --dangerously-skip-permissions --continue' Enter")
+            await ShellService.runAsync("tmux send-keys -t 'claude-work:\(proj.name)' 'unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)' Enter")
             restored += 1
         }
 
@@ -131,20 +131,30 @@ final class SystemViewModel: ObservableObject {
     }
 
     private func runAppleScriptInITerm(command: String) async -> Bool {
+        // tmux -CC attach은 blocking 명령 — write text가 완료 대기 중 timeout(-1712) 발생
+        // 해결: with timeout of 2 seconds + try로 send 후 즉시 반환
         let source = """
         tell application "iTerm2"
           activate
           if (count of windows) = 0 then
-            create window with default profile
-            tell current session of current tab of current window
-              write text "\(command)"
-            end tell
+            set w to (create window with default profile)
+            try
+              with timeout of 2 seconds
+                tell current session of current tab of w
+                  write text "\(command)"
+                end tell
+              end timeout
+            end try
           else
             tell current window
-              create tab with default profile
-              tell current session of current tab
-                write text "\(command)"
-              end tell
+              set newTab to (create tab with default profile)
+              try
+                with timeout of 2 seconds
+                  tell current session of newTab
+                    write text "\(command)"
+                  end tell
+                end timeout
+              end try
             end tell
           end if
         end tell
@@ -152,7 +162,12 @@ final class SystemViewModel: ObservableObject {
         let script = NSAppleScript(source: source)
         var errorInfo: NSDictionary?
         script?.executeAndReturnError(&errorInfo)
-        return errorInfo == nil
+        // -1712(timeout)은 정상 — 명령이 전송됐으나 tmux가 응답 안 보낸 것
+        if let err = errorInfo {
+            let code = (err["NSAppleScriptErrorNumber"] as? Int) ?? 0
+            return code == -1712 || code == 0  // timeout도 성공으로 처리
+        }
+        return true
     }
 
     func runInstall() async {
