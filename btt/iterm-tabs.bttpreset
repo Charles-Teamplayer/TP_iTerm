@@ -1,0 +1,648 @@
+[
+  {
+    "BTTTriggerType": 643,
+    "BTTTriggerName": "iTerm2",
+    "BTTAppBundleIdentifier": "com.googlecode.iterm2",
+    "BTTEnabled": 1,
+    "BTTEnabled2": 1,
+    "BTTOrder": 0,
+    "BTTUUID": "38DDD73C-7188-4DE5-B563-D7DE7E425009",
+    "BTTAdditionalConfiguration": "13",
+    "BTTSubTriggers": [
+      {
+        "BTTTriggerType": 639,
+        "BTTTriggerName": "iTerm Tabs",
+        "BTTEnabled": 1,
+        "BTTEnabled2": 1,
+        "BTTOrder": 0,
+        "BTTUUID": "5E8A313E-5ABB-44FE-A3CC-AA85E4E0B5B9",
+        "BTTTriggerConfig": {
+          "BTTTouchBarButtonColor": "0.000000, 0.000000, 0.000000, 0.000000",
+          "BTTTouchBarButtonIsInGroup": 0
+        },
+        "BTTSubTriggers": [
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 1",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 0,
+            "BTTUUID": "CA5B51D1-0869-4031-AFAE-6E48060C02B6",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "1",
+              "BTTTouchBarButtonColor": "30.000000, 80.000000, 30.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 1",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 1",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "B6CBA887-4212-4CE5-936B-27654B1EBEE5"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 2",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 1,
+            "BTTUUID": "CAD9C294-D573-4BC8-BFAD-8DA3B286FE43",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "2",
+              "BTTTouchBarButtonColor": "30.000000, 80.000000, 30.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 2",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 2",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "AF00D102-2951-4343-BCFA-258A46BFE035"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 3",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 2,
+            "BTTUUID": "F8440186-08B3-418E-9540-E726DFA4EA53",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "3",
+              "BTTTouchBarButtonColor": "30.000000, 80.000000, 30.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 3",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 3",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "2462DA57-3E36-4926-BE6F-F5447E50FA90"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 4",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 3,
+            "BTTUUID": "37C5AEC1-241A-4E88-9A54-D97F2477FCDE",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "4",
+              "BTTTouchBarButtonColor": "30.000000, 80.000000, 30.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 4",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 4",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "8EE30A23-6C54-4F14-BE36-946E42500C28"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 5",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 4,
+            "BTTUUID": "9C1EB9F2-C1AD-4134-8750-0016DE9FAE17",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "5",
+              "BTTTouchBarButtonColor": "30.000000, 80.000000, 30.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 5",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 5",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "69130F08-EE2B-4043-82DC-300F2357EF3B"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 6",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 5,
+            "BTTUUID": "522DD8B8-C2E3-4E0B-934C-A36527484C74",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "6",
+              "BTTTouchBarButtonColor": "30.000000, 80.000000, 30.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 6",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 6",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "F708B25E-54AC-4D01-BA36-E40F9819CDE9"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 7",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 6,
+            "BTTUUID": "BBC921BB-C9FD-4571-B119-EFF99C174D66",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "7",
+              "BTTTouchBarButtonColor": "30.000000, 80.000000, 30.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 7",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 7",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "6BE98F1B-EFEA-4FFB-AA57-F1E3C68334B2"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 8",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 7,
+            "BTTUUID": "7F89B79F-1203-4E5D-8037-699DD8FD87EC",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "8",
+              "BTTTouchBarButtonColor": "30.000000, 80.000000, 30.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 8",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 8",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "FA730269-2902-46C8-A1FE-695FA1F20910"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 9",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 8,
+            "BTTUUID": "1E7AFA44-C22D-404F-A664-C5C81EED00C9",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "9",
+              "BTTTouchBarButtonColor": "30.000000, 80.000000, 30.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 9",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 9",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "A0B1C1A2-F2A2-4BE6-87B8-5F6CC4B42D18"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 10",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 9,
+            "BTTUUID": "B9E8F871-85B2-4ECE-A5C3-1F875CEDBB8F",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "10",
+              "BTTTouchBarButtonColor": "80.000000, 40.000000, 0.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 10",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 10",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "43AA0EB6-9EB4-43B1-915E-25D71C96675F"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 11",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 10,
+            "BTTUUID": "3E9EDF50-6A4A-4318-8219-E8161C0E9A7A",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "11",
+              "BTTTouchBarButtonColor": "80.000000, 40.000000, 0.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 11",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 11",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "5609EB16-DF81-4E36-87E7-3C5DCC522D29"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 12",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 11,
+            "BTTUUID": "CDB0B245-E795-47FF-A2B9-F956BD233251",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "12",
+              "BTTTouchBarButtonColor": "80.000000, 40.000000, 0.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 12",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 12",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "586963C9-0A07-4AE8-967F-9AFC5809A705"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 13",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 12,
+            "BTTUUID": "702A36FE-7206-4CDC-92BD-81CAAABCE8AC",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "13",
+              "BTTTouchBarButtonColor": "80.000000, 40.000000, 0.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 13",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 13",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "2310B7E0-239E-4FCF-8CBC-738DE8E7325C"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 14",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 13,
+            "BTTUUID": "16A32EAF-4DCC-4900-AD3C-90B75CBBE8CC",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "14",
+              "BTTTouchBarButtonColor": "80.000000, 40.000000, 0.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 14",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 14",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "48A8875A-C942-4865-99AC-786A45841CB4"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 15",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 14,
+            "BTTUUID": "D248EEFF-7584-4257-9700-60B61A509A7A",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "15",
+              "BTTTouchBarButtonColor": "80.000000, 40.000000, 0.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 15",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 15",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "C4C648D9-2A76-49B5-A8A9-298BB2432BEC"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 16",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 15,
+            "BTTUUID": "0182BD19-FBF8-4B05-9AF5-BC25A3C68D98",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "16",
+              "BTTTouchBarButtonColor": "80.000000, 40.000000, 0.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 16",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 16",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "8EF253F5-0B53-4E49-BE7B-7370B5281C61"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 17",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 16,
+            "BTTUUID": "09FB99DE-7497-4AE3-ADFA-48FBC4BD3870",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "17",
+              "BTTTouchBarButtonColor": "80.000000, 40.000000, 0.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 17",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 17",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "A3EF5157-75FB-44A2-8FC9-9D527FA3016C"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 18",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 17,
+            "BTTUUID": "B590C948-5A03-4240-B158-2384DF08BACE",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "18",
+              "BTTTouchBarButtonColor": "80.000000, 40.000000, 0.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 18",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 18",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "D263E930-241E-450A-AE28-9AD9AFCB5A67"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 19",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 18,
+            "BTTUUID": "BEC086BB-3840-493F-8343-F8CD48D1D442",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "19",
+              "BTTTouchBarButtonColor": "80.000000, 40.000000, 0.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 19",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 19",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "5AEBA4D5-93B9-459D-B6B3-4932CB0635EF"
+              }
+            ]
+          },
+          {
+            "BTTTriggerType": 630,
+            "BTTTriggerName": "iTerm Tab 20",
+            "BTTEnabled": 1,
+            "BTTEnabled2": 1,
+            "BTTOrder": 19,
+            "BTTUUID": "02CBAD1B-5BE6-4FA0-834C-C03BF6447C69",
+            "BTTTriggerConfig": {
+              "BTTTouchBarButtonName": "20",
+              "BTTTouchBarButtonColor": "80.000000, 40.000000, 0.000000, 255.000000",
+              "BTTTouchBarButtonTextColor": "255.000000, 255.000000, 255.000000, 255.000000",
+              "BTTTouchBarButtonFontSize": 13,
+              "BTTTouchBarItemIconType": 2,
+              "BTTTouchBarScriptType": 2,
+              "BTTTouchBarScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-name.sh\" 20",
+              "BTTTouchBarButtonRefreshInterval": 2,
+              "BTTTouchBarAlwaysShowButton": 0,
+              "BTTTouchBarButtonWidth": 72,
+              "BTTTouchBarButtonIsInGroup": 1
+            },
+            "BTTActions": [
+              {
+                "BTTGestureActionType": 167,
+                "BTTShellTaskActionScript": "bash \"/Users/teample.casper/claude/TP_iTerm/btt/tab-goto.sh\" 20",
+                "BTTEnabled": 1,
+                "BTTEnabled2": 1,
+                "BTTOrder": 0,
+                "BTTUUID": "98874C5F-121D-4F67-A38E-707610683536"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
