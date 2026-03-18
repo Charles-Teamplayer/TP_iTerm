@@ -10,8 +10,10 @@
 #   stale    = 어두움  3일+ 입력 없음
 #   starting = 하늘   세션 시작/복원 중
 #   crashed  = 빨강   세션 끊김 (깜빡임)
+#   attention = 보라  권한 요청 대기 (배지 ⚠️)
 
 STATUS="${1:-active}"
+CONFIG_FILE="$HOME/.claude/config/iterm-config.json"
 
 # dir → 짧은 탭 이름 매핑
 _get_short_name() {
@@ -36,6 +38,24 @@ _get_short_name() {
 }
 
 PROJECT="${2:-$(_get_short_name)}"
+
+# config에서 badge 텍스트 읽기
+_get_config() {
+    local key="$1" default="$2"
+    if [ -f "$CONFIG_FILE" ]; then
+        local val
+        val=$(python3 -c "import json,sys; d=json.load(open('$CONFIG_FILE')); print(d.get('$key',''))" 2>/dev/null)
+        [ -n "$val" ] && echo "$val" || echo "$default"
+    else
+        echo "$default"
+    fi
+}
+
+_badge_enabled() {
+    if [ -f "$CONFIG_FILE" ]; then
+        python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('badge_enabled',True))" 2>/dev/null | grep -qi "true"
+    fi
+}
 
 # 로그 (최대 10000줄 유지)
 LOG="$HOME/.claude/logs/tab-status-debug.log"
@@ -71,8 +91,17 @@ atomic_write() {
     echo "$content" > "$tmp" 2>/dev/null && mv "$tmp" "$file" 2>/dev/null
 }
 
+set_badge() {
+    local TTY_PATH="$1" BADGE_TEXT="$2"
+    if _badge_enabled && [ -n "$TTY_PATH" ] && [ -c "$TTY_PATH" ]; then
+        local ENCODED
+        ENCODED=$(printf '%s' "$BADGE_TEXT" | base64)
+        printf '\e]1337;SetBadgeFormat=%s\a' "$ENCODED" > "$TTY_PATH" 2>/dev/null
+    fi
+}
+
 set_tab() {
-    local TITLE="$1" R="$2" G="$3" B="$4"
+    local TITLE="$1" R="$2" G="$3" B="$4" BADGE="${5:-}"
     local TTY_PATH=$(find_tty)
 
     if [ -n "$TTY_PATH" ] && [ -c "$TTY_PATH" ]; then
@@ -81,6 +110,7 @@ set_tab() {
             printf '\e]6;1;bg;red;brightness;%s\a\e]6;1;bg;green;brightness;%s\a\e]6;1;bg;blue;brightness;%s\a' \
                 "$R" "$G" "$B" > "$TTY_PATH" 2>/dev/null
         fi
+        set_badge "$TTY_PATH" "$BADGE"
         local TTY_NAME=$(basename "$TTY_PATH")
         atomic_write "$HOME/.claude/tab-states/${TTY_NAME}" "${STATUS}|${PROJECT}|$(date +%s)"
     else
@@ -89,17 +119,22 @@ set_tab() {
 }
 
 case "$STATUS" in
-    active)   set_tab "${PROJECT}" 0 220 0 ;;
-    working)  set_tab "${PROJECT}" 255 230 0 ;;
-    waiting)  set_tab "${PROJECT}" 0 120 255 ;;
-    idle)     set_tab "${PROJECT}" 255 140 0 ;;
-    stale)    set_tab "${PROJECT}" 80 80 80 ;;
-    starting) set_tab "${PROJECT}" 0 160 255 ;;
+    active)   set_tab "${PROJECT}" 0 220 0 "" ;;
+    working)  set_tab "${PROJECT}" 255 230 0 "" ;;
+    waiting)  set_tab "${PROJECT}" 0 120 255 "" ;;
+    idle)     set_tab "${PROJECT}" 255 140 0 "" ;;
+    stale)    set_tab "${PROJECT}" 80 80 80 "$(_get_config badge_stale '💤')" ;;
+    starting) set_tab "${PROJECT}" 0 160 255 "" ;;
+    attention)
+        BADGE_TEXT=$(_get_config badge_attention '⚠️')
+        set_tab "${PROJECT}" 180 0 255 "$BADGE_TEXT"
+        ;;
     crashed)
         TTY_PATH=$(find_tty)
         if [ -n "$TTY_PATH" ] && [ -c "$TTY_PATH" ]; then
             TTY_NAME=$(basename "$TTY_PATH")
             atomic_write "$HOME/.claude/tab-states/${TTY_NAME}" "crashed|${PROJECT}|$(date +%s)"
+            set_badge "$TTY_PATH" "$(_get_config badge_crashed '🔴')"
             for i in $(seq 1 10); do
                 if ps -o tty,command -ax | grep "$(basename "$TTY_PATH")" | grep -q "[c]laude" 2>/dev/null; then
                     printf '\e]1;%s\a' "$PROJECT" > "$TTY_PATH" 2>/dev/null
