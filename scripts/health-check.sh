@@ -60,7 +60,7 @@ fi
 
 # 4. iTerm2 상태
 echo -e "\n${BOLD}[4] iTerm2 상태${NC}"
-if pgrep -x "iTerm2" > /dev/null; then
+if ps -A 2>/dev/null | grep -q "iTerm.app/Contents/MacOS/iTerm2" || pgrep -x "iTerm2" > /dev/null 2>&1; then
     ok "iTerm2 실행 중"
 else
     fail "iTerm2 미실행"
