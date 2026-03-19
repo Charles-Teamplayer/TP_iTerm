@@ -98,7 +98,7 @@ Mac 부팅
 | PostToolUse(Write\|Edit) | TP_history 기록, Notion 주기 로그 |
 | PostToolUse(Read) | skill-usage-tracker |
 | PostToolUse(Bash) | tab-status working |
-| Stop | tab-status waiting, registry intentional-stop, Notion |
+| Stop | tab-status waiting, Notion |
 
 > Agent 분할은 네이티브 tmux teammate mode로 처리됨 (agent-split.sh/agent-split-close.sh/agent-log.sh 삭제).
 
@@ -134,11 +134,14 @@ open MAGI-Restore.app
 - 로그 로테이션: 전체 구현 완료
 - atomic_write: 전체 적용 완료
 
-## Ralph Loop 안정화 (2026-03-20)
+## Ralph Loop 안정화 (2026-03-20, 20회차 완료)
 
 - health-check.sh: `ps -A` 방식으로 프로세스 감지 수정 (기존 pgrep 오탐 해결)
 - tab-status.sh: 배지 클리어 연동, watchdog.sh와 동기화 완료
-- watchdog.sh: 배지 설정 로직 추가, iterm-config.json 연동
+- watchdog.sh: 배지 설정 로직 추가, iterm-config.json 연동, monitor 창 자동 복구 (iter 16)
 - tab_focus_status.py: iTerm2 Python API 네이티브 포커스 감지 (tmux -CC 안전)
 - iterm-config.json: 배지/프로젝트명 매핑 중앙 설정
 - install.sh: 4단계 추가 (tab_focus_status.py, iterm-config.json 설치)
+- Stop hook: intentional-stop 자동 등록 제거 — 명시적 CLI 전용으로 변경 (iter 19)
+- session-registry.sh: 알 수 없는 dir → intentional-stop 등록 건너뜀 (iter 18)
+- auto-attach.sh: LaunchAgent 추가, 재부팅 후 iTerm2 tmux -CC 자동 연결 (iter 10-12)
