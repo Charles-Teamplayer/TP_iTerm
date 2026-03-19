@@ -217,8 +217,8 @@ while true; do
         log "ZOMBIE DETECTED: $ZOMBIES"
     fi
 
-    # 4. iTerm2 생존 확인
-    if ! pgrep -x "iTerm2" > /dev/null; then
+    # 4. iTerm2 생존 확인 (ps -A 사용 — tmux sandbox에서 pgrep -x 오탐 방지)
+    if ! ps -A 2>/dev/null | grep -q "iTerm.app/Contents/MacOS/iTerm2"; then
         log "WARNING: iTerm2 not running"
     fi
 
