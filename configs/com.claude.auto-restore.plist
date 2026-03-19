@@ -11,8 +11,6 @@
     </array>
     <key>RunAtLoad</key>
     <true/>
-    <key>LimitLoadToSessionType</key>
-    <string>Aqua</string>
     <key>StandardOutPath</key>
     <string>/Users/teample.casper/.claude/logs/auto-restore.stdout.log</string>
     <key>StandardErrorPath</key>
