@@ -1,7 +1,7 @@
 #!/bin/bash
 # Claude Code Auto-Restore Script
 # MAGI+NORN 자동 복원 시스템 - LaunchAgent에서 호출
-# tmux + iTerm2 tmux integration (per-window, intentional-stop 제외)
+# 헤드리스 모드: tmux 세션만 생성 (iTerm2 의존성 제거)
 
 LOG_FILE="$HOME/.claude/logs/auto-restore.log"
 STOPS_FILE="$HOME/.claude/intentional-stops.json"
@@ -32,101 +32,6 @@ if [ -f "$HOME/.zshrc" ]; then
     source "$HOME/.zshrc" 2>/dev/null || true
 fi
 unset CLAUDECODE
-
-# === iTerm2 실행 전: tmux 프로필 배경색을 TPTP(검정)로 패치 ===
-ITERM_PLIST="$HOME/Library/Preferences/com.googlecode.iterm2.plist"
-if [ -f "$ITERM_PLIST" ]; then
-    python3 << 'PYEOF'
-import subprocess, sys, os
-
-plist = os.path.expanduser("~/Library/Preferences/com.googlecode.iterm2.plist")
-
-# plist를 XML로 변환
-result = subprocess.run(["plutil", "-convert", "xml1", "-o", "-", plist],
-    capture_output=True, text=True)
-if result.returncode != 0:
-    print("[RESTORE] plist 읽기 실패", file=sys.stderr)
-    sys.exit(0)
-
-xml = result.stdout
-
-# "tmux" 프로필의 Background Color를 검정(0,0,0)으로 패치
-# Background Color dict: Red/Green/Blue = 0, Alpha = 1, Color Space = P3
-import re
-
-# tmux 프로필 블록 찾기 (key/string 구조)
-tmux_idx = xml.find('<string>tmux</string>')
-if tmux_idx == -1:
-    print("[RESTORE] tmux 프로필 없음", file=sys.stderr)
-    sys.exit(0)
-
-# tmux 프로필 시작 dict 찾기
-dict_start = xml.rfind('<dict>', 0, tmux_idx)
-
-# Background Color 키/dict 블록 찾기 (tmux_idx 이후)
-bg_key_pat = re.compile(r'<key>Background Color</key>\s*<dict>(.*?)</dict>', re.DOTALL)
-# tmux 프로필 블록만 대상으로
-profile_block = xml[dict_start:]
-match = bg_key_pat.search(profile_block)
-if not match:
-    print("[RESTORE] tmux Background Color 없음", file=sys.stderr)
-    sys.exit(0)
-
-# 기존 Background Color dict 내용을 검정으로 교체
-dark_dict = """<dict>
-			<key>Alpha Component</key>
-			<real>1</real>
-			<key>Blue Component</key>
-			<real>0.0</real>
-			<key>Color Space</key>
-			<string>P3</string>
-			<key>Green Component</key>
-			<real>0.0</real>
-			<key>Red Component</key>
-			<real>0.0</real>
-		</dict>"""
-
-new_block = bg_key_pat.sub(
-    f'<key>Background Color</key>\n\t\t{dark_dict}',
-    profile_block, count=1
-)
-new_xml = xml[:dict_start] + new_block
-
-# 임시 파일에 저장 후 binary plist로 변환
-import tempfile
-with tempfile.NamedTemporaryFile(suffix='.plist', delete=False, mode='w') as f:
-    f.write(new_xml)
-    tmp = f.name
-
-ret = subprocess.run(["plutil", "-convert", "binary1", tmp], capture_output=True)
-if ret.returncode == 0:
-    import shutil
-    shutil.move(tmp, plist)
-    print("[RESTORE] tmux 프로필 배경색 → 검정(다크모드) 패치 완료")
-else:
-    os.unlink(tmp)
-    print("[RESTORE] plist 변환 실패", file=sys.stderr)
-PYEOF
-    log "iTerm2 tmux 프로필 다크모드 패치 완료"
-fi
-
-# iTerm2 대기 (최대 60초)
-MAX_WAIT=60
-WAITED=0
-if ! pgrep -x "iTerm2" > /dev/null; then
-    log "iTerm2 시작 대기 중..."
-    open -a iTerm || { log "ERROR: iTerm2 미설치 또는 실행 실패"; exit 1; }
-    while ! pgrep -x "iTerm2" > /dev/null && [ $WAITED -lt $MAX_WAIT ]; do
-        sleep 2
-        WAITED=$((WAITED + 2))
-    done
-    if [ $WAITED -ge $MAX_WAIT ]; then
-        log "ERROR: iTerm2 시작 타임아웃 (${MAX_WAIT}초)"
-        exit 1
-    fi
-    log "iTerm2 시작됨 (${WAITED}초 대기)"
-    sleep 5
-fi
 
 # 이미 claude 프로세스가 다수 실행 중이면 스킵 (--force 옵션으로 우회 가능)
 FORCE_MODE="${1:-}"
@@ -207,50 +112,8 @@ done
 
 log "tmux 생성 완료: ${CREATED}개 생성, ${SKIPPED}개 제외 (intentional-stop)"
 
-# === Step 2: iTerm2에서 tmux -CC attach (AppleScript — 새 탭 자동 실행) ===
+# 세션 수 확인 (헤드리스: iTerm2 attach 없이 tmux만 운영)
 sleep 3
-log "iTerm2에서 tmux -CC attach 실행 (AppleScript)"
-
-osascript << 'ASEOF'
--- tmux -CC attach은 blocking 명령 → write text가 timeout(-1712) 됨
--- with timeout + try로 send 후 즉시 반환
-tell application "iTerm2"
-    activate
-    if (count windows) > 0 then
-        tell current window
-            set newTab to (create tab with default profile)
-            try
-                with timeout of 2 seconds
-                    tell current session of newTab
-                        write text "tmux -CC attach -t claude-work"
-                    end tell
-                end timeout
-            end try
-        end tell
-    else
-        set newWin to (create window with default profile)
-        try
-            with timeout of 2 seconds
-                tell current session of newWin
-                    write text "tmux -CC attach -t claude-work"
-                end tell
-            end timeout
-        end try
-    end if
-end tell
-ASEOF
-OSASCRIPT_RESULT=$?
-
-if [ $OSASCRIPT_RESULT -ne 0 ]; then
-    log "ERROR: AppleScript attach 실패 (exit $OSASCRIPT_RESULT) — fallback: tmux -CC 직접 실행 시도"
-    tmux -CC attach -t claude-work 2>/dev/null || true
-    log "Fallback: tmux -CC attach 직접 실행 완료"
-else
-    log "iTerm2 tmux -CC attach 완료 (AppleScript 자동 실행)"
-fi
-
-# 세션 수 확인
-sleep 10
 SESSION_COUNT=$(tmux list-windows -t claude-work 2>/dev/null | wc -l | tr -d ' ')
 log "tmux 윈도우 ${SESSION_COUNT}개 활성"
 
@@ -262,7 +125,6 @@ log "tmux 윈도우 ${SESSION_COUNT}개 활성"
     if [ "$CLAUDE_COUNT" -lt "$EXPECTED" ]; then
         MISSING=$((EXPECTED - CLAUDE_COUNT))
         log "HEALTH CHECK WARNING: ${CLAUDE_COUNT}/${EXPECTED} claude 프로세스 실행 중 (${MISSING}개 미시작)"
-        osascript -e "display notification \"${MISSING}개 세션 시작 실패 확인 필요\" with title \"MAGI+NORN Health Check\" sound name \"Basso\"" 2>/dev/null || true
     else
         log "HEALTH CHECK OK: ${CLAUDE_COUNT}/${EXPECTED} claude 프로세스 정상"
     fi
@@ -279,7 +141,7 @@ NOTIFY_MSG="Claude Code ${CREATED}개 세션 복원 완료"
 if [ "$SKIPPED" -gt 0 ]; then
     NOTIFY_MSG="${NOTIFY_MSG} (${SKIPPED}개 의도적 종료 제외)"
 fi
-osascript -e "display notification \"${NOTIFY_MSG}\" with title \"MAGI+NORN\" sound name \"Glass\"" 2>/dev/null || true
+log "NOTIFY: ${NOTIFY_MSG}"
 
 # Notion에 복원 기록
 if [ -n "$NOTION_API_KEY" ] && [ -f "$HOME/claude/TP_skills/session-manager/notion-advanced.py" ]; then

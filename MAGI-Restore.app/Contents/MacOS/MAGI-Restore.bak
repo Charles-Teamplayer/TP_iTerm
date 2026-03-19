@@ -1,0 +1,304 @@
+#!/bin/bash
+# MAGI-Restore — Claude Code AutoRestart 설치 및 관리 앱
+# 더블클릭으로 설치/업데이트/상태확인
+
+APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CLAUDE_DIR="$HOME/.claude"
+SCRIPTS_DIR="$CLAUDE_DIR/scripts"
+LAUNCH_DIR="$HOME/Library/LaunchAgents"
+LOG="$CLAUDE_DIR/logs/magi-restore-app.log"
+BACKUP_CONFIG="$CLAUDE_DIR/backup-config.json"
+
+mkdir -p "$SCRIPTS_DIR" "$CLAUDE_DIR/logs" "$CLAUDE_DIR/tab-states" "$LAUNCH_DIR"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG"; }
+
+notify() {
+    osascript -e "display notification \"$1\" with title \"MAGI-Restore\" sound name \"Glass\"" 2>/dev/null || true
+}
+
+alert() {
+    osascript -e "display dialog \"$1\" with title \"MAGI-Restore\" buttons {\"확인\"} default button \"확인\"" 2>/dev/null || true
+}
+
+ask() {
+    osascript -e "display dialog \"$1\" with title \"MAGI-Restore\" buttons {\"취소\", \"$2\"} default button \"$2\"" 2>/dev/null
+}
+
+write_backup_config() {
+    local enabled="$1"
+    local path="$2"
+    local last="$3"
+    cat > "$BACKUP_CONFIG" << CONFIG
+{
+  "enabled": ${enabled},
+  "path": "${path}",
+  "last_backup": "${last}"
+}
+CONFIG
+}
+
+log "=== MAGI-Restore 앱 실행 ==="
+
+# 환경변수 로드
+if [ -f "$HOME/.zshrc" ]; then
+    source "$HOME/.zshrc" 2>/dev/null || true
+fi
+
+# iTerm2 확인
+if [ ! -d "/Applications/iTerm.app" ]; then
+    alert "iTerm2가 설치되어 있지 않습니다.\n\nhttps://iterm2.com 에서 다운로드하세요."
+    open "https://iterm2.com"
+    exit 1
+fi
+
+# claude CLI 확인
+if ! command -v claude &>/dev/null; then
+    alert "Claude Code CLI가 설치되어 있지 않습니다.\n\n터미널에서 실행:\nnpm install -g @anthropic-ai/claude-code"
+    exit 1
+fi
+
+# 현재 상태 확인
+INSTALLED=0
+RUNNING=0
+UID_NUM=$(id -u)
+
+if [ -f "$SCRIPTS_DIR/watchdog.sh" ] && [ -f "$SCRIPTS_DIR/tab-focus-monitor.sh" ] && [ -f "$SCRIPTS_DIR/auto-restore.sh" ]; then
+    INSTALLED=1
+fi
+
+if launchctl print "gui/$UID_NUM/com.claude.watchdog" &>/dev/null; then
+    RUNNING=$((RUNNING + 1))
+fi
+if launchctl print "gui/$UID_NUM/com.claude.tab-focus-monitor" &>/dev/null; then
+    RUNNING=$((RUNNING + 1))
+fi
+if launchctl print "gui/$UID_NUM/com.claude.auto-restore" &>/dev/null; then
+    RUNNING=$((RUNNING + 1))
+fi
+
+# 메인 메뉴
+if [ "$INSTALLED" -eq 1 ]; then
+    CHOICE=$(osascript \
+        -e "set r to display dialog \"MAGI-Restore 상태\n\n설치됨: ✅\n데몬 동작: ${RUNNING}/3\n\n무엇을 하시겠습니까?\" with title \"MAGI-Restore\" buttons {\"상태 확인\", \"세션 관리\", \"백업 설정\", \"업데이트\"} default button \"상태 확인\"" \
+        -e "button returned of r" 2>/dev/null || echo "")
+    if [ -z "$CHOICE" ]; then exit 0; fi
+else
+    CHOICE="재설치"
+    ask "MAGI-Restore를 설치하시겠습니까?\n\n설치 내용:\n- 탭 상태 표시 (색상 자동 변경)\n- 크래시 자동 감지 + 알림\n- 재부팅 시 자동 복원\n- 탭 포커스 감지" "설치" || exit 0
+fi
+
+case "$CHOICE" in
+    "상태 확인")
+        # 데몬 상태 수집
+        STATUS=""
+        for SVC in watchdog tab-focus-monitor auto-restore; do
+            if launchctl print "gui/$UID_NUM/com.claude.$SVC" &>/dev/null; then
+                PID=$(launchctl print "gui/$UID_NUM/com.claude.$SVC" 2>/dev/null | grep "pid =" | awk '{print $3}')
+                STATUS="${STATUS}\n  ✅ $SVC (PID: ${PID:-?})"
+            else
+                STATUS="${STATUS}\n  ❌ $SVC (중지됨)"
+            fi
+        done
+
+        # Claude 세션 수
+        SESSIONS=$(ps aux | grep "[c]laude" | grep -v "Claude.app\|Helper\|watchdog\|auto-restore\|tab-focus\|session-registry" | wc -l | tr -d ' ')
+
+        alert "MAGI-Restore 상태\n\n데몬:${STATUS}\n\nClaude 세션: ${SESSIONS}개"
+        ;;
+
+    "세션 관리")
+        # Claude 프로세스 목록 수집
+        PROC_LABELS=()
+        PROC_PIDS=()
+        PROC_TTYS=()
+        while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            PID=$(echo "$line" | awk '{print $2}')
+            TTY=$(echo "$line" | awk '{print $7}')
+            CMD=$(echo "$line" | awk '{for(i=11;i<=NF;i++) printf $i" "; print ""}')
+            PROJ=$(echo "$CMD" | sed 's/ *$//' | awk '{print $NF}' | sed 's|.*/||' | cut -c1-20)
+            [ -z "$PROJ" ] && PROJ="claude"
+            PROC_LABELS+=("${PROJ} (PID: ${PID}, TTY: ${TTY})")
+            PROC_PIDS+=("$PID")
+            PROC_TTYS+=("$TTY")
+        done < <(ps aux | grep "[c]laude" | grep -v "Claude.app\|Helper\|watchdog\|auto-restore\|tab-focus\|session-registry\|MAGI")
+
+        COUNT=${#PROC_LABELS[@]}
+        if [ "$COUNT" -eq 0 ]; then
+            alert "실행 중인 Claude 세션이 없습니다."
+        else
+            # AppleScript 리스트 문자열 생성
+            AS_LIST=""
+            for item in "${PROC_LABELS[@]}"; do
+                AS_LIST="${AS_LIST}\"${item}\", "
+            done
+            AS_LIST="${AS_LIST%, }"
+
+            # 세션 선택
+            SELECTED=$(osascript \
+                -e "set theList to {${AS_LIST}}" \
+                -e "choose from list theList with title \"세션 관리\" with prompt \"숨기거나 종료할 세션을 선택하세요:\" OK button name \"선택\" cancel button name \"취소\"" \
+                2>/dev/null || echo "false")
+
+            if [ "$SELECTED" = "false" ] || [ -z "$SELECTED" ]; then
+                exit 0
+            fi
+
+            # 선택된 항목에서 PID, TTY 추출
+            SEL_PID=$(echo "$SELECTED" | grep -o 'PID: [0-9]*' | sed 's/PID: //')
+            SEL_TTY=$(echo "$SELECTED" | grep -o 'TTY: [^ )]*' | sed 's/TTY: //')
+
+            if [ -z "$SEL_PID" ]; then
+                alert "세션 정보를 파싱할 수 없습니다."
+                exit 0
+            fi
+
+            # Hide / Kill 선택
+            ACTION=$(osascript \
+                -e "set r to display dialog \"세션: ${SELECTED}\n\n어떻게 하시겠습니까?\" with title \"세션 관리\" buttons {\"취소\", \"Hide\", \"Kill\"} default button \"Hide\" cancel button \"취소\"" \
+                -e "button returned of r" \
+                2>/dev/null || echo "")
+
+            case "$ACTION" in
+                "Hide")
+                    TTY_SHORT=$(echo "$SEL_TTY" | sed 's|/dev/||')
+                    osascript << HIDESCRIPT 2>/dev/null || true
+tell application "iTerm2"
+    repeat with w in windows
+        repeat with t in tabs of w
+            repeat with s in sessions of t
+                try
+                    if tty of s contains "${TTY_SHORT}" then
+                        set miniaturized of w to true
+                    end if
+                end try
+            end repeat
+        end repeat
+    end repeat
+end tell
+HIDESCRIPT
+                    notify "세션 숨김: ${SELECTED}"
+                    log "세션 숨김 - PID: $SEL_PID, TTY: $SEL_TTY"
+                    ;;
+                "Kill")
+                    kill "$SEL_PID" 2>/dev/null || true
+                    if [ -f "$HOME/.claude/scripts/session-registry.sh" ]; then
+                        "$HOME/.claude/scripts/session-registry.sh" intentional-stop "$SEL_PID" 2>/dev/null || true
+                    fi
+                    notify "세션 종료: ${SELECTED}"
+                    log "세션 종료 - PID: $SEL_PID, TTY: $SEL_TTY"
+                    ;;
+            esac
+        fi
+        ;;
+
+    "백업 설정")
+        # 현재 설정 읽기
+        B_ENABLED="true"
+        B_PATH="$HOME/.claude/backups/sessions"
+        B_LAST="없음"
+
+        if [ -f "$BACKUP_CONFIG" ]; then
+            B_ENABLED=$(grep -o '"enabled": *[a-z]*' "$BACKUP_CONFIG" | sed 's/.*"enabled": *//' | tr -d ' ' || echo "true")
+            B_PATH=$(grep -o '"path": *"[^"]*"' "$BACKUP_CONFIG" | sed 's/.*"path": *"//' | sed 's/"$//' || echo "$HOME/.claude/backups/sessions")
+            B_LAST=$(grep -o '"last_backup": *"[^"]*"' "$BACKUP_CONFIG" | sed 's/.*"last_backup": *"//' | sed 's/"$//' || echo "없음")
+        fi
+
+        [ "$B_ENABLED" = "true" ] && B_STATUS="ON ✅" || B_STATUS="OFF ❌"
+
+        BACKUP_ACTION=$(osascript \
+            -e "set status_msg to \"백업 상태: ${B_STATUS}\n경로: ${B_PATH}\n마지막 백업: ${B_LAST}\"" \
+            -e "choose from list {\"켜기/끄기\", \"백업 경로 변경\", \"지금 백업\"} with title \"백업 설정\" with prompt status_msg OK button name \"선택\" cancel button name \"닫기\"" \
+            2>/dev/null || echo "false")
+
+        if [ "$BACKUP_ACTION" = "false" ] || [ -z "$BACKUP_ACTION" ]; then
+            exit 0
+        fi
+
+        case "$BACKUP_ACTION" in
+            "켜기/끄기")
+                if [ "$B_ENABLED" = "true" ]; then
+                    write_backup_config "false" "$B_PATH" "$B_LAST"
+                    notify "백업 비활성화됨"
+                    log "백업 비활성화"
+                else
+                    write_backup_config "true" "$B_PATH" "$B_LAST"
+                    notify "백업 활성화됨"
+                    log "백업 활성화"
+                fi
+                ;;
+            "백업 경로 변경")
+                NEW_PATH=$(osascript -e "POSIX path of (choose folder with prompt \"백업 폴더를 선택하세요:\")" 2>/dev/null || echo "")
+                if [ -n "$NEW_PATH" ]; then
+                    NEW_PATH=$(echo "$NEW_PATH" | sed 's|/$||')
+                    write_backup_config "$B_ENABLED" "$NEW_PATH" "$B_LAST"
+                    notify "백업 경로 변경됨: $NEW_PATH"
+                    log "백업 경로 변경: $NEW_PATH"
+                fi
+                ;;
+            "지금 백업")
+                mkdir -p "$B_PATH"
+                log "백업 시작: $B_PATH"
+                if rsync -av --exclude='logs/' --exclude='*.tmp' "$HOME/.claude/" "${B_PATH}/" >> "$LOG" 2>&1; then
+                    LAST_TS=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+                    write_backup_config "$B_ENABLED" "$B_PATH" "$LAST_TS"
+                    notify "백업 완료! → $B_PATH"
+                    log "백업 완료 ($LAST_TS)"
+                else
+                    alert "백업 중 오류가 발생했습니다.\n로그를 확인하세요:\n$LOG"
+                    log "백업 실패"
+                fi
+                ;;
+        esac
+        ;;
+
+    "업데이트"|"재설치")
+        log "설치/업데이트 시작"
+
+        # 스크립트 소스 찾기 (앱 번들 내 또는 git repo)
+        REPO_DIR="$(cd "$APP_DIR/../.." && pwd)"
+        SRC_SCRIPTS="$REPO_DIR/scripts"
+        SRC_CONFIGS="$REPO_DIR/configs"
+
+        if [ ! -d "$SRC_SCRIPTS" ]; then
+            alert "스크립트 소스를 찾을 수 없습니다.\n\n앱이 git repo 안에 있어야 합니다:\nautoRestart_ClaudeCode/MAGI-Restore.app"
+            exit 1
+        fi
+
+        # 스크립트 복사
+        for f in "$SRC_SCRIPTS"/*.sh; do
+            cp "$f" "$SCRIPTS_DIR/"
+            chmod +x "$SCRIPTS_DIR/$(basename "$f")"
+        done
+        log "스크립트 복사 완료"
+
+        # LaunchAgent plist 복사 (경로 치환)
+        for f in "$SRC_CONFIGS"/com.claude.*.plist; do
+            [ ! -f "$f" ] && continue
+            BASENAME=$(basename "$f")
+            sed "s|/Users/teample.casper|${HOME}|g" "$f" > "$LAUNCH_DIR/$BASENAME"
+        done
+        log "LaunchAgent plist 복사 완료"
+
+        # LaunchAgent 등록
+        for f in "$LAUNCH_DIR"/com.claude.*.plist; do
+            [ ! -f "$f" ] && continue
+            LABEL=$(basename "$f" .plist)
+            launchctl bootout "gui/$UID_NUM" "$f" 2>/dev/null || true
+            launchctl bootstrap "gui/$UID_NUM" "$f" 2>/dev/null || true
+            log "$LABEL 등록"
+        done
+
+        # iTerm2 tmux integration 설정 (탭으로 열기)
+        defaults write com.googlecode.iterm2 OpenTmuxWindowsIn -int 1
+        log "iTerm2 tmux 탭 모드 설정 (OpenTmuxWindowsIn=1)"
+
+        notify "MAGI-Restore 설치 완료! 데몬 3개 등록됨."
+        alert "설치 완료!\n\n✅ watchdog (크래시 감지)\n✅ tab-focus-monitor (탭 전환 감지)\n✅ auto-restore (재부팅 복원)\n\n⚠️ auto-restore.sh의 PROJECTS 배열을\n이 Mac의 프로젝트 경로로 수정하세요."
+
+        log "설치/업데이트 완료"
+        ;;
+esac
+
+exit 0

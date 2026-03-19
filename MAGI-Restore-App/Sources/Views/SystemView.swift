@@ -58,15 +58,11 @@ final class SystemViewModel: ObservableObject {
         let sessionExists = await ShellService.runAsync("tmux has-session -t claude-work 2>/dev/null && echo YES || echo NO")
 
         if sessionExists.contains("YES") {
-            // 기존 세션 있음 → 죽은 창만 복구 + iTerm2 앞으로 (새 탭 X)
             let repairResult = await repairDeadWindows()
-            await ShellService.runAsync("open -a iTerm")
-            restoreLog = repairResult.isEmpty ? "✅ iTerm2 앞으로 가져옴" : repairResult
+            restoreLog = repairResult
         } else {
-            // 세션 없음 → 전체 복원
             let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
             restoreLog = await ShellService.runAsync("bash '\(scriptPath)' --force 2>&1")
-            await ShellService.runAsync("open -a iTerm")
         }
 
         isRestoring = false
@@ -115,43 +111,6 @@ final class SystemViewModel: ObservableObject {
             return "🔧 죽은 윈도우 \(restored)개 복구 + intentional-stops 초기화"
         }
         return "✅ 모든 윈도우 정상"
-    }
-
-    @discardableResult
-    private func attachToTmux() async -> String {
-        let cmd = "tmux -CC attach -t claude-work"
-        let exitCode = await runAppleScriptInITerm(command: cmd)
-        if exitCode {
-            return "✅ claude-work 세션에 attach 완료"
-        } else {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(cmd, forType: .string)
-            return "⚠️ iTerm2 자동화 실패 — ⌘V로 붙여넣기:\n\(cmd)"
-        }
-    }
-
-    private func attachToiTerm() async {
-        await ShellService.runAsync("open -a iTerm")
-    }
-
-    private func runAppleScriptInITerm(command: String) async -> Bool {
-        // iTerm2 3.5.14: create tab / create window → -1712 타임아웃
-        // 해결: 현재 세션에 직접 write text (탭 생성 없음)
-        // windows = 0이면 open -a iTerm으로 열고 클립보드 fallback은 attachToTmux가 처리
-        let source = """
-        tell application "iTerm2"
-          activate
-          if (count of windows) > 0 then
-            tell current session of current window
-              write text "\(command)"
-            end tell
-          end if
-        end tell
-        """
-        guard let script = NSAppleScript(source: source) else { return false }
-        var errorInfo: NSDictionary?
-        script.executeAndReturnError(&errorInfo)
-        return errorInfo == nil
     }
 
     func runInstall() async {
@@ -208,10 +167,8 @@ struct SystemView: View {
                             ProgressView().scaleEffect(0.8)
                             Text("복원 중...")
                         }
-                    } else if vm.tmuxSessionExists {
-                        Label("Attach (세션 있음)", systemImage: "terminal.fill")
                     } else {
-                        Label("전체 복원 (~60초)", systemImage: "arrow.clockwise.circle.fill")
+                        Label("세션 복원", systemImage: "arrow.clockwise.circle.fill")
                     }
                 }
                 .buttonStyle(.borderedProminent)

@@ -52,11 +52,12 @@ final class MenuBarState: ObservableObject {
         allDaemonsRunning = allRunning
     }
 
+    private lazy var systemVM = SystemViewModel()
+
     func quickRestore() async {
         guard !isRestoring else { return }
         isRestoring = true
-        let vm = SystemViewModel()
-        await vm.runRestore()
+        await systemVM.runRestore()
         isRestoring = false
         await refresh()
     }
