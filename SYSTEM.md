@@ -28,10 +28,16 @@ macOS에서 Claude Code 15개 세션(monitor 1 + 프로젝트 14)을 iTerm2 + tm
 
 ```
 Mac 부팅
- → auto-restore (LaunchAgent)
+ → auto-restore (LaunchAgent, 즉시)
    → auto-restore.sh 실행 (headless tmux claude-work 생성, intentional-stop 제외)
      → 15개 tmux 윈도우 (monitor + 14 프로젝트)
        → 각 탭: claude --dangerously-skip-permissions --continue
+
+ → auto-attach (LaunchAgent, 동시 시작 → 90초 대기)
+   → tmux claude-work 세션 확인
+   → iTerm2 실행 대기 (최대 60초)
+   → osascript: iTerm2 create window "tmux -CC attach -t claude-work"
+   → 탭이 iTerm2 native tmux 탭으로 자동 표시됨
 
 세션 중:
  → SessionStart hook → 초록
@@ -74,10 +80,11 @@ Mac 부팅
 | computer-use-start.sh | Computer Use 세션 시작 |
 | share-to-imessage.sh | iMessage로 공유 |
 
-### LaunchAgent 데몬 (4개 핵심)
+### LaunchAgent 데몬 (5개 핵심)
 | 데몬 | KeepAlive | 역할 |
 |------|:---------:|------|
-| com.claude.auto-restore | X (1회) | 부팅 시 tmux 세션 복원 |
+| com.claude.auto-restore | X (1회) | 부팅 시 tmux 세션 복원 (headless) |
+| com.claude.auto-attach | X (1회) | 부팅 후 90초 대기 → iTerm2 tmux -CC attach |
 | com.claude.magi-restore | X (1회) | MAGI-Restore.app 자동 실행 |
 | com.claude.watchdog | O | 30초 크래시 감지 + 상태 표시 |
 | com.claude.tab-focus-monitor | O | 탭 전환 감지 → 초록 복귀 |
