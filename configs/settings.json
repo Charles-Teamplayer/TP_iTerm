@@ -87,6 +87,18 @@
         ]
       }
     ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/claude/TP_iTerm/hooks/notification.sh\" attention \"$(basename \"$PWD\")\"",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "matcher": "",
