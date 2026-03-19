@@ -37,9 +37,11 @@ echo "⚠️  auto-restore.sh의 PROJECTS 배열을 이 Mac의 프로젝트 경�
 echo "    $SCRIPTS_DIR/auto-restore.sh"
 echo ""
 
-# 5. iTerm2 tmux integration 설정 (탭으로 열기)
+# 5. iTerm2 tmux integration 설정 (탭으로 열기 + 대시보드 방지)
 defaults write com.googlecode.iterm2 OpenTmuxWindowsIn -int 1
-echo "  ✓ iTerm2 tmux 탭 모드 설정"
+defaults write com.googlecode.iterm2 TmuxDashboardLimit -int 20
+defaults write com.googlecode.iterm2 OpenTmuxDashboardIfHiddenWindows -bool false
+echo "  ✓ iTerm2 tmux 탭 모드 설정 (TmuxDashboardLimit=20, 대시보드 비활성화)"
 
 # 6. LaunchAgent 등록
 UID_NUM=$(id -u)
