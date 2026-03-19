@@ -41,7 +41,17 @@ done
 echo -e "\n${BOLD}[2] tmux 세션 상태${NC}"
 if tmux has-session -t claude-work 2>/dev/null; then
     WIN_COUNT=$(tmux list-windows -t claude-work 2>/dev/null | wc -l | tr -d ' ')
-    ok "claude-work 세션 활성 (윈도우 ${WIN_COUNT}개)"
+    if [ "$WIN_COUNT" -ge 15 ]; then
+        ok "claude-work 세션 활성 (윈도우 ${WIN_COUNT}개)"
+    else
+        warn "claude-work 세션 활성 (윈도우 ${WIN_COUNT}개 — 기대: 15개)"
+    fi
+    # monitor 창 존재 확인
+    if tmux list-windows -t claude-work -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
+        ok "monitor 창 존재"
+    else
+        fail "monitor 창 없음 — 수동 복구: tmux new-window -t claude-work -n monitor -c \"\$HOME/claude\""
+    fi
     tmux list-windows -t claude-work 2>/dev/null | awk '{print "    " $0}'
 else
     fail "claude-work tmux 세션 없음 — 복원 필요"

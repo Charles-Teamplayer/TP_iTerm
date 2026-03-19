@@ -222,6 +222,16 @@ while true; do
         log "WARNING: iTerm2 not running"
     fi
 
+    # monitor 창 소실 감지 및 자동 복구
+    if tmux has-session -t claude-work 2>/dev/null; then
+        if ! tmux list-windows -t claude-work -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
+            log "MONITOR 창 없음 — 자동 복구"
+            tmux new-window -t claude-work -n monitor -c "$HOME/claude" 2>/dev/null && \
+                log "MONITOR 창 복구 완료" || \
+                log "ERROR: MONITOR 창 복구 실패"
+        fi
+    fi
+
     # stderr.log 로테이션 (매 루프마다 체크)
     rotate_stderr_log
 
