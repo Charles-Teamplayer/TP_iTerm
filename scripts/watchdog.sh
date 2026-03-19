@@ -84,25 +84,8 @@ while true; do
                 CRASH_PROJECT=$(echo "$line" | sed -n 's/.*CRASH DETECTED: \([^ ]*\).*/\1/p')
                 CRASH_PROJECT="${CRASH_PROJECT:-unknown}"
                 CRASH_TTY=$(echo "$line" | sed -n 's/.*TTY: \([^ ,]*\).*/\1/p')
-                if [ -n "$CRASH_TTY" ] && [ -c "/dev/$CRASH_TTY" ]; then
-                    # TTY에 직접 crashed 상태 표시 (정확한 탭 타겟팅)
-                    (
-                        for i in $(seq 1 10); do
-                            # claude 재시작 감지 시 조기 탈출
-                            if ps -o tty,command -ax | grep "$CRASH_TTY" | grep -q "[c]laude" 2>/dev/null; then
-                                printf '\e]1;🔄 %s\a' "$CRASH_PROJECT" > "/dev/$CRASH_TTY" 2>/dev/null
-                                exit 0
-                            fi
-                            printf '\e]1;⚪ %s [CRASHED]\a' "$CRASH_PROJECT" > "/dev/$CRASH_TTY" 2>/dev/null
-                            sleep 1
-                            printf '\e]1;🔴 %s [CRASHED]\a' "$CRASH_PROJECT" > "/dev/$CRASH_TTY" 2>/dev/null
-                            sleep 1
-                        done
-                        printf '\e]1;🔴 %s [CRASHED]\a' "$CRASH_PROJECT" > "/dev/$CRASH_TTY" 2>/dev/null
-                    ) &
-                else
-                    bash "$HOME/.claude/scripts/tab-status.sh" crashed "$CRASH_PROJECT" &
-                fi
+                # tab-status.sh 경유로 crashed 상태 표시 (TTY 직접 write 제거 — LaunchAgent 권한 문제 방지)
+                bash "$HOME/.claude/scripts/tab-status.sh" crashed "$CRASH_PROJECT" &
             done
 
             # 크래시된 세션 자동 재시작 (P0 수정: watchdog이 직접 복구)
@@ -179,6 +162,7 @@ while true; do
             TTY_NAME=$(basename "$STATE_FILE")
             TTY_PATH="/dev/$TTY_NAME"
             [ ! -c "$TTY_PATH" ] && continue
+            [ ! -w "$TTY_PATH" ] && continue
 
             TAB_STATUS=$(cut -d'|' -f1 "$STATE_FILE" 2>/dev/null)
             TAB_PROJECT=$(cut -d'|' -f2 "$STATE_FILE" 2>/dev/null)

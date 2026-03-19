@@ -15,29 +15,49 @@
 STATUS="${1:-active}"
 CONFIG_FILE="$HOME/.claude/config/iterm-config.json"
 
-# dir → 짧은 탭 이름 매핑
-_get_short_name() {
-    local dir="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-    case "$dir" in
-        */TP_newIMSMS)                          echo "imsms" ;;
-        */TP_newIMSMS_Agent)                    echo "imsms-agent" ;;
-        */TP_MDM)                               echo "mdm" ;;
-        */TP_TESLA_LVDS)                        echo "tesla-lvds" ;;
-        */TESLA_Status_Dashboard)               echo "tesla-dash" ;;
-        */TP_MindMap_AutoCC)                    echo "mindmap" ;;
-        */SJ_MindMap)                           echo "sj-map" ;;
-        */TP_A.iMessage_standalone_*)           echo "imessage" ;;
-        */TP_BTT)                               echo "btt" ;;
-        */TP_Infra_reduce_Project)              echo "infra" ;;
-        */TP_skills)                            echo "skills" ;;
-        */AppleTV_ScreenSaver.app)              echo "appletv" ;;
-        */imsms.im-website)                     echo "imsms-web" ;;
-        */TP_iTerm)               echo "auto-rst" ;;
-        *)                                      basename "$dir" | cut -c1-12 ;;
-    esac
+# config 기반 프로젝트명 조회 (iterm-config.json의 project_names 맵)
+_resolve_project_name() {
+    local raw="${1:-$(basename "${CLAUDE_PROJECT_DIR:-$PWD}")}"
+    if [ -f "$CONFIG_FILE" ]; then
+        local mapped
+        mapped=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$CONFIG_FILE'))
+    names = d.get('project_names', {})
+    print(names.get(sys.argv[1], sys.argv[1]))
+except:
+    print(sys.argv[1])
+" "$raw" 2>/dev/null)
+        [ -n "$mapped" ] && echo "$mapped" || echo "$raw"
+    else
+        echo "$raw"
+    fi
 }
 
-PROJECT="${2:-$(_get_short_name)}"
+# Legacy: 하드코딩 매핑 (config 미사용 시 수동 fallback용, 현재 미사용)
+# _get_short_name() {
+#     local dir="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+#     case "$dir" in
+#         */TP_newIMSMS)                          echo "imsms" ;;
+#         */TP_newIMSMS_Agent)                    echo "imsms-agent" ;;
+#         */TP_MDM)                               echo "mdm" ;;
+#         */TP_TESLA_LVDS)                        echo "tesla-lvds" ;;
+#         */TESLA_Status_Dashboard)               echo "tesla-dash" ;;
+#         */TP_MindMap_AutoCC)                    echo "mindmap" ;;
+#         */SJ_MindMap)                           echo "sj-map" ;;
+#         */TP_A.iMessage_standalone_*)           echo "imessage" ;;
+#         */TP_BTT)                               echo "btt" ;;
+#         */TP_Infra_reduce_Project)              echo "infra" ;;
+#         */TP_skills)                            echo "skills" ;;
+#         */AppleTV_ScreenSaver.app)              echo "appletv" ;;
+#         */imsms.im-website)                     echo "imsms-web" ;;
+#         */TP_iTerm)               echo "auto-rst" ;;
+#         *)                                      basename "$dir" | cut -c1-12 ;;
+#     esac
+# }
+
+PROJECT=$(_resolve_project_name "${2:-}")
 
 # config에서 badge 텍스트 읽기
 _get_config() {
