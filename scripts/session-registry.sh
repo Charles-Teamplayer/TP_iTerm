@@ -138,7 +138,13 @@ DIR_TO_WINDOW = {
     os.path.expanduser("~/claude/TP_iTerm"): "auto-restart",
 }
 
-window_name = DIR_TO_WINDOW.get(project_dir, os.path.basename(project_dir))
+window_name = DIR_TO_WINDOW.get(project_dir)
+
+# 알 수 없는 프로젝트 경로는 intentional-stop 등록 건너뜀 (노이즈 방지)
+if not window_name:
+    import sys
+    print(f"[URD] SKIP intentional-stop: unknown dir {project_dir}", file=sys.stderr)
+    sys.exit(0)
 
 # 기존 파일 로드 또는 초기화
 if os.path.exists(stops_path):
