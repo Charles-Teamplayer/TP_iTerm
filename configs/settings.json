@@ -110,11 +110,6 @@
           },
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/scripts/session-registry.sh\" intentional-stop",
-            "timeout": 5000
-          },
-          {
-            "type": "command",
             "command": "source ~/.zshrc && python3 \"$HOME/claude/TP_skills/session-manager/notion-advanced.py\" \"$(basename \"$PWD\")\" \"Session Ended\" \"Claude Code 세션 종료\"",
             "timeout": 15000
           }
@@ -197,6 +192,18 @@
         ]
       }
     ]
+  },
+  "mcpServers": {
+    "blender": {
+      "command": "/Users/teample.casper/.local/bin/uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/teample.casper/claude/blender-mcp",
+        "blender-mcp"
+      ],
+      "env": {}
+    }
   },
   "enabledPlugins": {
     "swift-lsp@claude-plugins-official": true,
