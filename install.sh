@@ -31,19 +31,44 @@ for f in "$SCRIPT_DIR"/configs/com.claude.*.plist; do
     echo "  ✓ $BASENAME"
 done
 
-# 4. auto-restore.sh 내 프로젝트 경로 안내
+# 4. tab_focus_status.py → iTerm2 AutoLaunch 설치
+ITERM_AUTOLAUNCH="$HOME/.config/iterm2/AppSupport/Scripts/AutoLaunch"
+mkdir -p "$ITERM_AUTOLAUNCH"
+if [ -f "$SCRIPT_DIR/iterm2-scripts/AutoLaunch/tab_focus_status.py" ]; then
+    cp "$SCRIPT_DIR/iterm2-scripts/AutoLaunch/tab_focus_status.py" "$ITERM_AUTOLAUNCH/"
+    echo "  ✓ tab_focus_status.py (iTerm2 AutoLaunch)"
+else
+    echo "  ⚠️  tab_focus_status.py 없음 — iterm2-scripts/AutoLaunch/ 확인 필요"
+fi
+
+# 4b. iterm-config.json → ~/.claude/config/
+mkdir -p "$CLAUDE_DIR/config"
+if [ -f "$SCRIPT_DIR/configs/iterm-config.json" ]; then
+    cp "$SCRIPT_DIR/configs/iterm-config.json" "$CLAUDE_DIR/config/iterm-config.json"
+    echo "  ✓ iterm-config.json → ~/.claude/config/"
+fi
+
+# 4c. settings.json 적용 안내 (자동 덮어쓰기 위험하므로 안내만)
+if [ -f "$SCRIPT_DIR/configs/settings.json" ]; then
+    echo ""
+    echo "⚠️  ~/.claude/settings.json 설정이 필요합니다:"
+    echo "    cp '$SCRIPT_DIR/configs/settings.json' ~/.claude/settings.json"
+    echo "    (기존 설정이 있다면 수동으로 병합하세요)"
+fi
+
+# 5. auto-restore.sh 내 프로젝트 경로 안내
 echo ""
 echo "⚠️  auto-restore.sh의 PROJECTS 배열을 이 Mac의 프로젝트 경로로 수정하세요:"
 echo "    $SCRIPTS_DIR/auto-restore.sh"
 echo ""
 
-# 5. iTerm2 tmux integration 설정 (탭으로 열기 + 대시보드 방지)
+# 6. iTerm2 tmux integration 설정 (탭으로 열기 + 대시보드 방지)
 defaults write com.googlecode.iterm2 OpenTmuxWindowsIn -int 1
 defaults write com.googlecode.iterm2 TmuxDashboardLimit -int 20
 defaults write com.googlecode.iterm2 OpenTmuxDashboardIfHiddenWindows -bool false
 echo "  ✓ iTerm2 tmux 탭 모드 설정 (TmuxDashboardLimit=20, 대시보드 비활성화)"
 
-# 6. LaunchAgent 등록
+# 7. LaunchAgent 등록
 UID_NUM=$(id -u)
 for f in "$LAUNCH_DIR"/com.claude.*.plist; do
     LABEL=$(basename "$f" .plist)
