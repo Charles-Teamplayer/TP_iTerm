@@ -69,13 +69,8 @@ struct MenuBarIconView: View {
     let allDaemonsRunning: Bool
 
     var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: allDaemonsRunning ? "circle.fill" : "exclamationmark.circle.fill")
-                .foregroundStyle(allDaemonsRunning ? .green : .orange)
-                .font(.system(size: 10))
-            Text("\(sessionCount)")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-        }
+        Text("\(allDaemonsRunning ? "🟢" : "🟠") \(sessionCount)")
+            .font(.system(size: 12, weight: .medium, design: .monospaced))
     }
 }
 
