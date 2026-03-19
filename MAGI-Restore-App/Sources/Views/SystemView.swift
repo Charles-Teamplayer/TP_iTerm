@@ -12,7 +12,7 @@ final class SystemViewModel: ObservableObject {
     @Published var daemons: [DaemonInfo] = [
         DaemonInfo(id: "com.claude.watchdog",           displayName: "Watchdog",          isRunning: false),
         DaemonInfo(id: "com.claude.tab-focus-monitor",  displayName: "Tab Focus Monitor", isRunning: false),
-        DaemonInfo(id: "com.claude.auto-restore",       displayName: "Auto Restore",      isRunning: false),
+        DaemonInfo(id: "com.claude.auto-restore",       displayName: "Auto Restore (일회성)", isRunning: false),
     ]
     @Published var sessionCount: Int = 0
     @Published var isInstalling: Bool = false

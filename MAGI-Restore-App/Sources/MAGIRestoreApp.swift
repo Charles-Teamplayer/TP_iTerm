@@ -43,7 +43,7 @@ final class MenuBarState: ObservableObject {
         let output = await ShellService.runAsync("ps aux | grep '[c]laude' | grep -v 'MAGI\\|watchdog\\|auto-restore\\|tab-focus'")
         sessionCount = output.isEmpty ? 0 : output.components(separatedBy: "\n").filter { !$0.isEmpty }.count
 
-        let labels = ["com.claude.watchdog", "com.claude.tab-focus-monitor", "com.claude.auto-restore"]
+        let labels = ["com.claude.watchdog", "com.claude.tab-focus-monitor"]
         var allRunning = true
         for label in labels {
             let result = await ShellService.runAsync("launchctl print gui/\(getuid())/\(label) 2>/dev/null")

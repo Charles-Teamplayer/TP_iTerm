@@ -13,7 +13,7 @@ tell application "iTerm2"
     set s to current session of tab $N of w
     set n to name of s
     -- 이모지/프리픽스 제거하고 프로젝트명만
-    set n to do shell script "echo " & quoted form of n & " | sed 's/[✳⚡💤🔴🟢🟡🟠⚫] //g' | sed 's/ (claude)//g' | cut -c1-12"
+    set n to do shell script "echo " & quoted form of n & " | perl -CS -pe 's/[✳⚡💤🔴🟢🟡🟠⚫] //g; s/ \\[CRASHED\\]//g; s/ \\(claude\\)//g' | cut -c1-14"
     return n
   on error
     return ""
