@@ -67,6 +67,21 @@ final class SystemViewModel: ObservableObject {
 
         isRestoring = false
         await refresh()
+
+        // 복원 후 iTerm2에 tmux 세션 연결
+        await attachToITerm()
+    }
+
+    private func attachToITerm() async {
+        let script = """
+tell application "iTerm2"
+    activate
+    create window with default profile command "tmux -CC attach -t claude-work"
+end tell
+"""
+        let tmpPath = "/tmp/magi-attach.scpt"
+        try? script.write(toFile: tmpPath, atomically: true, encoding: .utf8)
+        await ShellService.runAsync("osascript \(tmpPath)")
     }
 
     private func repairDeadWindows() async -> String {
