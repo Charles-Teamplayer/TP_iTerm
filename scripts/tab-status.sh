@@ -77,12 +77,16 @@ _badge_enabled() {
     fi
 }
 
-# 로그 (최대 10000줄 유지)
+rotate_log() {
+    local logfile="$1" maxlines="${2:-10000}" keeplines="${3:-5000}"
+    if [ -f "$logfile" ] && [ "$(wc -l < "$logfile")" -gt "$maxlines" ]; then
+        tail -n "$keeplines" "$logfile" > "${logfile}.tmp" && mv "${logfile}.tmp" "$logfile"
+    fi
+}
+
 LOG="$HOME/.claude/logs/tab-status-debug.log"
+rotate_log "$LOG" 10000 5000
 echo "[$(date '+%H:%M:%S')] ${STATUS} | ${PROJECT}" >> "$LOG" 2>/dev/null
-if [ "$(wc -l < "$LOG" 2>/dev/null)" -gt 10000 ] 2>/dev/null; then
-    tail -5000 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG" 2>/dev/null
-fi
 
 find_tty() {
     # 1. 환경변수

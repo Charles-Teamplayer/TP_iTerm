@@ -7,7 +7,15 @@ LOG="$HOME/.claude/logs/tab-focus-monitor.log"
 TMP="/tmp/.iterm2-focus-tty"
 mkdir -p "$STATE_DIR" "$(dirname "$LOG")"
 
+rotate_log() {
+    local logfile="$1" maxlines="${2:-10000}" keeplines="${3:-5000}"
+    if [ -f "$logfile" ] && [ "$(wc -l < "$logfile")" -gt "$maxlines" ]; then
+        tail -n "$keeplines" "$logfile" > "${logfile}.tmp" && mv "${logfile}.tmp" "$logfile"
+    fi
+}
+
 log() { echo "[$(date '+%H:%M:%S')] $1" >> "$LOG"; }
+rotate_log "$LOG" 5000 2500
 log "=== 포커스 모니터 v4 시작 ==="
 
 # PATH 보장 (LaunchAgent용)
