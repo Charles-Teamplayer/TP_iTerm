@@ -70,6 +70,11 @@ final class SystemViewModel: ObservableObject {
         // tmux 복원 후 iTerm2 현재 창에 attach 명령 전송
         await attachTmuxToITerm()
 
+        // attach 후 4초 대기 → 탭 색상 복원
+        try? await Task.sleep(nanoseconds: 4_000_000_000)
+        let restoreColorScript = NSHomeDirectory() + "/.claude/scripts/restore-tab-colors.sh"
+        await ShellService.runAsync("bash '\(restoreColorScript)'")
+
         isRestoring = false
         await refresh()
     }
@@ -123,12 +128,13 @@ final class SystemViewModel: ObservableObject {
             guard dirExists.contains("YES") else { continue }
 
             if windowSet.contains(proj.name) {
-                // 창은 있지만 claude가 실행 중인지 확인
-                let panePid = await ShellService.runAsync(
-                    "tmux display-message -t 'claude-work:\(proj.name)' -p '#{pane_pid}' 2>/dev/null"
+                // 창은 있지만 claude가 실행 중인지 TTY 기반으로 확인
+                let paneTty = await ShellService.runAsync(
+                    "tmux display-message -t 'claude-work:\(proj.name)' -p '#{pane_tty}' 2>/dev/null"
                 ).trimmingCharacters(in: .whitespacesAndNewlines)
-                let claudeRunning = await ShellService.runAsync(
-                    "pgrep -P \(panePid) -f claude 2>/dev/null"
+                let ttyBase = paneTty.replacingOccurrences(of: "/dev/", with: "")
+                let claudeRunning = ttyBase.isEmpty ? "" : await ShellService.runAsync(
+                    "ps -o pid,command -t '\(ttyBase)' 2>/dev/null | grep '[c]laude' | head -1"
                 ).trimmingCharacters(in: .whitespacesAndNewlines)
 
                 if !claudeRunning.isEmpty {
@@ -153,9 +159,9 @@ final class SystemViewModel: ObservableObject {
         }
 
         if restored > 0 {
-            return "🔧 \(restored)개 복구 (claude 재시작) + \(alreadyRunning)개 정상 실행 중"
+            return "🔧 \(restored)개 복구, \(alreadyRunning)개 실행 중 → attach + 탭 색상 자동 복원"
         }
-        return "✅ 모든 세션 정상 실행 중 (\(alreadyRunning)개)"
+        return "✅ 모든 세션 정상 (\(alreadyRunning)개) → attach + 탭 색상 자동 복원"
     }
 
     func runInstall() async {
