@@ -29,9 +29,9 @@ case "$ACTION" in
                 break
             fi
         done
-        # PID 못 찾으면 fallback
+        # PID 못 찾으면 fallback — TTY가 있는 claude 프로세스만 선택
         if [ -z "$PID" ]; then
-            PID=$(pgrep -f "claude" | tail -1)
+            PID=$(ps -ax -o pid=,tty=,command= | grep "[c]laude" | grep -v "??" | grep -v "Claude.app\|Helper\|watchdog\|auto-restore" | awk '{print $1}' | tail -1)
         fi
         if [ -n "$PID" ]; then
             SESSION_TTY=$(ps -o tty= -p "$PID" 2>/dev/null | tr -d ' ')
@@ -198,11 +198,27 @@ for session in data['sessions']:
         except (ProcessLookupError, ValueError):
             crashed.append(session)
     else:
-        # PID 모를 때는 프로젝트 이름으로 확인
-        import subprocess
-        project = session.get('project', '')
-        result = subprocess.run(['pgrep', '-f', f'claude.*{project}'], capture_output=True)
-        if result.returncode == 0:
+        # PID 모를 때는 프로젝트 디렉토리 경로로 확인 (TTY 있는 프로세스만)
+        session_dir = session.get('dir', '')
+        project_name = session.get('project', '')
+        generic_names = {'claude', 'node', 'python', 'bash', 'zsh', 'sh', 'npm'}
+        if not session_dir or len(session_dir) < 10 or os.path.basename(session_dir) in generic_names:
+            alive.append(session)
+            continue
+        if project_name and (len(project_name) <= 3 or project_name.lower() in generic_names):
+            alive.append(session)
+            continue
+        result = subprocess.run(
+            ['ps', '-ax', '-o', 'pid,tty,command'],
+            capture_output=True, text=True
+        )
+        found = False
+        for line in result.stdout.splitlines():
+            parts = line.strip().split(None, 2)
+            if len(parts) >= 3 and 'claude' in parts[2] and session_dir in parts[2] and parts[1] != '??':
+                found = True
+                break
+        if found:
             alive.append(session)
         else:
             crashed.append(session)

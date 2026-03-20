@@ -146,3 +146,12 @@ open MAGI-Restore.app
 - Stop hook: intentional-stop 자동 등록 제거 — 명시적 CLI 전용으로 변경 (iter 19)
 - session-registry.sh: 알 수 없는 dir → intentional-stop 등록 건너뜀 (iter 18)
 - auto-attach.sh: LaunchAgent 추가, 재부팅 후 iTerm2 tmux -CC 자동 연결 (iter 10-12)
+
+## Ralph Loop 2차-4차 추가 안정화 (2026-03-20)
+
+- auto-restore.sh: 레지스트리 초기화 추가 (부팅 오탐 연쇄 크래시 방지)
+- session-registry.sh: fallback PID 추적 개선 (TTY 없는 프로세스 필터)
+- share-to-imessage.sh: ~/.claude/scripts/ 동기화
+- configs/com.claude.auto-restore.plist: LimitLoadToSessionType 제거
+- tmux 창이름 정규화: mdm, appletv, auto-restart
+- 세션 레지스트리 14개 완전 등록 확인

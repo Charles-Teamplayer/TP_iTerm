@@ -88,7 +88,12 @@ fi
 echo -e "\n${BOLD}[6] 세션 레지스트리${NC}"
 if [ -f "$HOME/.claude/active-sessions.json" ]; then
     SESSION_CNT=$(python3 -c "import json; d=json.load(open('$HOME/.claude/active-sessions.json')); print(len(d['sessions']))" 2>/dev/null || echo "?")
-    info "등록된 세션: ${SESSION_CNT}개"
+    EXPECTED_SESSIONS=14
+    if [ "$SESSION_CNT" != "?" ] && [ "$SESSION_CNT" -ge "$EXPECTED_SESSIONS" ]; then
+        ok "등록된 세션: ${SESSION_CNT}개"
+    else
+        warn "등록된 세션: ${SESSION_CNT}개 (기대: ${EXPECTED_SESSIONS}개)"
+    fi
 else
     warn "active-sessions.json 없음"
 fi
@@ -97,15 +102,15 @@ fi
 STOPS_FILE="$HOME/.claude/intentional-stops.json"
 if [ -f "$STOPS_FILE" ]; then
     STOP_CNT=$(python3 -c "import json; d=json.load(open('$STOPS_FILE')); print(len(d.get('stops',[])))" 2>/dev/null || echo "0")
-    if [ "$STOP_CNT" -gt 0 ]; then
-        warn "의도적 정지 ${STOP_CNT}개 있음 (다음 복원 시 제외됨)"
+    if [ "$STOP_CNT" -gt 0 ] && [ "$STOP_CNT" != "0" ]; then
+        warn "의도적 정지: ${STOP_CNT}개 (다음 복원 시 제외됨)"
         python3 -c "
 import json
 d=json.load(open('$STOPS_FILE'))
 for s in d.get('stops',[]): print('    - ' + s.get('window_name','?'))
 " 2>/dev/null
     else
-        info "의도적 정지: 없음"
+        ok "의도적 정지: 없음"
     fi
 fi
 
