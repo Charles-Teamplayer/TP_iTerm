@@ -73,12 +73,25 @@ final class SystemViewModel: ObservableObject {
     }
 
     private func attachToITerm() async {
-        let script = """
+        // 이미 iTerm2에 claude-work가 연결되어 있으면 그냥 activate만
+        let alreadyAttached = await ShellService.runAsync(
+            "tmux list-clients -t claude-work 2>/dev/null | grep -c ."
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientCount = Int(alreadyAttached) ?? 0
+
+        let script: String
+        if clientCount > 0 {
+            // 이미 연결된 클라이언트 있음 → iTerm2 앞으로 가져오기만
+            script = "tell application \"iTerm2\" to activate"
+        } else {
+            // 연결된 클라이언트 없음 → 새 창으로 attach
+            script = """
 tell application "iTerm2"
     activate
     create window with default profile command "tmux -CC attach -t claude-work"
 end tell
 """
+        }
         let tmpPath = "/tmp/magi-attach.scpt"
         try? script.write(toFile: tmpPath, atomically: true, encoding: .utf8)
         await ShellService.runAsync("osascript \(tmpPath)")
@@ -111,22 +124,49 @@ end tell
         try? resetJson.write(toFile: stopsFile, atomically: true, encoding: .utf8)
 
         var restored = 0
+        var alreadyRunning = 0
         for proj in projects {
-            guard !windowSet.contains(proj.name) else { continue }
             let expandedPath = proj.path.replacingOccurrences(of: "~", with: NSHomeDirectory())
             let dirExists = await ShellService.runAsync("[ -d '\(expandedPath)' ] && echo YES || echo NO")
             guard dirExists.contains("YES") else { continue }
 
-            await ShellService.runAsync("tmux new-window -t claude-work -n '\(proj.name)' -c '\(expandedPath)'")
-            await ShellService.runAsync("tmux set-window-option -t 'claude-work:\(proj.name)' automatic-rename off 2>/dev/null")
-            await ShellService.runAsync("tmux send-keys -t 'claude-work:\(proj.name)' 'bash ~/.claude/scripts/tab-status.sh starting \(proj.name) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)' Enter")
-            restored += 1
+            if windowSet.contains(proj.name) {
+                // 창은 있지만 claude가 실행 중인지 확인
+                let panePid = await ShellService.runAsync(
+                    "tmux display-message -t 'claude-work:\(proj.name)' -p '#{pane_pid}' 2>/dev/null"
+                ).trimmingCharacters(in: .whitespacesAndNewlines)
+                let claudeRunning = await ShellService.runAsync(
+                    "pgrep -P \(panePid) -f claude 2>/dev/null"
+                ).trimmingCharacters(in: .whitespacesAndNewlines)
+
+                if !claudeRunning.isEmpty {
+                    alreadyRunning += 1
+                    continue  // claude 실행 중 → 건너뜀
+                }
+
+                // claude 죽어있음 → 재시작 명령 전송
+                await ShellService.runAsync(
+                    "tmux send-keys -t 'claude-work:\(proj.name)' '' ''"
+                )
+                await ShellService.runAsync(
+                    "tmux send-keys -t 'claude-work:\(proj.name)' 'bash ~/.claude/scripts/tab-status.sh starting \(proj.name) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)' Enter"
+                )
+                restored += 1
+            } else {
+                // 창 없음 → 새로 생성
+                await ShellService.runAsync("tmux new-window -t claude-work -n '\(proj.name)' -c '\(expandedPath)'")
+                await ShellService.runAsync("tmux set-window-option -t 'claude-work:\(proj.name)' automatic-rename off 2>/dev/null")
+                await ShellService.runAsync(
+                    "tmux send-keys -t 'claude-work:\(proj.name)' 'bash ~/.claude/scripts/tab-status.sh starting \(proj.name) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)' Enter"
+                )
+                restored += 1
+            }
         }
 
         if restored > 0 {
-            return "🔧 죽은 윈도우 \(restored)개 복구 + intentional-stops 초기화"
+            return "🔧 \(restored)개 복구 (claude 재시작) + \(alreadyRunning)개 정상 실행 중"
         }
-        return "✅ 모든 윈도우 정상"
+        return "✅ 모든 세션 정상 실행 중 (\(alreadyRunning)개)"
     }
 
     func runInstall() async {
