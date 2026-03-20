@@ -1,6 +1,6 @@
 # TP_iTerm
 
-> v2.1 | 2026-03-20 | Ralph Loop 안정화 완료
+> v2.2 | 2026-03-20 | Ralph Loop 2차 전수조사 완료
 
 ## 개요
 
@@ -68,7 +68,7 @@ Mac 부팅
 ### scripts/ (12개)
 | 스크립트 | 역할 |
 |---------|------|
-| auto-restore.sh | 부팅 복원 (headless tmux 세션 생성, intentional-stop 제외) |
+| auto-restore.sh | 부팅 복원 (headless tmux 세션 생성, 레지스트리 초기화, intentional-stop 제외) |
 | auto-attach.sh | 부팅 후 90초 대기 → iTerm2 tmux -CC attach 실행 |
 | watchdog.sh | 30초 크래시 감지 + 시간 경과 표시 + 배지 설정 |
 | tab-focus-monitor.sh | 1초 탭 전환 감지 → 초록 복귀 |
@@ -146,6 +146,14 @@ open MAGI-Restore.app
 - Stop hook: intentional-stop 자동 등록 제거 — 명시적 CLI 전용으로 변경 (iter 19)
 - session-registry.sh: 알 수 없는 dir → intentional-stop 등록 건너뜀 (iter 18)
 - auto-attach.sh: LaunchAgent 추가, 재부팅 후 iTerm2 tmux -CC 자동 연결 (iter 10-12)
+
+## QA 결과 2차 (2026-03-20, Ralph Loop 2차 전수조사)
+
+- 부팅 오탐 크래시: auto-restore 레지스트리 초기화로 수정
+- watchdog 오탐 필터: session-registry crash-detect 개선
+- tmux 창이름 보존: automatic-rename off 적용
+- 세션 레지스트리: 14/14 완전 등록
+- 전체 스크립트 동기화: 12/12 ✅
 
 ## Ralph Loop 2차-4차 추가 안정화 (2026-03-20)
 

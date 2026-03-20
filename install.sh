@@ -68,7 +68,17 @@ defaults write com.googlecode.iterm2 TmuxDashboardLimit -int 20
 defaults write com.googlecode.iterm2 OpenTmuxDashboardIfHiddenWindows -bool false
 echo "  ✓ iTerm2 tmux 탭 모드 설정 (TmuxDashboardLimit=20, 대시보드 비활성화)"
 
-# 7. LaunchAgent 등록
+# 7. tmux automatic-rename 비활성화 (창이름 보존)
+if ! grep -q "automatic-rename" ~/.tmux.conf 2>/dev/null; then
+    echo "set -g automatic-rename off" >> ~/.tmux.conf
+    echo "  ✓ tmux automatic-rename off 설정 추가"
+else
+    echo "  ✓ tmux automatic-rename off 이미 설정됨"
+fi
+# 현재 실행 중인 claude-work 세션에도 적용
+tmux set-option -t claude-work automatic-rename off 2>/dev/null || true
+
+# 8. LaunchAgent 등록
 UID_NUM=$(id -u)
 for f in "$LAUNCH_DIR"/com.claude.*.plist; do
     LABEL=$(basename "$f" .plist)
