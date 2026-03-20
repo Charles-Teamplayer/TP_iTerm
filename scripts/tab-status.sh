@@ -89,6 +89,11 @@ rotate_log "$LOG" 10000 5000
 echo "[$(date '+%H:%M:%S')] ${STATUS} | ${PROJECT}" >> "$LOG" 2>/dev/null
 
 find_tty() {
+    # 0. 외부 주입 (watchdog 등 TTY 없는 프로세스가 명시적으로 전달)
+    if [ -n "${TAB_TTY:-}" ] && [ -c "$TAB_TTY" ]; then
+        echo "$TAB_TTY"; return
+    fi
+
     # 1. 환경변수
     if [ -n "${TTY:-}" ] && [ -c "$TTY" ]; then
         echo "$TTY"; return
@@ -96,7 +101,7 @@ find_tty() {
 
     # 2. 부모 PID 체인 (hook에서 호출 시 항상 성공)
     local PID=$$
-    for i in 1 2 3 4 5; do
+    for i in 1 2 3 4 5 6 7 8; do
         PID=$(ps -o ppid= -p "$PID" 2>/dev/null | tr -d ' ')
         [ -z "$PID" ] && break
         local TTY_DEV=$(ps -o tty= -p "$PID" 2>/dev/null | tr -d ' ')

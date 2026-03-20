@@ -1,6 +1,6 @@
 #!/bin/bash
 # Claude Code Auto-Restore Script
-# TP_iTerm 자동 복원 시스템 - LaunchAgent에서 호출
+# MAGI+NORN 자동 복원 시스템 - LaunchAgent에서 호출
 # 헤드리스 모드: tmux 세션만 생성 (iTerm2 의존성 제거)
 
 LOG_FILE="$HOME/.claude/logs/auto-restore.log"
@@ -83,19 +83,19 @@ tmux new-session -d -s claude-work -n monitor -c "$HOME/claude" 2>/dev/null
 
 PROJECTS=(
     "imsms:$HOME/claude/TP_newIMSMS:0"
-    "imsms-agent:$HOME/claude/TP_newIMSMS_Agent:5"
-    "mdm:$HOME/claude/TP_MDM:10"
-    "tesla-lvds:$HOME/claude/TP_TESLA_LVDS:15"
-    "tesla-dashboard:$HOME/ralph-claude-code/TESLA_Status_Dashboard:20"
-    "mindmap:$HOME/claude/TP_MindMap_AutoCC:25"
-    "sj-mindmap:$HOME/SJ_MindMap:30"
-    "imessage:$HOME/claude/TP_A.iMessage_standalone_01067051080:35"
-    "btt:$HOME/claude/TP_BTT:40"
-    "infra:$HOME/claude/TP_Infra_reduce_Project:45"
-    "skills:$HOME/claude/TP_skills:50"
-    "appletv:$HOME/claude/AppleTV_ScreenSaver.app:55"
-    "imsms-web:$HOME/claude/imsms.im-website:60"
-    "auto-restart:$HOME/claude/TP_iTerm:65"
+    "imsms-agent:$HOME/claude/TP_newIMSMS_Agent:3"
+    "mdm:$HOME/claude/TP_MDM:6"
+    "tesla-lvds:$HOME/claude/TP_TESLA_LVDS:9"
+    "tesla-dashboard:$HOME/ralph-claude-code/TESLA_Status_Dashboard:12"
+    "mindmap:$HOME/claude/TP_MindMap_AutoCC:15"
+    "sj-mindmap:$HOME/SJ_MindMap:18"
+    "imessage:$HOME/claude/TP_A.iMessage_standalone_01067051080:21"
+    "btt:$HOME/claude/TP_BTT:24"
+    "infra:$HOME/claude/TP_Infra_reduce_Project:27"
+    "skills:$HOME/claude/TP_skills:30"
+    "appletv:$HOME/claude/AppleTV_ScreenSaver.app:33"
+    "imsms-web:$HOME/claude/imsms.im-website:36"
+    "auto-restart:$HOME/claude/TP_iTerm:39"
 )
 
 CREATED=0
@@ -128,9 +128,9 @@ sleep 3
 SESSION_COUNT=$(tmux list-windows -t claude-work 2>/dev/null | wc -l | tr -d ' ')
 log "tmux 윈도우 ${SESSION_COUNT}개 활성"
 
-# Health check: 최대 delay(65초) + 여유 30초 후 claude 프로세스 확인
+# Health check: 최대 delay(39초) + 여유 30초 후 claude 프로세스 확인
 (
-    sleep 100
+    sleep 70
     CLAUDE_COUNT=$(ps aux | grep '[c]laude' | grep -v 'Claude.app\|Helper\|ShipIt\|watchdog\|auto-restore\|tab-focus' | grep -v '??' | wc -l | tr -d ' ')
     EXPECTED=$CREATED
     if [ "$CLAUDE_COUNT" -lt "$EXPECTED" ]; then

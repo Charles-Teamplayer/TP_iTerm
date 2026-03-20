@@ -50,7 +50,7 @@ rotate_stderr_log() {
 }
 
 notify() {
-    osascript -e "display notification \"$1\" with title \"TP_iTerm Watchdog\" sound name \"Basso\"" 2>/dev/null || true
+    osascript -e "display notification \"$1\" with title \"MAGI+NORN Watchdog\" sound name \"Basso\"" 2>/dev/null || true
 }
 
 # 환경변수 로드
@@ -87,8 +87,12 @@ while true; do
                 CRASH_PROJECT=$(echo "$line" | sed -n 's/.*CRASH DETECTED: \([^ ]*\).*/\1/p')
                 CRASH_PROJECT="${CRASH_PROJECT:-unknown}"
                 CRASH_TTY=$(echo "$line" | sed -n 's/.*TTY: \([^ ,]*\).*/\1/p')
-                # tab-status.sh 경유로 crashed 상태 표시 (TTY 직접 write 제거 — LaunchAgent 권한 문제 방지)
-                bash "$HOME/.claude/scripts/tab-status.sh" crashed "$CRASH_PROJECT" &
+                # TAB_TTY 주입으로 LaunchAgent 컨텍스트에서도 정확한 TTY에 색상 씀
+                if [ -n "$CRASH_TTY" ]; then
+                    TAB_TTY="/dev/${CRASH_TTY}" bash "$HOME/.claude/scripts/tab-status.sh" crashed "$CRASH_PROJECT" &
+                else
+                    bash "$HOME/.claude/scripts/tab-status.sh" crashed "$CRASH_PROJECT" &
+                fi
             done
 
             # 크래시된 세션 자동 재시작 (P0 수정: watchdog이 직접 복구)
