@@ -1,6 +1,6 @@
 # TP_iTerm
 
-> v2.2 | 2026-03-20 | Ralph Loop 2차 전수조사 완료
+> v2.2 | 2026-03-20 | Ralph Loop 2차-5차 안정화 완료
 
 ## 개요
 
@@ -163,3 +163,9 @@ open MAGI-Restore.app
 - configs/com.claude.auto-restore.plist: LimitLoadToSessionType 제거
 - tmux 창이름 정규화: mdm, appletv, auto-restart
 - 세션 레지스트리 14개 완전 등록 확인
+
+## Ralph Loop iter8 안정화 (2026-03-20)
+
+- MAGI-Restore-App/.gitignore: `.build/` 추가 (Swift 빌드 캐시 git 제외)
+- auto-restart tmux 창 panes 정리 (8 → 1)
+- 크래시 패턴 분석: 모든 프로젝트 15-19회 (reboot recovery 정상 패턴)
