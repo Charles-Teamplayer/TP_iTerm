@@ -63,6 +63,9 @@ with open(registry_path, 'w') as f:
 
 print(f"[URD] Session registered: $PROJECT_NAME (PID: ${PID:-unknown})")
 PYEOF
+        # 성공적으로 등록됐으면 크래시 카운터 리셋
+        CRASH_COUNT_FILE="/tmp/.claude-crash-counts/${PROJECT_NAME//[^a-zA-Z0-9_-]/_}"
+        [ -f "$CRASH_COUNT_FILE" ] && rm -f "$CRASH_COUNT_FILE"
         ;;
 
     unregister)
@@ -221,7 +224,18 @@ for session in data['sessions']:
         if found:
             alive.append(session)
         else:
-            crashed.append(session)
+            # PID unknown이고 ps에서 못 찾았을 때: tmux 윈도우 존재 확인 (오탐 방지)
+            window_check = subprocess.run(
+                ['tmux', 'list-windows', '-t', 'claude-work', '-F', '#{window_name}'],
+                capture_output=True, text=True
+            )
+            window_names = window_check.stdout.strip().splitlines()
+            # 프로젝트명으로 tmux 윈도우가 있으면 alive 처리
+            proj_base = os.path.basename(project_name) if project_name else ''
+            if any(proj_base.lower() in w.lower() or w.lower() in proj_base.lower() for w in window_names if w):
+                alive.append(session)
+            else:
+                crashed.append(session)
 
 if crashed:
     for s in crashed:

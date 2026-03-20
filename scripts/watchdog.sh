@@ -6,6 +6,9 @@ LOG_FILE="$HOME/.claude/logs/watchdog.log"
 REGISTRY="$HOME/.claude/active-sessions.json"
 RESTART_COOLDOWN=60  # 같은 프로젝트 재시작 간 최소 대기시간(초)
 RESTART_LOG="$HOME/.claude/logs/restart-history.log"
+CRASH_COUNT_DIR="/tmp/.claude-crash-counts"  # 연속 크래시 카운터 (재부팅 시 초기화)
+CRASH_MAX=5  # 이 횟수 초과 시 intentional-stop 등록
+mkdir -p "$CRASH_COUNT_DIR"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
@@ -143,11 +146,26 @@ while true; do
                     sleep 1
                 fi
 
+                # 연속 크래시 카운터 증가
+                CRASH_COUNT_FILE="$CRASH_COUNT_DIR/${RESTART_PROJECT//[^a-zA-Z0-9_-]/_}"
+                CURRENT_COUNT=0
+                [ -f "$CRASH_COUNT_FILE" ] && CURRENT_COUNT=$(cat "$CRASH_COUNT_FILE" 2>/dev/null || echo 0)
+                NEW_COUNT=$((CURRENT_COUNT + 1))
+                echo "$NEW_COUNT" > "$CRASH_COUNT_FILE"
+
+                # 연속 크래시 임계값 초과 시 intentional-stop 등록 (무한 루프 방지)
+                if [ "$NEW_COUNT" -gt "$CRASH_MAX" ]; then
+                    log "CRASH LOOP DETECTED: $RESTART_PROJECT (${NEW_COUNT}회) — intentional-stop 등록"
+                    notify "⚠️ $RESTART_PROJECT 연속 ${NEW_COUNT}회 크래시 — 자동 복원 중단"
+                    bash "$HOME/.claude/scripts/stop-session.sh" "$WINDOW_NAME" 2>/dev/null || true
+                    continue
+                fi
+
                 tmux new-window -t claude-work -n "$WINDOW_NAME" -c "$PROJ_PATH" 2>/dev/null
                 tmux set-window-option -t "claude-work:$WINDOW_NAME" automatic-rename off 2>/dev/null
                 tmux send-keys -t "claude-work:$WINDOW_NAME" "bash ~/.claude/scripts/tab-status.sh starting $WINDOW_NAME && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
 
-                log "AUTO-RESTART: $RESTART_PROJECT → tmux window $WINDOW_NAME"
+                log "AUTO-RESTART: $RESTART_PROJECT → tmux window $WINDOW_NAME (연속 ${NEW_COUNT}/${CRASH_MAX}회)"
                 notify "세션 자동 복구: $RESTART_PROJECT"
             done
         fi

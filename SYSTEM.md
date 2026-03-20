@@ -169,3 +169,7 @@ open MAGI-Restore.app
 - MAGI-Restore-App/.gitignore: `.build/` 추가 (Swift 빌드 캐시 git 제외)
 - auto-restart tmux 창 panes 정리 (8 → 1)
 - 크래시 패턴 분석: 모든 프로젝트 15-19회 (reboot recovery 정상 패턴)
+- watchdog.sh: 연속 크래시 카운터 추가 (CRASH_MAX=5, /tmp/.claude-crash-counts/)
+- session-registry.sh: PID unknown 오탐 방지 (tmux 윈도우 존재 확인) + register 시 크래시 카운터 리셋
+- tab-focus-monitor.sh: 헤더 v3 → v4
+- scripts/ 3개 파일 ~/.claude/scripts/ 동기화 완료

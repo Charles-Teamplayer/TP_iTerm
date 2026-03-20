@@ -1,5 +1,5 @@
 #!/bin/bash
-# iTerm2 탭 포커스 감지 데몬 v3
+# iTerm2 탭 포커스 감지 데몬 v4
 # 탭 선택 시 🟡/🟠/⚫/🔵 → 🟢 자동 전환
 
 STATE_DIR="$HOME/.claude/tab-states"
