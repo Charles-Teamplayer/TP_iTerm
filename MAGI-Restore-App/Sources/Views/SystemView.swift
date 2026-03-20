@@ -128,14 +128,26 @@ final class SystemViewModel: ObservableObject {
             guard dirExists.contains("YES") else { continue }
 
             if windowSet.contains(proj.name) {
-                // 창은 있지만 claude가 실행 중인지 TTY 기반으로 확인
-                let paneTty = await ShellService.runAsync(
-                    "tmux display-message -t 'claude-work:\(proj.name)' -p '#{pane_tty}' 2>/dev/null"
+                // 창은 있지만 claude가 실행 중인지 확인 (TTY 기반 + pgrep fallback)
+                let paneInfo = await ShellService.runAsync(
+                    "tmux display-message -t 'claude-work:\(proj.name)' -p '#{pane_tty}|#{pane_pid}' 2>/dev/null"
                 ).trimmingCharacters(in: .whitespacesAndNewlines)
+                let infoParts = paneInfo.components(separatedBy: "|")
+                let paneTty = infoParts.count > 0 ? infoParts[0] : ""
+                let panePid = infoParts.count > 1 ? infoParts[1] : ""
+
+                // 방법1: TTY 기반 (손자 프로세스도 탐지)
                 let ttyBase = paneTty.replacingOccurrences(of: "/dev/", with: "")
-                let claudeRunning = ttyBase.isEmpty ? "" : await ShellService.runAsync(
+                var claudeRunning = ttyBase.isEmpty ? "" : await ShellService.runAsync(
                     "ps -o pid,command -t '\(ttyBase)' 2>/dev/null | grep '[c]laude' | head -1"
                 ).trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // 방법2: pgrep fallback (TTY 실패 시)
+                if claudeRunning.isEmpty && !panePid.isEmpty {
+                    claudeRunning = await ShellService.runAsync(
+                        "pgrep -P \(panePid) -f claude 2>/dev/null"
+                    ).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
 
                 if !claudeRunning.isEmpty {
                     alreadyRunning += 1

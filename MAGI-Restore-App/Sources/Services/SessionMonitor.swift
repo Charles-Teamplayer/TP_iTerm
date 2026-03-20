@@ -29,7 +29,7 @@ final class SessionMonitor: ObservableObject {
         var matchedProjects = Set<String>()
 
         for tw in tmuxWindows {
-            let claudePid = await findClaudePid(panePid: tw.panePid)
+            let claudePid = await findClaudePid(panePid: tw.panePid, paneTty: tw.paneTty)
             let isRunning = claudePid != nil
 
             let activeInfo = activeSessions.first { info in
@@ -177,9 +177,21 @@ final class SessionMonitor: ObservableObject {
         }
     }
 
-    private func findClaudePid(panePid: Int) async -> Int? {
+    private func findClaudePid(panePid: Int, paneTty: String = "") async -> Int? {
+        // 방법1: TTY 기반 (손자 프로세스도 탐지)
+        if !paneTty.isEmpty {
+            let ttyBase = (paneTty as NSString).lastPathComponent
+            if !ttyBase.isEmpty {
+                let ttyResult = await ShellService.runAsync(
+                    "ps -o pid,tty,command -ax 2>/dev/null | grep '\(ttyBase)' | grep '[c]laude' | grep -v grep | awk '{print $1}'"
+                )
+                let ttyPid = ttyResult.components(separatedBy: "\n").first?.trimmingCharacters(in: .whitespaces) ?? ""
+                if let pid = Int(ttyPid) { return pid }
+            }
+        }
+        // 방법2: pgrep fallback (직계 자식)
         let output = await ShellService.runAsync(
-            "pgrep -P \(panePid) -f claude 2>/dev/null || ps -o pid= -o comm= -p $(pgrep -P \(panePid) 2>/dev/null | tr '\\n' ',')0 2>/dev/null | grep claude | awk '{print $1}'"
+            "pgrep -P \(panePid) -f claude 2>/dev/null"
         )
         let firstLine = output.components(separatedBy: "\n").first ?? ""
         return Int(firstLine.trimmingCharacters(in: .whitespaces))

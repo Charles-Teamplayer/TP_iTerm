@@ -176,11 +176,16 @@ while true; do
     NOW=$(date +%s)
     STATE_DIR="$HOME/.claude/tab-states"
     if [ -d "$STATE_DIR" ]; then
+        # 고아 tab-states 정리: TTY가 사라진 파일 자동 삭제
         for STATE_FILE in "$STATE_DIR"/ttys*; do
             [ ! -f "$STATE_FILE" ] && continue
             TTY_NAME=$(basename "$STATE_FILE")
             TTY_PATH="/dev/$TTY_NAME"
-            [ ! -c "$TTY_PATH" ] && continue
+            if [ ! -c "$TTY_PATH" ]; then
+                rm -f "$STATE_FILE"
+                log "CLEANUP: orphan tab-state removed: $TTY_NAME"
+                continue
+            fi
             [ ! -w "$TTY_PATH" ] && continue
 
             TAB_STATUS=$(cut -d'|' -f1 "$STATE_FILE" 2>/dev/null)
