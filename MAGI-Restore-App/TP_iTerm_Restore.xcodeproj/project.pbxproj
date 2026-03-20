@@ -34,7 +34,7 @@
 		7A0122D26C65168C8806ED4B /* SmugProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmugProfile.swift; sourceTree = "<group>"; };
 		8F636E663B5B9212BD339941 /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
 		BA9B2587FF68CBB505C0BF25 /* TPiTermRestoreApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPiTermRestoreApp.swift; sourceTree = "<group>"; };
-		C81A8F1E1BAA7C38CDC8606E /* TP-iTerm-Restore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TP-iTerm-Restore.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C81A8F1E1BAA7C38CDC8606E /* TP_iTerm_Restore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TP_iTerm_Restore.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F218EEF3CA14E2C115B5944B /* ShellService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellService.swift; sourceTree = "<group>"; };
 		FD978A2A166A0C15F4569EAF /* BackupConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupConfig.swift; sourceTree = "<group>"; };
 		FEBD40BFF204EF0867586A63 /* SessionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitor.swift; sourceTree = "<group>"; };
@@ -76,7 +76,7 @@
 		C6FA5714B00CE38121BF430F /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				C81A8F1E1BAA7C38CDC8606E /* TP-iTerm-Restore.app */,
+				C81A8F1E1BAA7C38CDC8606E /* TP_iTerm_Restore.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -105,9 +105,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		FF275424AFB36AE9BEB6226D /* TP-iTerm-Restore */ = {
+		FF275424AFB36AE9BEB6226D /* TP_iTerm_Restore */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = BA9BA60CB62B7C4C23394B55 /* Build configuration list for PBXNativeTarget "TP-iTerm-Restore" */;
+			buildConfigurationList = BA9BA60CB62B7C4C23394B55 /* Build configuration list for PBXNativeTarget "TP_iTerm_Restore" */;
 			buildPhases = (
 				E3FA86E4C1028DD349DA91EA /* Sources */,
 			);
@@ -115,11 +115,11 @@
 			);
 			dependencies = (
 			);
-			name = "TP-iTerm-Restore";
+			name = "TP_iTerm_Restore";
 			packageProductDependencies = (
 			);
-			productName = "TP-iTerm-Restore";
-			productReference = C81A8F1E1BAA7C38CDC8606E /* TP-iTerm-Restore.app */;
+			productName = "TP_iTerm_Restore";
+			productReference = C81A8F1E1BAA7C38CDC8606E /* TP_iTerm_Restore.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -131,7 +131,7 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1500;
 			};
-			buildConfigurationList = 54EC68176ED9980E62785D6E /* Build configuration list for PBXProject "TP-iTerm-Restore" */;
+			buildConfigurationList = 54EC68176ED9980E62785D6E /* Build configuration list for PBXProject "TP_iTerm_Restore" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -145,7 +145,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				FF275424AFB36AE9BEB6226D /* TP-iTerm-Restore */,
+				FF275424AFB36AE9BEB6226D /* TP_iTerm_Restore */,
 			);
 		};
 /* End PBXProject section */
@@ -241,7 +241,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.teample.TP-iTerm-Restore";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.teample.TP_iTerm_Restore";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -323,7 +323,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.teample.TP-iTerm-Restore";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.teample.TP_iTerm_Restore";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -335,7 +335,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		54EC68176ED9980E62785D6E /* Build configuration list for PBXProject "TP-iTerm-Restore" */ = {
+		54EC68176ED9980E62785D6E /* Build configuration list for PBXProject "TP_iTerm_Restore" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				E558A9B172606C66D3E20721 /* Debug */,
@@ -344,7 +344,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		BA9BA60CB62B7C4C23394B55 /* Build configuration list for PBXNativeTarget "TP-iTerm-Restore" */ = {
+		BA9BA60CB62B7C4C23394B55 /* Build configuration list for PBXNativeTarget "TP_iTerm_Restore" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				032D4909DEEA34BCB363E5EC /* Debug */,

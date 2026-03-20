@@ -8,6 +8,11 @@ struct ShellService {
         process.arguments = ["-c", command]
         process.standardOutput = pipe
         process.standardError = pipe
+        // GUI 앱은 PATH 상속 안 함 → homebrew/tmux/claude 경로 명시
+        var env = ProcessInfo.processInfo.environment
+        let extraPaths = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin"
+        env["PATH"] = extraPaths + ":" + (env["PATH"] ?? "/usr/bin:/bin")
+        process.environment = env
         try? process.run()
         process.waitUntilExit()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()

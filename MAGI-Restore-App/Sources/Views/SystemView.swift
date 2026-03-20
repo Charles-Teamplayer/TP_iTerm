@@ -67,34 +67,6 @@ final class SystemViewModel: ObservableObject {
 
         isRestoring = false
         await refresh()
-
-        // 복원 후 iTerm2에 tmux 세션 연결
-        await attachToITerm()
-    }
-
-    private func attachToITerm() async {
-        // 이미 iTerm2에 claude-work가 연결되어 있으면 그냥 activate만
-        let alreadyAttached = await ShellService.runAsync(
-            "tmux list-clients -t claude-work 2>/dev/null | grep -c ."
-        ).trimmingCharacters(in: .whitespacesAndNewlines)
-        let clientCount = Int(alreadyAttached) ?? 0
-
-        let script: String
-        if clientCount > 0 {
-            // 이미 연결된 클라이언트 있음 → iTerm2 앞으로 가져오기만
-            script = "tell application \"iTerm2\" to activate"
-        } else {
-            // 연결된 클라이언트 없음 → 새 창으로 attach
-            script = """
-tell application "iTerm2"
-    activate
-    create window with default profile command "tmux -CC attach -t claude-work"
-end tell
-"""
-        }
-        let tmpPath = "/tmp/magi-attach.scpt"
-        try? script.write(toFile: tmpPath, atomically: true, encoding: .utf8)
-        await ShellService.runAsync("osascript \(tmpPath)")
     }
 
     private func repairDeadWindows() async -> String {
@@ -145,9 +117,6 @@ end tell
                 }
 
                 // claude 죽어있음 → 재시작 명령 전송
-                await ShellService.runAsync(
-                    "tmux send-keys -t 'claude-work:\(proj.name)' '' ''"
-                )
                 await ShellService.runAsync(
                     "tmux send-keys -t 'claude-work:\(proj.name)' 'bash ~/.claude/scripts/tab-status.sh starting \(proj.name) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)' Enter"
                 )
