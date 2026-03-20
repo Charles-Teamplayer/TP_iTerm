@@ -63,10 +63,28 @@ final class SystemViewModel: ObservableObject {
         } else {
             let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
             restoreLog = await ShellService.runAsync("bash '\(scriptPath)' --force 2>&1")
+            // 세션 새로 생성됐으니 iTerm2에 attach 명령 전송 (딜레이 후)
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
         }
+
+        // tmux 복원 후 iTerm2 현재 창에 attach 명령 전송
+        await attachTmuxToITerm()
 
         isRestoring = false
         await refresh()
+    }
+
+    private func attachTmuxToITerm() async {
+        let script = """
+        osascript -e 'tell application "iTerm2"
+            tell current window
+                tell current session of current tab
+                    write text "tmux -CC attach -t claude-work"
+                end tell
+            end tell
+        end tell'
+        """
+        await ShellService.runAsync(script)
     }
 
     private func repairDeadWindows() async -> String {
