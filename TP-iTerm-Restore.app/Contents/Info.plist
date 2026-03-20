@@ -5,11 +5,11 @@
 	<key>BuildMachineOSBuild</key>
 	<string>25C56</string>
 	<key>CFBundleExecutable</key>
-	<string>MAGI-Restore</string>
+	<string>TP-iTerm-Restore</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.teample.MAGI-Restore</string>
+	<string>com.teample.TP-iTerm-Restore</string>
 	<key>CFBundleName</key>
-	<string>MAGI-Restore</string>
+	<string>TP_iTerm_Restore</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -39,7 +39,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>MAGI-Restore가 iTerm2를 제어하여 tmux 세션을 복원합니다.</string>
+	<string>TP_iTerm_Restore가 iTerm2를 제어하여 tmux 세션을 복원합니다.</string>
 	<key>NSAppleScriptEnabled</key>
 	<true/>
 	<key>NSPrincipalClass</key>

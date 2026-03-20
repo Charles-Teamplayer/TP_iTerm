@@ -1,4 +1,4 @@
-name: MAGI-Restore
+name: TP-iTerm-Restore
 options:
   bundleIdPrefix: com.teample
   deploymentTarget:
@@ -10,11 +10,11 @@ settings:
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGNING_REQUIRED: "NO"
     INFOPLIST_FILE: "Sources/Info.plist"
-    PRODUCT_BUNDLE_IDENTIFIER: "com.teample.MAGI-Restore"
+    PRODUCT_BUNDLE_IDENTIFIER: "com.teample.TP-iTerm-Restore"
     ARCHS: "arm64"
     ONLY_ACTIVE_ARCH: "NO"
 targets:
-  MAGI-Restore:
+  TP-iTerm-Restore:
     type: application
     platform: macOS
     sources:

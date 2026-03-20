@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>MAGI-Restore</string>
+    <string>TP_iTerm_Restore</string>
     <key>CFBundleIdentifier</key>
-    <string>com.teample.MAGI-Restore</string>
+    <string>com.teample.TP-iTerm-Restore</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
@@ -19,7 +19,7 @@
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>NSAppleEventsUsageDescription</key>
-    <string>MAGI-Restore가 iTerm2를 제어하여 tmux 세션을 복원합니다.</string>
+    <string>TP_iTerm_Restore가 iTerm2를 제어하여 tmux 세션을 복원합니다.</string>
     <key>NSAppleScriptEnabled</key>
     <true/>
 </dict>

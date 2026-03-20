@@ -30,7 +30,7 @@ final class SystemViewModel: ObservableObject {
         }
         daemons = updated
 
-        let output = await ShellService.runAsync("ps aux | grep '[c]laude' | grep -v 'MAGI\\|watchdog\\|auto-restore\\|tab-focus'")
+        let output = await ShellService.runAsync("ps aux | grep '[c]laude' | grep -v 'TP.iTerm.Restore\\|TP_iTerm_Restore\\|watchdog\\|auto-restore\\|tab-focus'")
         sessionCount = output.isEmpty ? 0 : output.components(separatedBy: "\n").filter { !$0.isEmpty }.count
 
         let tmuxCheck = await ShellService.runAsync("tmux has-session -t claude-work 2>/dev/null && echo YES || echo NO")
@@ -118,6 +118,7 @@ end tell
             guard dirExists.contains("YES") else { continue }
 
             await ShellService.runAsync("tmux new-window -t claude-work -n '\(proj.name)' -c '\(expandedPath)'")
+            await ShellService.runAsync("tmux set-window-option -t 'claude-work:\(proj.name)' automatic-rename off 2>/dev/null")
             await ShellService.runAsync("tmux send-keys -t 'claude-work:\(proj.name)' 'bash ~/.claude/scripts/tab-status.sh starting \(proj.name) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)' Enter")
             restored += 1
         }

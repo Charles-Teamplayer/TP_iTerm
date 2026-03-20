@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "MAGIRestore",
+    name: "TPiTermRestore",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "MAGIRestore",
+            name: "TPiTermRestore",
             path: "Sources"
         )
     ]

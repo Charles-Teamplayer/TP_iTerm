@@ -29,7 +29,7 @@ struct ContentView: View {
                     .tag(item)
             }
             .listStyle(.sidebar)
-            .navigationTitle("MAGI Restore")
+            .navigationTitle("TP_iTerm Restore")
         } detail: {
             switch selectedSidebar {
             case .sessions:

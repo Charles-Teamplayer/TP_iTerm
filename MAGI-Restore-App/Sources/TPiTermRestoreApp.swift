@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct MAGIRestoreApp: App {
+struct TPiTermRestoreApp: App {
     @StateObject private var menuBarState = MenuBarState()
 
     var body: some Scene {
@@ -40,7 +40,7 @@ final class MenuBarState: ObservableObject {
     }
 
     func refresh() async {
-        let output = await ShellService.runAsync("ps aux | grep '[c]laude' | grep -v 'MAGI\\|watchdog\\|auto-restore\\|tab-focus'")
+        let output = await ShellService.runAsync("ps aux | grep '[c]laude' | grep -v 'TP.iTerm.Restore\\|TP_iTerm_Restore\\|watchdog\\|auto-restore\\|tab-focus'")
         sessionCount = output.isEmpty ? 0 : output.components(separatedBy: "\n").filter { !$0.isEmpty }.count
 
         let labels = ["com.claude.watchdog", "com.claude.tab-focus-monitor"]
@@ -79,7 +79,7 @@ struct MenuBarMenuView: View {
     @ObservedObject var state: MenuBarState
 
     var body: some View {
-        Text("MAGI Restore")
+        Text("TP_iTerm Restore")
             .font(.headline)
         Divider()
         Text("Claude 세션: \(state.sessionCount)개")
