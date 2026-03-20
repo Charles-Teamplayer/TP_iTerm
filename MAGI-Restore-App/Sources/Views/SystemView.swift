@@ -75,9 +75,11 @@ final class SystemViewModel: ObservableObject {
     }
 
     private func attachTmuxToITerm() async {
+        // 새 탭을 열어서 attach — 현재 탭(Claude Code 등)에 명령이 섞이는 것 방지
         let script = """
         osascript -e 'tell application "iTerm2"
             tell current window
+                create tab with default profile
                 tell current session of current tab
                     write text "tmux -CC attach -t claude-work"
                 end tell
