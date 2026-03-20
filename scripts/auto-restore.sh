@@ -1,6 +1,6 @@
 #!/bin/bash
 # Claude Code Auto-Restore Script
-# MAGI+NORN 자동 복원 시스템 - LaunchAgent에서 호출
+# TP_iTerm 자동 복원 시스템 - LaunchAgent에서 호출
 # 헤드리스 모드: tmux 세션만 생성 (iTerm2 의존성 제거)
 
 LOG_FILE="$HOME/.claude/logs/auto-restore.log"

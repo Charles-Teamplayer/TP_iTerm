@@ -50,7 +50,7 @@ rotate_stderr_log() {
 }
 
 notify() {
-    osascript -e "display notification \"$1\" with title \"MAGI+NORN Watchdog\" sound name \"Basso\"" 2>/dev/null || true
+    osascript -e "display notification \"$1\" with title \"TP_iTerm Watchdog\" sound name \"Basso\"" 2>/dev/null || true
 }
 
 # 환경변수 로드

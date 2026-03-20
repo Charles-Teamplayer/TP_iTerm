@@ -1,5 +1,5 @@
 #!/bin/bash
-# MAGI+NORN Health Check — 전체 시스템 상태 한눈에 확인
+# TP_iTerm Health Check — 전체 시스템 상태 한눈에 확인
 # 사용법: bash ~/.claude/scripts/health-check.sh
 
 RED='\033[0;31m'
@@ -14,13 +14,13 @@ fail() { echo -e "  ${RED}❌${NC} $1"; }
 warn() { echo -e "  ${YELLOW}⚠️ ${NC} $1"; }
 info() { echo -e "  ${CYAN}ℹ️ ${NC} $1"; }
 
-echo -e "\n${BOLD}━━━ MAGI+NORN Health Check ━━━${NC}"
+echo -e "\n${BOLD}━━━ TP_iTerm Health Check ━━━${NC}"
 echo -e "$(date '+%Y-%m-%d %H:%M:%S')\n"
 
 # 1. LaunchAgent 상태
 echo -e "${BOLD}[1] LaunchAgent 상태${NC}"
 UID_NUM=$(id -u)
-for SVC in auto-restore auto-attach magi-restore watchdog tab-focus-monitor; do
+for SVC in auto-restore auto-attach tp-iterm-restore watchdog tab-focus-monitor; do
     LABEL="com.claude.$SVC"
     if launchctl list | grep -q "$LABEL"; then
         PID=$(launchctl list | grep "$LABEL" | awk '{print $1}')

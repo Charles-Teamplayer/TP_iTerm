@@ -29,3 +29,4 @@ build/
 *.log
 logs/
 MAGI-Restore-App/.build/
+TP-iTerm-Restore-App/.build/
