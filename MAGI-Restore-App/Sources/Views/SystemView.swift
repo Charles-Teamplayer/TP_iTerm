@@ -21,6 +21,20 @@ final class SystemViewModel: ObservableObject {
     @Published var restoreLog: String = ""
     @Published var tmuxSessionExists: Bool = false
 
+    private var refreshTimer: Timer?
+
+    func startAutoRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.refresh() }
+        }
+    }
+
+    func stopAutoRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
     func refresh() async {
         var updated = daemons
         for i in updated.indices {
@@ -30,8 +44,22 @@ final class SystemViewModel: ObservableObject {
         }
         daemons = updated
 
-        let output = await ShellService.runAsync("ps aux | grep '[c]laude' | grep -v 'TP.iTerm.Restore\\|TP_iTerm_Restore\\|watchdog\\|auto-restore\\|tab-focus'")
-        sessionCount = output.isEmpty ? 0 : output.components(separatedBy: "\n").filter { !$0.isEmpty }.count
+        // TTY 기반: tmux 각 윈도우의 pane에서 claude 프로세스 카운트
+        let windowNames = await ShellService.runAsync("tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null")
+        let windows = windowNames.components(separatedBy: "\n").filter { !$0.isEmpty }
+        var count = 0
+        for win in windows {
+            let paneInfo = await ShellService.runAsync(
+                "tmux display-message -t 'claude-work:\(win)' -p '#{pane_tty}' 2>/dev/null"
+            ).trimmingCharacters(in: .whitespacesAndNewlines)
+            let ttyBase = paneInfo.replacingOccurrences(of: "/dev/", with: "")
+            guard !ttyBase.isEmpty else { continue }
+            let procs = await ShellService.runAsync("ps -o command -t '\(ttyBase)' 2>/dev/null | grep '[c]laude' | head -1")
+            if !procs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                count += 1
+            }
+        }
+        sessionCount = count
 
         let tmuxCheck = await ShellService.runAsync("tmux has-session -t claude-work 2>/dev/null && echo YES || echo NO")
         tmuxSessionExists = tmuxCheck.contains("YES")
@@ -53,17 +81,19 @@ final class SystemViewModel: ObservableObject {
     func runRestore() async {
         guard !isRestoring else { return }
         isRestoring = true
-        restoreLog = ""
+        restoreLog = "⏳ 세션 상태 확인 중..."
 
         let sessionExists = await ShellService.runAsync("tmux has-session -t claude-work 2>/dev/null && echo YES || echo NO")
 
         if sessionExists.contains("YES") {
+            restoreLog = "⏳ 죽은 세션 점검 중..."
             let repairResult = await repairDeadWindows()
             restoreLog = repairResult
         } else {
+            restoreLog = "⏳ 전체 세션 새로 생성 중... (약 10초 소요)"
             let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
-            restoreLog = await ShellService.runAsync("bash '\(scriptPath)' --force 2>&1")
-            // 세션 새로 생성됐으니 iTerm2에 attach 명령 전송 (딜레이 후)
+            let result = await ShellService.runAsync("bash '\(scriptPath)' --force 2>&1")
+            restoreLog = result.isEmpty ? "⚠️ auto-restore 출력 없음" : result
             try? await Task.sleep(nanoseconds: 5_000_000_000)
         }
 
@@ -71,16 +101,35 @@ final class SystemViewModel: ObservableObject {
         await attachTmuxToITerm()
 
         // attach 후 4초 대기 → 탭 색상 복원
+        restoreLog += "\n⏳ 탭 색상 복원 중..."
         try? await Task.sleep(nanoseconds: 4_000_000_000)
         let restoreColorScript = NSHomeDirectory() + "/.claude/scripts/restore-tab-colors.sh"
-        await ShellService.runAsync("bash '\(restoreColorScript)'")
+        let colorResult = await ShellService.runAsync("bash '\(restoreColorScript)' 2>&1")
+        if colorResult.lowercased().contains("error") {
+            restoreLog += "\n⚠️ 색상 복원 일부 실패"
+        } else if let range = colorResult.range(of: #"(\d+)"#, options: .regularExpression) {
+            let count = colorResult[range]
+            restoreLog += "\n🎨 탭 색상 \(count)개 복원"
+        } else {
+            restoreLog += "\n🎨 탭 색상 복원 완료"
+        }
 
         isRestoring = false
         await refresh()
     }
 
     private func attachTmuxToITerm() async {
-        // 새 탭을 열어서 attach — 현재 탭(Claude Code 등)에 명령이 섞이는 것 방지
+        let alreadyAttached = await ShellService.runAsync(
+            "tmux list-clients -t claude-work -F '#{client_flags}' 2>/dev/null | grep -q 'control-mode' && echo YES || echo NO"
+        )
+
+        if alreadyAttached.contains("YES") {
+            restoreLog += "\n✅ iTerm2 이미 연결됨"
+            return
+        }
+
+        restoreLog += "\n🔗 iTerm2 새 탭으로 연결 중..."
+
         let script = """
         osascript -e 'tell application "iTerm2"
             tell current window
@@ -89,9 +138,12 @@ final class SystemViewModel: ObservableObject {
                     write text "tmux -CC attach -t claude-work"
                 end tell
             end tell
-        end tell'
+        end tell' 2>&1
         """
-        await ShellService.runAsync(script)
+        let result = await ShellService.runAsync(script)
+        if result.lowercased().contains("error") {
+            restoreLog += "\n⚠️ iTerm2 연결 실패: \(String(result.prefix(120)))"
+        }
     }
 
     private func repairDeadWindows() async -> String {
@@ -271,7 +323,11 @@ struct SystemView: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { Task { await vm.refresh() } }
+        .onAppear {
+            Task { await vm.refresh() }
+            vm.startAutoRefresh()
+        }
+        .onDisappear { vm.stopAutoRefresh() }
         .sheet(isPresented: $showRestoreLog) {
             VStack(alignment: .leading) {
                 HStack {

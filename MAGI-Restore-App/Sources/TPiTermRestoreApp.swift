@@ -40,8 +40,21 @@ final class MenuBarState: ObservableObject {
     }
 
     func refresh() async {
-        let output = await ShellService.runAsync("ps aux | grep '[c]laude' | grep -v 'TP.iTerm.Restore\\|TP_iTerm_Restore\\|watchdog\\|auto-restore\\|tab-focus'")
-        sessionCount = output.isEmpty ? 0 : output.components(separatedBy: "\n").filter { !$0.isEmpty }.count
+        let windowNames = await ShellService.runAsync("tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null")
+        let windows = windowNames.components(separatedBy: "\n").filter { !$0.isEmpty }
+        var count = 0
+        for win in windows {
+            let paneInfo = await ShellService.runAsync(
+                "tmux display-message -t 'claude-work:\(win)' -p '#{pane_tty}' 2>/dev/null"
+            ).trimmingCharacters(in: .whitespacesAndNewlines)
+            let ttyBase = paneInfo.replacingOccurrences(of: "/dev/", with: "")
+            guard !ttyBase.isEmpty else { continue }
+            let procs = await ShellService.runAsync("ps -o command -t '\(ttyBase)' 2>/dev/null | grep '[c]laude' | head -1")
+            if !procs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                count += 1
+            }
+        }
+        sessionCount = count
 
         let labels = ["com.claude.watchdog", "com.claude.tab-focus-monitor"]
         var allRunning = true

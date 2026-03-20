@@ -65,7 +65,7 @@ Mac 부팅
 |------|------|
 | tab_focus_status.py | iTerm2 Python API로 탭 포커스 감지 → 배지 클리어 (tmux -CC 안전) |
 
-### scripts/ (12개)
+### scripts/ (13개)
 | 스크립트 | 역할 |
 |---------|------|
 | auto-restore.sh | 부팅 복원 (headless tmux 세션 생성, 레지스트리 초기화, intentional-stop 제외) |
@@ -79,6 +79,7 @@ Mac 부팅
 | agent-count.sh | 활성 에이전트 수 카운트 |
 | computer-use-overlay.sh | Computer Use 오버레이 표시 |
 | computer-use-start.sh | Computer Use 세션 시작 |
+| restore-tab-colors.sh | tab-states 기반 탭 색상 복원 (tmux reattach/TP_iTerm_Restore 후) |
 | share-to-imessage.sh | iMessage로 공유 |
 
 ### LaunchAgent 데몬 (5개 핵심)

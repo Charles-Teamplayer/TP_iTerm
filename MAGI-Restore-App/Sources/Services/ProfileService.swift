@@ -31,6 +31,20 @@ final class ProfileService: ObservableObject {
         save(updated)
     }
 
+    private func stableID(for name: String) -> UUID {
+        let data = Data(name.utf8)
+        var bytes = [UInt8](repeating: 0, count: 16)
+        for (i, byte) in data.enumerated() {
+            bytes[i % 16] ^= byte
+        }
+        bytes[6] = (bytes[6] & 0x0F) | 0x50
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3],
+                           bytes[4], bytes[5], bytes[6], bytes[7],
+                           bytes[8], bytes[9], bytes[10], bytes[11],
+                           bytes[12], bytes[13], bytes[14], bytes[15]))
+    }
+
     private func parseYml(_ contents: String) -> [SmugProfile] {
         var result: [SmugProfile] = []
         let lines = contents.components(separatedBy: "\n")
@@ -44,14 +58,13 @@ final class ProfileService: ObservableObject {
 
             if trimmed.hasPrefix("- name:") {
                 if let name = currentName {
-                    let profile = SmugProfile(
-                        id: UUID(),
+                    result.append(SmugProfile(
+                        id: stableID(for: name),
                         name: name,
                         root: currentRoot ?? "",
                         delay: currentDelay,
                         enabled: true
-                    )
-                    result.append(profile)
+                    ))
                 }
                 currentName = extractValue(from: trimmed, key: "- name:")
                 currentRoot = nil
@@ -59,7 +72,6 @@ final class ProfileService: ObservableObject {
             } else if trimmed.hasPrefix("root:") {
                 currentRoot = extractValue(from: trimmed, key: "root:")
             } else if trimmed.contains("sleep") {
-                // sleep 0 && bash ... 패턴에서 delay 추출
                 if let sleepRange = trimmed.range(of: "sleep ") {
                     let afterSleep = String(trimmed[sleepRange.upperBound...])
                     let sleepVal = afterSleep.components(separatedBy: " ").first ?? "0"
@@ -69,14 +81,13 @@ final class ProfileService: ObservableObject {
         }
 
         if let name = currentName {
-            let profile = SmugProfile(
-                id: UUID(),
+            result.append(SmugProfile(
+                id: stableID(for: name),
                 name: name,
                 root: currentRoot ?? "",
                 delay: currentDelay,
                 enabled: true
-            )
-            result.append(profile)
+            ))
         }
 
         return result

@@ -11,7 +11,7 @@ final class SessionMonitor: ObservableObject {
 
     func start() {
         Task { await refresh() }
-        timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
         }
     }
