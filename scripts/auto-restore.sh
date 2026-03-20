@@ -115,6 +115,7 @@ for proj in "${PROJECTS[@]}"; do
     fi
 
     tmux new-window -t claude-work -n "$NAME" -c "$PROJ_PATH" 2>/dev/null
+    tmux set-window-option -t "claude-work:$NAME" automatic-rename off 2>/dev/null
     tmux send-keys -t "claude-work:$NAME" "sleep $DELAY && bash ~/.claude/scripts/tab-status.sh starting $NAME && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)" Enter
     CREATED=$((CREATED + 1))
     log "tmux 윈도우 생성: $NAME (delay ${DELAY}s)"
