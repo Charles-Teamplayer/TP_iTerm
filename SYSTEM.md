@@ -65,10 +65,11 @@ Mac 부팅
 |------|------|
 | tab_focus_status.py | iTerm2 Python API로 탭 포커스 감지 → 배지 클리어 (tmux -CC 안전) |
 
-### scripts/ (11개)
+### scripts/ (12개)
 | 스크립트 | 역할 |
 |---------|------|
 | auto-restore.sh | 부팅 복원 (headless tmux 세션 생성, intentional-stop 제외) |
+| auto-attach.sh | 부팅 후 90초 대기 → iTerm2 tmux -CC attach 실행 |
 | watchdog.sh | 30초 크래시 감지 + 시간 경과 표시 + 배지 설정 |
 | tab-focus-monitor.sh | 1초 탭 전환 감지 → 초록 복귀 |
 | tab-status.sh | 탭 배경색 + 제목 설정 (7개 상태) + 배지 클리어 연동 |

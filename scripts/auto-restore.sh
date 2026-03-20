@@ -64,6 +64,16 @@ is_stopped() {
 if tmux has-session -t claude-work 2>/dev/null; then
     log "기존 claude-work tmux 세션 종료"
     tmux kill-session -t claude-work 2>/dev/null || true
+    # 레지스트리 초기화 (이전 PID들로 인한 watchdog 오탐 방지)
+    python3 -c "
+import json, os
+path = os.path.expanduser('~/.claude/active-sessions.json')
+from datetime import datetime, timezone
+data = {'sessions': [], 'last_updated': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'version': '1.0'}
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+print('[auto-restore] Registry cleared (reboot recovery)')
+" 2>/dev/null || true
     sleep 2
 fi
 
