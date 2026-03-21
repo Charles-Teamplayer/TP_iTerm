@@ -12,7 +12,7 @@ import signal
 import time
 
 ENV = {**os.environ, "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"}
-STATE_DIR = os.path.expanduser("~/.claude/tab-states")
+STATE_DIR = os.path.expanduser("~/.claude/tab-color/states")
 LOG_FILE = os.path.expanduser("~/.claude/logs/focus-monitor-py.log")
 
 
@@ -87,47 +87,26 @@ def _kill_flash(tty_name):
 
 
 def _restore_active(tty, tty_name):
-    """attention → active 상태 복원 (색상 + 상태파일 + 배지 클리어)"""
-    state_file = os.path.join(STATE_DIR, tty_name)
+    """attention → active 상태 복원 (v3 엔진 호출)"""
+    state_file = os.path.join(STATE_DIR, f"{tty_name}.json")
     if not os.path.exists(state_file):
         return
     try:
+        import json
         with open(state_file) as f:
-            content = f.read().strip()
-    except OSError:
+            data = json.load(f)
+    except Exception:
         return
-    if not content.startswith("attention"):
+    if data.get("type") != "attention":
         return
 
-    parts = content.split("|")
-    project = parts[1] if len(parts) > 1 else ""
-
+    project = data.get("project", "")
+    engine = os.path.expanduser("~/.claude/tab-color/engine/set-color.sh")
+    env_with_tty = {**ENV, "TAB_TTY": tty}
     subprocess.run(
-        ["bash", "-c",
-         f"printf '\\e]6;1;bg;red;brightness;0\\a"
-         f"\\e]6;1;bg;green;brightness;220\\a"
-         f"\\e]6;1;bg;blue;brightness;0\\a' > {tty} 2>/dev/null;"
-         f"printf '\\e]1337;SetBadgeFormat=\\a' > {tty} 2>/dev/null"],
-        check=False, env=ENV
+        ["bash", engine, "active", project],
+        env=env_with_tty, check=False
     )
-
-    with open(state_file, "w") as f:
-        f.write(f"active|{project}|{int(time.time())}")
-
-    json_file = os.path.join(STATE_DIR, f"{tty_name}.json")
-    if os.path.exists(json_file):
-        try:
-            import json
-            with open(json_file) as jf:
-                data = json.load(jf)
-            data["type"] = "active"
-            data["color"] = {"r": 0, "g": 220, "b": 0}
-            data["timestamp"] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-            with open(json_file, "w") as jf:
-                json.dump(data, jf)
-        except Exception:
-            pass
-
     _log(f"attention → active ({project}, {tty_name})")
 
 

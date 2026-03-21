@@ -1,0 +1,76 @@
+{
+  "version": 3,
+  "_comment": "탭 색상 시스템 v3 — 이 파일 하나로 모든 색상/동작 설정",
+  "states": {
+    "active": {
+      "color": [0, 220, 0],
+      "title_prefix": "",
+      "badge": ""
+    },
+    "working": {
+      "color": [255, 230, 0],
+      "title_prefix": "⚡",
+      "badge": ""
+    },
+    "waiting": {
+      "color": [0, 120, 255],
+      "title_prefix": "✅",
+      "badge": ""
+    },
+    "idle": {
+      "color": [255, 140, 0],
+      "title_prefix": "",
+      "badge": ""
+    },
+    "stale": {
+      "color": [80, 80, 80],
+      "title_prefix": "",
+      "badge": "💤"
+    },
+    "starting": {
+      "color": [0, 160, 255],
+      "title_prefix": "▶",
+      "badge": ""
+    },
+    "attention": {
+      "color": [180, 0, 255],
+      "title_prefix": "⚠️",
+      "badge": "⚠️",
+      "flash": true,
+      "flash_interval": 0.8,
+      "flash_alt_color": [255, 140, 0],
+      "macos_notify": true
+    },
+    "crashed": {
+      "color": [255, 0, 0],
+      "title_prefix": "🔴",
+      "badge": "🔴",
+      "flash": true,
+      "flash_interval": 1.0,
+      "flash_alt_color": [200, 200, 200]
+    }
+  },
+  "focus_clear_states": ["attention", "crashed"],
+  "focus_restore_state": "active",
+  "badge_enabled": false,
+  "pid_tracking_depth": 15,
+  "flash_pid_dir": "/tmp",
+  "state_dir": "~/.claude/tab-color/states",
+  "log_file": "~/.claude/tab-color/logs/color.log",
+  "project_names": {
+    "TP_newIMSMS": "imsms",
+    "TP_newIMSMS_Agent": "imsms-agent",
+    "TP_MDM": "mdm",
+    "TP_TESLA_LVDS": "tesla-lvds",
+    "TESLA_Status_Dashboard": "tesla-dash",
+    "TP_MindMap_AutoCC": "mindmap",
+    "TP_A.iMessage_standalone_01067051080": "imessage",
+    "TP_BTT": "btt",
+    "TP_skills": "skills",
+    "AppleTV_ScreenSaver.app": "appletv",
+    "imsms.im-website": "imsms-web",
+    "TP_iTerm": "session-mgr",
+    "seanJ-FIFA26": "sean-fifa",
+    "TP_distAPP": "distapp"
+  }
+}
