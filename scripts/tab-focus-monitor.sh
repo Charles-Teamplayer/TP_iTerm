@@ -75,8 +75,21 @@ while true; do
     TAB_PROJECT=$(cut -d'|' -f2 "$STATE_FILE" 2>/dev/null)
 
     case "$TAB_STATUS" in
-        waiting|idle|stale|working)
+        waiting|idle|stale|working|attention)
             if [ -c "$SESSION_TTY" ]; then
+                # attention 상태면 flash 프로세스 kill
+                if [ "$TAB_STATUS" = "attention" ]; then
+                    FLASH_PID_FILE="/tmp/tab-flash-${TTY_NAME}.pid"
+                    if [ -f "$FLASH_PID_FILE" ]; then
+                        FLASH_PID=$(cat "$FLASH_PID_FILE" 2>/dev/null)
+                        [ -n "$FLASH_PID" ] && kill "$FLASH_PID" 2>/dev/null
+                        rm -f "$FLASH_PID_FILE"
+                        log "flash 프로세스 종료 ($FLASH_PID, $TTY_NAME)"
+                    fi
+                    # 배지 클리어
+                    printf '\e]1337;SetBadgeFormat=\a' > "$SESSION_TTY" 2>/dev/null
+                fi
+
                 printf '\e]1;%s\a' "$TAB_PROJECT" > "$SESSION_TTY" 2>/dev/null
                 printf '\e]6;1;bg;red;brightness;0\a\e]6;1;bg;green;brightness;220\a\e]6;1;bg;blue;brightness;0\a' > "$SESSION_TTY" 2>/dev/null
                 atomic_write "$STATE_FILE" "active|${TAB_PROJECT}|$(date +%s)"

@@ -101,7 +101,7 @@ find_tty() {
 
     # 2. 부모 PID 체인 (hook에서 호출 시 항상 성공)
     local PID=$$
-    for i in 1 2 3 4 5 6 7 8; do
+    for i in $(seq 1 15); do
         PID=$(ps -o ppid= -p "$PID" 2>/dev/null | tr -d ' ')
         [ -z "$PID" ] && break
         local TTY_DEV=$(ps -o tty= -p "$PID" 2>/dev/null | tr -d ' ')
@@ -118,6 +118,18 @@ atomic_write() {
     local file="$1" content="$2"
     local tmp="${file}.$$"
     echo "$content" > "$tmp" 2>/dev/null && mv "$tmp" "$file" 2>/dev/null
+}
+
+# JSON 신호 파일 병행 저장 (텍스트 형식과 공존)
+write_json_state() {
+    local tty_name="$1" status="$2" project="$3" r="$4" g="$5" b="$6"
+    local tty_path="/dev/$tty_name"
+    local pid=""
+    pid=$(ps -o pid= -t "$tty_name" 2>/dev/null | head -1 | tr -d ' ')
+    local json
+    json=$(printf '{"session_id":"%s","type":"%s","project":"%s","tty":"%s","pid":%s,"timestamp":"%s","color":{"r":%s,"g":%s,"b":%s}}' \
+        "$tty_name" "$status" "$project" "$tty_path" "${pid:-0}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$r" "$g" "$b")
+    atomic_write "$HOME/.claude/tab-states/${tty_name}.json" "$json"
 }
 
 set_badge() {
@@ -142,6 +154,7 @@ set_tab() {
         set_badge "$TTY_PATH" "$BADGE"
         local TTY_NAME=$(basename "$TTY_PATH")
         atomic_write "$HOME/.claude/tab-states/${TTY_NAME}" "${STATUS}|${PROJECT}|$(date +%s)"
+        write_json_state "$TTY_NAME" "$STATUS" "$PROJECT" "$R" "$G" "$B"
     else
         osascript -e "tell application \"iTerm2\" to tell current session of current tab of current window to set name to \"${TITLE}\"" 2>/dev/null || true
     fi
@@ -157,12 +170,43 @@ case "$STATUS" in
     attention)
         BADGE_TEXT=$(_get_config badge_attention '⚠️')
         set_tab "${PROJECT}" 180 0 255 "$BADGE_TEXT"
+
+        # Flash 프로세스: 주황 ↔ 보라 0.8초 간격 깜빡임
+        TTY_PATH=$(find_tty)
+        if [ -n "$TTY_PATH" ] && [ -c "$TTY_PATH" ]; then
+            TTY_NAME=$(basename "$TTY_PATH")
+            FLASH_PID_FILE="/tmp/tab-flash-${TTY_NAME}.pid"
+
+            # 기존 flash 프로세스 kill
+            if [ -f "$FLASH_PID_FILE" ]; then
+                OLD_PID=$(cat "$FLASH_PID_FILE" 2>/dev/null)
+                [ -n "$OLD_PID" ] && kill "$OLD_PID" 2>/dev/null
+                rm -f "$FLASH_PID_FILE"
+            fi
+
+            # 백그라운드 flash 루프 시작
+            (
+                trap 'exit 0' TERM INT
+                while true; do
+                    # 주황 (attention 강조)
+                    printf '\e]6;1;bg;red;brightness;255\a\e]6;1;bg;green;brightness;140\a\e]6;1;bg;blue;brightness;0\a' > "$TTY_PATH" 2>/dev/null
+                    sleep 0.8
+                    # 보라 (원래 attention 색)
+                    printf '\e]6;1;bg;red;brightness;180\a\e]6;1;bg;green;brightness;0\a\e]6;1;bg;blue;brightness;255\a' > "$TTY_PATH" 2>/dev/null
+                    sleep 0.8
+                done
+            ) &
+            FLASH_PID=$!
+            echo "$FLASH_PID" > "$FLASH_PID_FILE"
+            disown $FLASH_PID 2>/dev/null
+        fi
         ;;
     crashed)
         TTY_PATH=$(find_tty)
         if [ -n "$TTY_PATH" ] && [ -c "$TTY_PATH" ]; then
             TTY_NAME=$(basename "$TTY_PATH")
             atomic_write "$HOME/.claude/tab-states/${TTY_NAME}" "crashed|${PROJECT}|$(date +%s)"
+            write_json_state "$TTY_NAME" "crashed" "$PROJECT" 255 0 0
             set_badge "$TTY_PATH" "$(_get_config badge_crashed '🔴')"
             for i in $(seq 1 10); do
                 if ps -o tty,command -ax | grep "$(basename "$TTY_PATH")" | grep -q "[c]laude" 2>/dev/null; then
