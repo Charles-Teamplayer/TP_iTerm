@@ -44,10 +44,10 @@ find_tty() {
         local TTY_DEV
         TTY_DEV=$(ps -o tty= -p "$PID" 2>/dev/null | tr -d ' ')
         [ -n "$TTY_DEV" ] && [ "$TTY_DEV" != "??" ] && [ -c "/dev/$TTY_DEV" ] && { echo "/dev/$TTY_DEV"; return; }
-        local PPID
-        PPID=$(ps -o ppid= -p "$PID" 2>/dev/null | tr -d ' ')
-        [ -z "$PPID" ] || [ "$PPID" = "1" ] || [ "$PPID" = "0" ] && break
-        PID=$PPID
+        local CUR_PPID
+        CUR_PPID=$(ps -o ppid= -p "$PID" 2>/dev/null | tr -d ' ')
+        [ -z "$CUR_PPID" ] || [ "$CUR_PPID" = "1" ] || [ "$CUR_PPID" = "0" ] && break
+        PID=$CUR_PPID
     done
 }
 
