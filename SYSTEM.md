@@ -6,23 +6,19 @@
 
 macOS에서 Claude Code 15개 세션(monitor 1 + 프로젝트 14)을 iTerm2 + tmux claude-work로 운영. 재부팅 시 자동 복원, 크래시 30초 감지, 탭 배경색 상태 표시, MAGI-Restore.app 수동 복원.
 
-## 탭 색상 체계
+## 탭 색상 체계 (v3)
 
 | 상태 | RGB | 트리거 |
 |------|-----|--------|
 | active (초록) | 0,220,0 | SessionStart, 탭 클릭 |
 | working (노랑) | 255,230,0 | UserPromptSubmit, PreToolUse |
 | waiting (파랑) | 0,120,255 | Stop |
-| idle (주황) | 255,140,0 | 1시간+ 무입력 |
-| stale (어두움) | 80,80,80 | 3일+ 무입력 |
-| starting (하늘) | 0,160,255 | 세션 시작/복원 중 |
-| crashed (빨강) | 255,0,0 깜빡임 | PID 소멸 감지 |
+| attention (파랑 깜빡임) | 0,120,255 ↔ 255,230,0 | 크래시 감지 |
 
-### 시간 경과 표시 (watchdog 30초 체크)
-- 10분+ : 흰색 dot
-- 1시간+ : 노랑 dot
-- 24시간+ : 빨강 dot
-- 3일+ : 빨강/흰 깜빡임
+### 탭 색상 엔진
+- 단일 진입점: `~/.claude/tab-color/engine/set-color.sh <state>`
+- 설정: `~/.claude/tab-color/config.json` (단일 source of truth)
+- 상태 저장: `~/.claude/tab-color/states/{tty}.json`
 
 ## 동작 플로우
 
@@ -103,6 +99,16 @@ Mac 부팅
 | Stop | tab-status waiting, Notion |
 
 > Agent 분할은 네이티브 tmux teammate mode로 처리됨 (agent-split.sh/agent-split-close.sh/agent-log.sh 삭제).
+
+## CC 크래시 복구
+tmux -CC 연결이 깨지면 터미널에 raw `%extended-output` 라인이 표시됨.
+
+**즉각 복구:**
+1. 깨진 터미널에서 `q` 입력 → tmux CC 모드 종료
+2. `bash ~/.claude/scripts/cc-fix.sh` 실행 → 자동 재연결
+
+**자동 복구 (iTerm2 재시작 시):**
+- `auto_tmux_attach.py`가 CC 클라이언트 상태 감지 → 재attach
 
 ## 설치 (다른 Mac)
 
