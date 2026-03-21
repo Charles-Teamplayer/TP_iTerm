@@ -1,56 +1,28 @@
 {
   "version": 3,
-  "_comment": "탭 색상 시스템 v3 — 이 파일 하나로 모든 색상/동작 설정",
+  "_comment": "탭 색상: 대기=초록 / 작업중=노랑 / 완료=파랑 / 탭클릭→초록 복원",
   "states": {
     "active": {
       "color": [0, 220, 0],
-      "title_prefix": "",
-      "badge": ""
+      "title_prefix": ""
     },
     "working": {
       "color": [255, 230, 0],
-      "title_prefix": "⚡",
-      "badge": ""
+      "title_prefix": ""
     },
     "waiting": {
       "color": [0, 120, 255],
-      "title_prefix": "✅",
-      "badge": ""
-    },
-    "idle": {
-      "color": [255, 140, 0],
-      "title_prefix": "",
-      "badge": ""
-    },
-    "stale": {
-      "color": [80, 80, 80],
-      "title_prefix": "",
-      "badge": "💤"
-    },
-    "starting": {
-      "color": [0, 160, 255],
-      "title_prefix": "▶",
-      "badge": ""
+      "title_prefix": ""
     },
     "attention": {
-      "color": [180, 0, 255],
-      "title_prefix": "⚠️",
-      "badge": "⚠️",
+      "color": [0, 120, 255],
+      "title_prefix": "",
       "flash": true,
       "flash_interval": 0.8,
-      "flash_alt_color": [255, 140, 0],
-      "macos_notify": true
-    },
-    "crashed": {
-      "color": [255, 0, 0],
-      "title_prefix": "🔴",
-      "badge": "🔴",
-      "flash": true,
-      "flash_interval": 1.0,
-      "flash_alt_color": [200, 200, 200]
+      "flash_alt_color": [255, 230, 0]
     }
   },
-  "focus_clear_states": ["attention", "crashed"],
+  "focus_clear_states": ["waiting", "attention"],
   "focus_restore_state": "active",
   "badge_enabled": false,
   "pid_tracking_depth": 15,
