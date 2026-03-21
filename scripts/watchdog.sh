@@ -61,6 +61,10 @@ unset CLAUDECODE
 
 log "=== Watchdog 시작 ==="
 
+# Watchdog 재시작 시 crash-count 초기화 (오래된 카운터로 인한 조기 intentional-stop 방지)
+rm -rf "${CRASH_COUNT_DIR:?}"/*  2>/dev/null || true
+log "Crash-count 초기화 완료"
+
 # 메인 루프
 while true; do
     # 1. 레지스트리 기반 크래시 감지
@@ -183,7 +187,7 @@ while true; do
         # 고아 tab-states 정리: TTY가 사라진 파일 자동 삭제
         for STATE_FILE in "$STATE_DIR"/ttys*; do
             [ ! -f "$STATE_FILE" ] && continue
-            TTY_NAME=$(basename "$STATE_FILE")
+            TTY_NAME=$(basename "$STATE_FILE" .json)
             TTY_PATH="/dev/$TTY_NAME"
             if [ ! -c "$TTY_PATH" ]; then
                 rm -f "$STATE_FILE"
@@ -255,6 +259,7 @@ while true; do
         if ! tmux list-windows -t claude-work -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
             log "MONITOR 창 없음 — 자동 복구"
             tmux new-window -t claude-work -n monitor -c "$HOME/claude" 2>/dev/null && \
+                tmux send-keys -t "claude-work:monitor" "bash ~/.claude/scripts/tab-status.sh starting monitor && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter && \
                 log "MONITOR 창 복구 완료" || \
                 log "ERROR: MONITOR 창 복구 실패"
         fi
