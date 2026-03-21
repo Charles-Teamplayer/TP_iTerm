@@ -6,8 +6,9 @@ LOG_FILE="$HOME/.claude/logs/watchdog.log"
 REGISTRY="$HOME/.claude/active-sessions.json"
 RESTART_COOLDOWN=60  # 같은 프로젝트 재시작 간 최소 대기시간(초)
 RESTART_LOG="$HOME/.claude/logs/restart-history.log"
-CRASH_COUNT_DIR="/tmp/.claude-crash-counts"  # 연속 크래시 카운터 (재부팅 시 초기화)
+CRASH_COUNT_DIR="$HOME/.claude/crash-counts"  # 연속 크래시 카운터 (타임스탬프 기반 만료)
 CRASH_MAX=5  # 이 횟수 초과 시 intentional-stop 등록
+CRASH_COUNT_TTL=86400  # 24시간 이상된 카운터 자동 만료
 mkdir -p "$CRASH_COUNT_DIR"
 
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -34,7 +35,7 @@ atomic_write() {
     if [ "${free_mb:-0}" -lt 200 ]; then
         return 0  # 디스크 부족 시 조용히 스킵
     fi
-    echo "$content" > "$tmp" 2>/dev/null && mv "$tmp" "$file" 2>/dev/null
+    echo "$content" > "$tmp" 2>/dev/null && mv "$tmp" "$file" 2>/dev/null || rm -f "$tmp"
 }
 
 # stderr.log 자체 로테이션 (10MB 초과 시)
@@ -61,9 +62,16 @@ unset CLAUDECODE
 
 log "=== Watchdog 시작 ==="
 
-# Watchdog 재시작 시 crash-count 초기화 (오래된 카운터로 인한 조기 intentional-stop 방지)
-rm -rf "${CRASH_COUNT_DIR:?}"/*  2>/dev/null || true
-log "Crash-count 초기화 완료"
+# Watchdog 재시작 시 오래된(24h+) crash-count만 정리 (최근 카운터는 보존 → 크래시 루프 방지)
+NOW_INIT=$(date +%s)
+for cf in "$CRASH_COUNT_DIR"/*; do
+    [ ! -f "$cf" ] && continue
+    CF_TS=$(cut -d'|' -f2 "$cf" 2>/dev/null || echo 0)
+    if [ $(( NOW_INIT - ${CF_TS:-0} )) -gt "$CRASH_COUNT_TTL" ]; then
+        rm -f "$cf"
+    fi
+done
+log "Crash-count 정리 완료 (24h+ 만료)"
 
 # 메인 루프
 while true; do
@@ -154,12 +162,23 @@ while true; do
                     sleep 1
                 fi
 
-                # 연속 크래시 카운터 증가
+                # 연속 크래시 카운터 증가 (COUNT|TIMESTAMP 형식, 24h 만료)
                 CRASH_COUNT_FILE="$CRASH_COUNT_DIR/${RESTART_PROJECT//[^a-zA-Z0-9_-]/_}"
                 CURRENT_COUNT=0
-                [ -f "$CRASH_COUNT_FILE" ] && CURRENT_COUNT=$(cat "$CRASH_COUNT_FILE" 2>/dev/null || echo 0)
+                CC_NOW=$(date +%s)
+                if [ -f "$CRASH_COUNT_FILE" ]; then
+                    CC_VAL=$(cat "$CRASH_COUNT_FILE" 2>/dev/null || echo "0|0")
+                    CC_CNT=$(echo "$CC_VAL" | cut -d'|' -f1)
+                    CC_TS=$(echo "$CC_VAL" | cut -d'|' -f2)
+                    # 24시간 이상된 카운터는 리셋
+                    if [ $(( CC_NOW - ${CC_TS:-0} )) -gt "$CRASH_COUNT_TTL" ]; then
+                        CURRENT_COUNT=0
+                    else
+                        CURRENT_COUNT=${CC_CNT:-0}
+                    fi
+                fi
                 NEW_COUNT=$((CURRENT_COUNT + 1))
-                echo "$NEW_COUNT" > "$CRASH_COUNT_FILE"
+                echo "${NEW_COUNT}|${CC_NOW}" > "$CRASH_COUNT_FILE"
 
                 # 연속 크래시 임계값 초과 시 intentional-stop 등록 (무한 루프 방지)
                 if [ "$NEW_COUNT" -gt "$CRASH_MAX" ]; then
@@ -179,35 +198,38 @@ while true; do
         fi
     fi
 
-    # 2. 시간 경과 동그라미 표시 (tab-states 파일 기반)
-    #    1시간+ → 🟡  |  1일+ → 🔴  |  3일+ → 🔴⚪ 깜빡임
+    # 2. 시간 경과 표시 (v3 tab-color/states JSON 기반)
+    #    10분+ → ⚪  |  1시간+ → 🟡  |  1일+ → 🔴  |  3일+ → 🔴⚪ 깜빡임
     NOW=$(date +%s)
-    STATE_DIR="$HOME/.claude/tab-states"
+    STATE_DIR="$HOME/.claude/tab-color/states"
+    LEGACY_STATE_DIR="$HOME/.claude/tab-states"
     if [ -d "$STATE_DIR" ]; then
-        # 고아 tab-states 정리: TTY가 사라진 파일 자동 삭제
-        for STATE_FILE in "$STATE_DIR"/ttys*; do
+        for STATE_FILE in "$STATE_DIR"/*.json; do
             [ ! -f "$STATE_FILE" ] && continue
             TTY_NAME=$(basename "$STATE_FILE" .json)
             TTY_PATH="/dev/$TTY_NAME"
             if [ ! -c "$TTY_PATH" ]; then
                 rm -f "$STATE_FILE"
-                log "CLEANUP: orphan tab-state removed: $TTY_NAME"
+                log "CLEANUP: orphan tab-color state removed: $TTY_NAME"
                 continue
             fi
             [ ! -w "$TTY_PATH" ] && continue
 
-            TAB_STATUS=$(cut -d'|' -f1 "$STATE_FILE" 2>/dev/null)
-            TAB_PROJECT=$(cut -d'|' -f2 "$STATE_FILE" 2>/dev/null)
-            LAST_TS=$(cut -d'|' -f3 "$STATE_FILE" 2>/dev/null)
-            [ -z "$LAST_TS" ] && continue
+            if command -v jq &>/dev/null; then
+                TAB_PROJECT=$(jq -r '.project // ""' "$STATE_FILE" 2>/dev/null)
+                LAST_TS_ISO=$(jq -r '.timestamp // ""' "$STATE_FILE" 2>/dev/null)
+            else
+                TAB_PROJECT=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('project',''))" 2>/dev/null)
+                LAST_TS_ISO=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('timestamp',''))" 2>/dev/null)
+            fi
+            [ -z "$LAST_TS_ISO" ] && continue
+
+            LAST_TS=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_TS_ISO" +%s 2>/dev/null || echo 0)
+            [ "$LAST_TS" = "0" ] && continue
 
             AGE=$(( NOW - LAST_TS ))
 
             if [ $AGE -ge 259200 ]; then
-                # 3일+ → 🔴⚪ 깜빡임 (1회만, 30초마다 반복됨)
-                printf '\e]1;🔴 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
-                atomic_write "$STATE_FILE" "stale|${TAB_PROJECT}|${LAST_TS}"
-                # 다음 30초에 ⚪로 바뀌도록 토글 파일
                 TOGGLE_FILE="/tmp/.tab-blink-${TTY_NAME}"
                 if [ -f "$TOGGLE_FILE" ]; then
                     printf '\e]1;⚪ %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
@@ -218,22 +240,24 @@ while true; do
                 fi
                 printf '\e]6;1;bg;red;brightness;80\a\e]6;1;bg;green;brightness;80\a\e]6;1;bg;blue;brightness;80\a' > "$TTY_PATH" 2>/dev/null
             elif [ $AGE -ge 86400 ]; then
-                # 24시간+ → 🔴
                 printf '\e]1;🔴 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
                 printf '\e]6;1;bg;red;brightness;200\a\e]6;1;bg;green;brightness;50\a\e]6;1;bg;blue;brightness;50\a' > "$TTY_PATH" 2>/dev/null
-                atomic_write "$STATE_FILE" "idle|${TAB_PROJECT}|${LAST_TS}"
             elif [ $AGE -ge 3600 ]; then
-                # 1시간+ → 🟡
                 printf '\e]1;🟡 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
                 printf '\e]6;1;bg;red;brightness;200\a\e]6;1;bg;green;brightness;150\a\e]6;1;bg;blue;brightness;0\a' > "$TTY_PATH" 2>/dev/null
-                atomic_write "$STATE_FILE" "idle|${TAB_PROJECT}|${LAST_TS}"
             elif [ $AGE -ge 600 ]; then
-                # 10분+ → ⚪ 흰색
                 printf '\e]1;⚪ %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
                 printf '\e]6;1;bg;red;brightness;220\a\e]6;1;bg;green;brightness;220\a\e]6;1;bg;blue;brightness;220\a' > "$TTY_PATH" 2>/dev/null
-                atomic_write "$STATE_FILE" "idle|${TAB_PROJECT}|${LAST_TS}"
             fi
         done
+    fi
+    # 레거시 tab-states 잔존 파일 일괄 정리
+    if [ -d "$LEGACY_STATE_DIR" ]; then
+        LEGACY_COUNT=$(find "$LEGACY_STATE_DIR" -name 'ttys*' 2>/dev/null | wc -l | tr -d ' ')
+        if [ "${LEGACY_COUNT:-0}" -gt 0 ]; then
+            rm -f "$LEGACY_STATE_DIR"/ttys* 2>/dev/null
+            log "CLEANUP: legacy tab-states ${LEGACY_COUNT}개 정리"
+        fi
     fi
 
     # 3. 좀비 프로세스 감지 (72시간 이상 + tty 없음)
@@ -262,6 +286,23 @@ while true; do
                 tmux send-keys -t "claude-work:monitor" "bash ~/.claude/scripts/tab-status.sh starting monitor && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter && \
                 log "MONITOR 창 복구 완료" || \
                 log "ERROR: MONITOR 창 복구 실패"
+        fi
+    fi
+
+    # 5. tmux CC 클라이언트 연결 상태 모니터링
+    if tmux has-session -t claude-work 2>/dev/null; then
+        CLIENT_COUNT=$(tmux list-clients -t claude-work -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
+        if [ "${CLIENT_COUNT:-0}" -eq 0 ]; then
+            # 마지막 CC fix 시도 시간 체크 (2분 쿨다운)
+            CC_FIX_LOCK="/tmp/.cc-fix-last"
+            LAST_FIX=0
+            [ -f "$CC_FIX_LOCK" ] && LAST_FIX=$(cat "$CC_FIX_LOCK" 2>/dev/null || echo 0)
+            NOW_FIX=$(date +%s)
+            if [ $((NOW_FIX - LAST_FIX)) -gt 120 ]; then
+                log "WARNING: claude-work 클라이언트 없음 — 자동 CC 재연결 시도"
+                echo "$NOW_FIX" > "$CC_FIX_LOCK"
+                bash "$HOME/.claude/scripts/cc-fix.sh" 2>/dev/null &
+            fi
         fi
     fi
 

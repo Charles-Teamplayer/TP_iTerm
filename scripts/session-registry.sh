@@ -38,56 +38,82 @@ case "$ACTION" in
             [ "$SESSION_TTY" = "??" ] && SESSION_TTY=""
         fi
 
-        python3 << PYEOF
+        REG_REGISTRY="$REGISTRY" \
+        REG_PROJECT_DIR="$PROJECT_DIR" \
+        REG_PROJECT_NAME="$PROJECT_NAME" \
+        REG_PID="${PID:-unknown}" \
+        REG_TTY="${SESSION_TTY:-}" \
+        REG_TIMESTAMP="$TIMESTAMP" \
+        python3 << 'PYEOF'
 import json, os
-registry_path = "$REGISTRY"
+
+registry_path = os.environ['REG_REGISTRY']
+project_dir = os.environ['REG_PROJECT_DIR']
+project_name = os.environ['REG_PROJECT_NAME']
+pid = os.environ['REG_PID']
+tty = os.environ['REG_TTY']
+timestamp = os.environ['REG_TIMESTAMP']
+
 with open(registry_path, 'r') as f:
     data = json.load(f)
 
-# 같은 프로젝트의 기존 세션 제거
-data['sessions'] = [s for s in data['sessions'] if s.get('dir') != "$PROJECT_DIR"]
+data['sessions'] = [s for s in data['sessions'] if s.get('dir') != project_dir]
 
-# 새 세션 등록
 data['sessions'].append({
-    "project": "$PROJECT_NAME",
-    "dir": "$PROJECT_DIR",
-    "pid": "${PID:-unknown}",
-    "tty": "${SESSION_TTY:-}",
-    "started": "$TIMESTAMP",
-    "last_heartbeat": "$TIMESTAMP"
+    "project": project_name,
+    "dir": project_dir,
+    "pid": pid,
+    "tty": tty,
+    "started": timestamp,
+    "last_heartbeat": timestamp
 })
-data['last_updated'] = "$TIMESTAMP"
+data['last_updated'] = timestamp
 
 with open(registry_path, 'w') as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
 
-print(f"[URD] Session registered: $PROJECT_NAME (PID: ${PID:-unknown})")
+print(f"[URD] Session registered: {project_name} (PID: {pid})")
 PYEOF
-        # 성공적으로 등록됐으면 크래시 카운터 리셋
-        CRASH_COUNT_FILE="/tmp/.claude-crash-counts/${PROJECT_NAME//[^a-zA-Z0-9_-]/_}"
-        [ -f "$CRASH_COUNT_FILE" ] && rm -f "$CRASH_COUNT_FILE"
+        # 크래시 카운터: 등록 후 5분 이상 경과해야 리셋 (빠른 크래시 루프 방지)
+        CRASH_COUNT_FILE="$HOME/.claude/crash-counts/${PROJECT_NAME//[^a-zA-Z0-9_-]/_}"
+        if [ -f "$CRASH_COUNT_FILE" ]; then
+            CC_LAST_TS=$(cut -d'|' -f2 "$CRASH_COUNT_FILE" 2>/dev/null || echo 0)
+            CC_REG_NOW=$(date +%s)
+            if [ $(( CC_REG_NOW - ${CC_LAST_TS:-0} )) -gt 300 ]; then
+                rm -f "$CRASH_COUNT_FILE"
+            fi
+        fi
         ;;
 
     unregister)
         # 세션 해제 (내부용 — intentional-stop에서 호출)
-        python3 << PYEOF
-import json
-registry_path = "$REGISTRY"
+        UNREG_REGISTRY="$REGISTRY" \
+        UNREG_PROJECT_DIR="$PROJECT_DIR" \
+        UNREG_PROJECT_NAME="$PROJECT_NAME" \
+        UNREG_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+        python3 << 'PYEOF'
+import json, os
+
+registry_path = os.environ['UNREG_REGISTRY']
+project_dir = os.environ['UNREG_PROJECT_DIR']
+project_name = os.environ['UNREG_PROJECT_NAME']
+timestamp = os.environ['UNREG_TIMESTAMP']
+
 with open(registry_path, 'r') as f:
     data = json.load(f)
 
 before = len(data['sessions'])
-data['sessions'] = [s for s in data['sessions'] if s.get('dir') != "$PROJECT_DIR"]
+data['sessions'] = [s for s in data['sessions'] if s.get('dir') != project_dir]
 after = len(data['sessions'])
-data['last_updated'] = "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+data['last_updated'] = timestamp
 
 with open(registry_path, 'w') as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
 
 if before > after:
-    print(f"[URD] Session unregistered: $PROJECT_NAME")
+    print(f"[URD] Session unregistered: {project_name}")
 else:
-    print(f"[URD] Session not found: $PROJECT_NAME")
+    print(f"[URD] Session not found: {project_name}")
 PYEOF
         ;;
 
@@ -97,31 +123,34 @@ PYEOF
         STOPS_FILE="$HOME/.claude/intentional-stops.json"
 
         # 먼저 unregister 실행
-        python3 << PYEOF
-import json
-registry_path = "$REGISTRY"
+        IS_REGISTRY="$REGISTRY" \
+        IS_PROJECT_DIR="$PROJECT_DIR" \
+        IS_PROJECT_NAME="$PROJECT_NAME" \
+        IS_TIMESTAMP="$TIMESTAMP" \
+        IS_STOPS_FILE="$STOPS_FILE" \
+        python3 << 'PYEOF'
+import json, os, sys, tempfile
+
+registry_path = os.environ['IS_REGISTRY']
+project_dir = os.environ['IS_PROJECT_DIR']
+project_name = os.environ['IS_PROJECT_NAME']
+timestamp = os.environ['IS_TIMESTAMP']
+stops_path = os.environ['IS_STOPS_FILE']
+
+# unregister
 with open(registry_path, 'r') as f:
     data = json.load(f)
 
 before = len(data['sessions'])
-data['sessions'] = [s for s in data['sessions'] if s.get('dir') != "$PROJECT_DIR"]
+data['sessions'] = [s for s in data['sessions'] if s.get('dir') != project_dir]
 after = len(data['sessions'])
-data['last_updated'] = "$TIMESTAMP"
+data['last_updated'] = timestamp
 
 with open(registry_path, 'w') as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
 
 if before > after:
-    print(f"[URD] Session unregistered: $PROJECT_NAME")
-PYEOF
-
-        # intentional-stops.json에 기록
-        python3 << PYEOF
-import json, os, tempfile
-
-stops_path = "$STOPS_FILE"
-project_dir = "$PROJECT_DIR"
-timestamp = "$TIMESTAMP"
+    print(f"[URD] Session unregistered: {project_name}")
 
 # dir → window_name 매핑
 DIR_TO_WINDOW = {
@@ -143,23 +172,19 @@ DIR_TO_WINDOW = {
 
 window_name = DIR_TO_WINDOW.get(project_dir)
 
-# 알 수 없는 프로젝트 경로는 intentional-stop 등록 건너뜀 (노이즈 방지)
 if not window_name:
-    import sys
     print(f"[URD] SKIP intentional-stop: unknown dir {project_dir}", file=sys.stderr)
     sys.exit(0)
 
-# 기존 파일 로드 또는 초기화
+# intentional-stops.json 기록
 if os.path.exists(stops_path):
     with open(stops_path, 'r') as f:
         data = json.load(f)
 else:
     data = {"stops": [], "last_updated": ""}
 
-# 같은 window_name 중복 제거
 data['stops'] = [s for s in data['stops'] if s.get('window_name') != window_name]
 
-# 새 항목 추가
 data['stops'].append({
     "project": os.path.basename(project_dir),
     "dir": project_dir,
@@ -168,7 +193,6 @@ data['stops'].append({
 })
 data['last_updated'] = timestamp
 
-# atomic write
 tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(stops_path))
 with os.fdopen(tmp_fd, 'w') as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
@@ -180,30 +204,107 @@ PYEOF
 
     crash-detect)
         # 크래시 감지 (watchdog에서 호출)
-        python3 << PYEOF
+        CD_REGISTRY="$REGISTRY" \
+        CD_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+        python3 << 'PYEOF'
 import json, subprocess, os
 
-registry_path = "$REGISTRY"
+registry_path = os.environ['CD_REGISTRY']
+cd_timestamp = os.environ['CD_TIMESTAMP']
 with open(registry_path, 'r') as f:
     data = json.load(f)
 
 crashed = []
 alive = []
 
+# dir → tmux window_name 매핑 (2중 확인용)
+DIR_TO_WINDOW = {
+    os.path.expanduser("~/claude/TP_newIMSMS"): "imsms",
+    os.path.expanduser("~/claude/TP_newIMSMS_Agent"): "imsms-agent",
+    os.path.expanduser("~/claude/TP_MDM"): "mdm",
+    os.path.expanduser("~/claude/TP_TESLA_LVDS"): "tesla-lvds",
+    os.path.expanduser("~/ralph-claude-code/TESLA_Status_Dashboard"): "tesla-dashboard",
+    os.path.expanduser("~/claude/TP_MindMap_AutoCC"): "mindmap",
+    os.path.expanduser("~/SJ_MindMap"): "sj-mindmap",
+    os.path.expanduser("~/claude/TP_A.iMessage_standalone_01067051080"): "imessage",
+    os.path.expanduser("~/claude/TP_BTT"): "btt",
+    os.path.expanduser("~/claude/TP_Infra_reduce_Project"): "infra",
+    os.path.expanduser("~/claude/TP_skills"): "skills",
+    os.path.expanduser("~/claude/AppleTV_ScreenSaver.app"): "appletv",
+    os.path.expanduser("~/claude/imsms.im-website"): "imsms-web",
+    os.path.expanduser("~/claude/TP_iTerm"): "auto-restart",
+    os.path.expanduser("~/claude/TP_MailSystem"): "mailsystem",
+}
+
+# tmux 윈도우 목록 1회 캐시 (반복 호출 방지)
+_tmux_windows = None
+def get_tmux_windows():
+    global _tmux_windows
+    if _tmux_windows is None:
+        r = subprocess.run(
+            ['tmux', 'list-windows', '-t', 'claude-work', '-F', '#{window_name}'],
+            capture_output=True, text=True
+        )
+        _tmux_windows = r.stdout.strip().splitlines() if r.returncode == 0 else []
+    return _tmux_windows
+
+def tmux_window_exists(session_dir, project_name):
+    """dir 또는 project_name으로 tmux 윈도우 존재 확인"""
+    windows = get_tmux_windows()
+    if not windows:
+        return False
+    # 정확한 매핑으로 확인
+    window_name = DIR_TO_WINDOW.get(session_dir)
+    if window_name and window_name in windows:
+        return True
+    # fallback: 프로젝트명 fuzzy 매칭
+    proj_base = os.path.basename(project_name) if project_name else ''
+    if proj_base and any(proj_base.lower() in w.lower() or w.lower() in proj_base.lower() for w in windows if w):
+        return True
+    return False
+
+def is_claude_process(pid):
+    """PID가 실제 claude 관련 프로세스인지 확인 (PID 재사용 오탐 방지)"""
+    try:
+        r = subprocess.run(['ps', '-o', 'command=', '-p', str(pid)], capture_output=True, text=True)
+        cmd = r.stdout.strip()
+        return 'claude' in cmd.lower() or 'node' in cmd.lower()
+    except Exception:
+        return False
+
 for session in data['sessions']:
     pid = session.get('pid', '')
+    session_dir = session.get('dir', '')
+    project_name = session.get('project', '')
+
     if pid and pid != 'unknown':
+        pid_alive = False
         try:
             os.kill(int(pid), 0)
-            alive.append(session)
+            pid_alive = True
         except PermissionError:
-            alive.append(session)  # 다른 유저 프로세스지만 살아있음
+            pid_alive = True
         except (ProcessLookupError, ValueError):
-            crashed.append(session)
+            pid_alive = False
+
+        if pid_alive:
+            # PID 재사용 검증: 살아있어도 claude 프로세스인지 확인
+            if is_claude_process(int(pid)):
+                alive.append(session)
+            else:
+                # PID 재사용됨 — tmux 윈도우로 2중 확인
+                if tmux_window_exists(session_dir, project_name):
+                    alive.append(session)
+                else:
+                    crashed.append(session)
+        else:
+            # PID 사망 — tmux 윈도우로 2중 확인 (CC 재시작 중일 수 있음)
+            if tmux_window_exists(session_dir, project_name):
+                alive.append(session)
+            else:
+                crashed.append(session)
     else:
         # PID 모를 때는 프로젝트 디렉토리 경로로 확인 (TTY 있는 프로세스만)
-        session_dir = session.get('dir', '')
-        project_name = session.get('project', '')
         generic_names = {'claude', 'node', 'python', 'bash', 'zsh', 'sh', 'npm'}
         if not session_dir or len(session_dir) < 10 or os.path.basename(session_dir) in generic_names:
             alive.append(session)
@@ -225,14 +326,7 @@ for session in data['sessions']:
             alive.append(session)
         else:
             # PID unknown이고 ps에서 못 찾았을 때: tmux 윈도우 존재 확인 (오탐 방지)
-            window_check = subprocess.run(
-                ['tmux', 'list-windows', '-t', 'claude-work', '-F', '#{window_name}'],
-                capture_output=True, text=True
-            )
-            window_names = window_check.stdout.strip().splitlines()
-            # 프로젝트명으로 tmux 윈도우가 있으면 alive 처리
-            proj_base = os.path.basename(project_name) if project_name else ''
-            if any(proj_base.lower() in w.lower() or w.lower() in proj_base.lower() for w in window_names if w):
+            if tmux_window_exists(session_dir, project_name):
                 alive.append(session)
             else:
                 crashed.append(session)
@@ -243,7 +337,7 @@ if crashed:
 
     # 크래시된 세션 제거
     data['sessions'] = alive
-    data['last_updated'] = "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    data['last_updated'] = cd_timestamp
     with open(registry_path, 'w') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
@@ -254,15 +348,22 @@ PYEOF
 
     heartbeat)
         # heartbeat 갱신 (UserPromptSubmit hook에서 호출)
-        python3 << PYEOF
-import json
-registry_path = "$REGISTRY"
+        HB_REGISTRY="$REGISTRY" \
+        HB_PROJECT_DIR="$PROJECT_DIR" \
+        HB_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+        python3 << 'PYEOF'
+import json, os
+
+registry_path = os.environ['HB_REGISTRY']
+project_dir = os.environ['HB_PROJECT_DIR']
+timestamp = os.environ['HB_TIMESTAMP']
+
 with open(registry_path, 'r') as f:
     data = json.load(f)
 
 for s in data['sessions']:
-    if s.get('dir') == "$PROJECT_DIR":
-        s['last_heartbeat'] = "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    if s.get('dir') == project_dir:
+        s['last_heartbeat'] = timestamp
         break
 
 with open(registry_path, 'w') as f:
@@ -272,11 +373,12 @@ PYEOF
 
     age-check)
         # 세션 경과 시간 확인 (watchdog에서 호출)
-        python3 << PYEOF
-import json
+        AC_REGISTRY="$REGISTRY" \
+        python3 << 'PYEOF'
+import json, os
 from datetime import datetime, timezone
 
-registry_path = "$REGISTRY"
+registry_path = os.environ['AC_REGISTRY']
 with open(registry_path, 'r') as f:
     data = json.load(f)
 
@@ -290,9 +392,9 @@ for s in data['sessions']:
         age_hours = (now - last).total_seconds() / 3600
         project = s.get('project', '?')
         tty = s.get('tty', '')
-        if age_hours >= 168:  # 7일
+        if age_hours >= 168:
             print(f"STALE:{project}:{tty}")
-        elif age_hours >= 24:  # 1일
+        elif age_hours >= 24:
             print(f"IDLE:{project}:{tty}")
     except Exception:
         pass
@@ -301,9 +403,11 @@ PYEOF
 
     list)
         # 세션 목록 출력
-        python3 << PYEOF
-import json
-registry_path = "$REGISTRY"
+        LIST_REGISTRY="$REGISTRY" \
+        python3 << 'PYEOF'
+import json, os
+
+registry_path = os.environ['LIST_REGISTRY']
 with open(registry_path, 'r') as f:
     data = json.load(f)
 

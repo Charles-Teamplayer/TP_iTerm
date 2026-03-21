@@ -114,8 +114,71 @@ for s in d.get('stops',[]): print('    - ' + s.get('window_name','?'))
     fi
 fi
 
-# 8. auto-restore 마지막 실행
-echo -e "\n${BOLD}[7] 마지막 복원 실행${NC}"
+# 8. Crash Count 현황
+echo -e "\n${BOLD}[8] Crash Count 현황${NC}"
+CRASH_DIR="/tmp/.claude-crash-counts"
+if [ -d "$CRASH_DIR" ] && [ "$(ls -A "$CRASH_DIR" 2>/dev/null)" ]; then
+    TOTAL_CRASHES=0
+    while IFS= read -r cfile; do
+        CNAME=$(basename "$cfile")
+        CVAL=$(cat "$cfile" 2>/dev/null || echo "0")
+        TOTAL_CRASHES=$((TOTAL_CRASHES + CVAL))
+        if [ "$CVAL" -ge 3 ]; then
+            fail "크래시 $CNAME: ${CVAL}회 (임계치 초과)"
+        elif [ "$CVAL" -ge 1 ]; then
+            warn "크래시 $CNAME: ${CVAL}회"
+        else
+            ok "크래시 $CNAME: ${CVAL}회"
+        fi
+    done < <(find "$CRASH_DIR" -type f 2>/dev/null)
+    if [ "$TOTAL_CRASHES" -eq 0 ]; then
+        ok "크래시 카운터 전체 0"
+    fi
+else
+    ok "크래시 기록 없음 ($CRASH_DIR 비어있음)"
+fi
+
+# 9. tmux 클라이언트 연결 상태 + %extended-output 위험도
+echo -e "\n${BOLD}[9] tmux 클라이언트 연결 상태${NC}"
+if tmux has-session -t claude-work 2>/dev/null; then
+    CLIENT_COUNT=$(tmux list-clients -t claude-work 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$CLIENT_COUNT" -ge 1 ]; then
+        ok "연결된 클라이언트: ${CLIENT_COUNT}개"
+        tmux list-clients -t claude-work 2>/dev/null | awk '{print "    " $0}'
+    else
+        fail "클라이언트 0개 — %extended-output 위험! (iTerm CC 모드 미연결)"
+        warn "해결: iTerm2에서 tmux -CC attach -t claude-work 실행"
+    fi
+else
+    fail "claude-work 세션 없음 — 클라이언트 확인 불가"
+fi
+
+# 10. Orphan tab-states 현황
+echo -e "\n${BOLD}[10] Orphan tab-states 검사${NC}"
+TAB_STATES_DIR="$HOME/.claude/tab-states"
+if [ -d "$TAB_STATES_DIR" ]; then
+    ORPHAN_COUNT=0
+    TOTAL_STATES=0
+    while IFS= read -r tsfile; do
+        TOTAL_STATES=$((TOTAL_STATES + 1))
+        TTY_NAME=$(basename "$tsfile")
+        if [ ! -e "/dev/$TTY_NAME" ]; then
+            ORPHAN_COUNT=$((ORPHAN_COUNT + 1))
+            warn "orphan: $TTY_NAME (TTY 존재하지 않음)"
+        fi
+    done < <(find "$TAB_STATES_DIR" -type f 2>/dev/null)
+    if [ "$ORPHAN_COUNT" -eq 0 ]; then
+        ok "tab-states ${TOTAL_STATES}개 — orphan 없음"
+    else
+        warn "tab-states ${TOTAL_STATES}개 중 orphan ${ORPHAN_COUNT}개 발견"
+        info "정리: rm $TAB_STATES_DIR/<orphan-tty>"
+    fi
+else
+    info "tab-states 디렉토리 없음"
+fi
+
+# 11. auto-restore 마지막 실행
+echo -e "\n${BOLD}[11] 마지막 복원 실행${NC}"
 if [ -f "$HOME/.claude/logs/auto-restore.log" ]; then
     LAST_RUN=$(grep "=== Auto-Restore" "$HOME/.claude/logs/auto-restore.log" | tail -1)
     info "$LAST_RUN"
