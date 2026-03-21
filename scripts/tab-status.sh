@@ -122,14 +122,21 @@ atomic_write() {
 
 # JSON 신호 파일 병행 저장 (텍스트 형식과 공존)
 write_json_state() {
-    local tty_name="$1" status="$2" project="$3" r="$4" g="$5" b="$6"
-    local tty_path="/dev/$tty_name"
-    local pid=""
-    pid=$(ps -o pid= -t "$tty_name" 2>/dev/null | head -1 | tr -d ' ')
-    local json
-    json=$(printf '{"session_id":"%s","type":"%s","project":"%s","tty":"%s","pid":%s,"timestamp":"%s","color":{"r":%s,"g":%s,"b":%s}}' \
-        "$tty_name" "$status" "$project" "$tty_path" "${pid:-0}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$r" "$g" "$b")
-    atomic_write "$HOME/.claude/tab-states/${tty_name}.json" "$json"
+    local TTY_NAME="$1" STATUS="$2" PROJECT="$3" R="$4" G="$5" B="$6"
+    local JSON_FILE="$HOME/.claude/tab-states/${TTY_NAME}.json"
+    local TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    # JSON escape: 백슬래시, 큰따옴표 처리
+    local ESCAPED_PROJECT=$(printf '%s' "$PROJECT" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    local ESCAPED_TTY=$(printf '%s' "/dev/$TTY_NAME" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    printf '{
+  "session_id": "%s",
+  "type": "%s",
+  "project": "%s",
+  "tty": "%s",
+  "pid": %d,
+  "timestamp": "%s",
+  "color": {"r": %d, "g": %d, "b": %d}
+}\n' "$TTY_NAME" "$STATUS" "$ESCAPED_PROJECT" "$ESCAPED_TTY" $$ "$TIMESTAMP" "$R" "$G" "$B" > "$JSON_FILE"
 }
 
 set_badge() {
