@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-iTerm2 AutoLaunch: tmux 자동 attach + 탭 포커스 모니터
+iTerm2 AutoLaunch: tmux 자동 attach + 탭 포커스 모니터 + 색상 동기화
 - 시작 시 1회: tmux 없으면 auto-restore → attach
 - 상시: FocusMonitor API로 포커스된 탭의 flash 프로세스 종료 + 색상 복원
+- 상시: 3초 폴링으로 모든 탭 색상 동기화 (tmux CC 버퍼링 우회)
 """
 import iterm2
 import asyncio
@@ -10,10 +11,14 @@ import subprocess
 import os
 import signal
 import time
+import json
 
 ENV = {**os.environ, "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"}
 STATE_DIR = os.path.expanduser("~/.claude/tab-color/states")
 LOG_FILE = os.path.expanduser("~/.claude/logs/focus-monitor-py.log")
+
+# 마지막으로 적용한 색상 캐시 (tty_name → (r, g, b))
+_last_color: dict = {}
 
 
 def _log(msg):
@@ -121,7 +126,6 @@ def _restore_active(tty, tty_name):
     if not os.path.exists(state_file):
         return
     try:
-        import json
         with open(state_file) as f:
             data = json.load(f)
     except Exception:
@@ -137,6 +141,64 @@ def _restore_active(tty, tty_name):
         env=env_with_tty, check=False
     )
     _log(f"{data.get('type')} → active ({project}, {tty_name})")
+
+
+def _make_color_esc(r, g, b) -> bytes:
+    """탭 색상 escape code 바이트 생성"""
+    return (
+        f"\033]6;1;bg;red;brightness;{r}\007"
+        f"\033]6;1;bg;green;brightness;{g}\007"
+        f"\033]6;1;bg;blue;brightness;{b}\007"
+    ).encode()
+
+
+async def color_sync(connection):
+    """상시: 3초마다 state 파일 읽어서 모든 탭 색상 동기화
+    tmux CC 모드에서 비활성 탭은 escape code가 버퍼링되므로
+    async_inject로 Python API 직접 주입해 즉시 반영.
+    """
+    _log("=== ColorSync 시작 ===")
+    await asyncio.sleep(5)  # attach 완료 대기
+
+    while True:
+        try:
+            app = await iterm2.async_get_app(connection)
+            for window in app.windows:
+                for tab in window.tabs:
+                    for session in tab.sessions:
+                        tty = await session.async_get_variable("tty")
+                        if not tty:
+                            continue
+                        tty_name = tty.replace("/dev/", "")
+                        state_file = os.path.join(STATE_DIR, f"{tty_name}.json")
+                        if not os.path.exists(state_file):
+                            continue
+                        try:
+                            with open(state_file) as f:
+                                data = json.load(f)
+                        except Exception:
+                            continue
+
+                        # flash(attention) 상태는 flash.sh가 직접 관리
+                        if data.get("type") == "attention":
+                            continue
+
+                        color = data.get("color", {})
+                        r = color.get("r", 128)
+                        g = color.get("g", 128)
+                        b = color.get("b", 128)
+
+                        # 변경된 경우만 주입
+                        if _last_color.get(tty_name) == (r, g, b):
+                            continue
+
+                        await session.async_inject(_make_color_esc(r, g, b))
+                        _last_color[tty_name] = (r, g, b)
+
+        except Exception as e:
+            _log(f"color_sync 오류: {e}")
+
+        await asyncio.sleep(3)
 
 
 async def focus_monitor(connection):
@@ -163,6 +225,8 @@ async def focus_monitor(connection):
 
             killed = _kill_flash(tty_name)
             _restore_active(tty, tty_name)
+            # 캐시 무효화 — 다음 color_sync 사이클에서 재주입
+            _last_color.pop(tty_name, None)
 
             if killed:
                 _log(f"포커스 클리어: {tty_name}")
@@ -171,8 +235,11 @@ async def focus_monitor(connection):
 async def main(connection):
     # tmux attach (1회)
     await tmux_attach(connection)
-    # focus monitor (상시)
-    await focus_monitor(connection)
+    # focus monitor + color sync 병렬 실행
+    await asyncio.gather(
+        focus_monitor(connection),
+        color_sync(connection),
+    )
 
 
 iterm2.run_forever(main)
