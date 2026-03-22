@@ -116,20 +116,26 @@ fi
 
 # 8. Crash Count 현황
 echo -e "\n${BOLD}[8] Crash Count 현황${NC}"
-CRASH_DIR="/tmp/.claude-crash-counts"
+CRASH_DIR="$HOME/.claude/crash-counts"
 if [ -d "$CRASH_DIR" ] && [ "$(ls -A "$CRASH_DIR" 2>/dev/null)" ]; then
     TOTAL_CRASHES=0
+    CC_NOW=$(date +%s)
     while IFS= read -r cfile; do
         CNAME=$(basename "$cfile")
-        CVAL=$(cat "$cfile" 2>/dev/null || echo "0")
-        TOTAL_CRASHES=$((TOTAL_CRASHES + CVAL))
-        if [ "$CVAL" -ge 3 ]; then
+        CC_RAW=$(cat "$cfile" 2>/dev/null || echo "0|0")
+        CVAL=$(echo "$CC_RAW" | cut -d'|' -f1)
+        CC_TS=$(echo "$CC_RAW" | cut -d'|' -f2)
+        CC_AGE=$(( CC_NOW - ${CC_TS:-0} ))
+        if [ "$CC_AGE" -gt 86400 ]; then
+            info "크래시 $CNAME: ${CVAL}회 (만료됨, 24h+)"
+        elif [ "$CVAL" -ge 3 ]; then
             fail "크래시 $CNAME: ${CVAL}회 (임계치 초과)"
         elif [ "$CVAL" -ge 1 ]; then
             warn "크래시 $CNAME: ${CVAL}회"
         else
-            ok "크래시 $CNAME: ${CVAL}회"
+            ok "크래시 $CNAME: 0회"
         fi
+        TOTAL_CRASHES=$((TOTAL_CRASHES + CVAL))
     done < <(find "$CRASH_DIR" -type f 2>/dev/null)
     if [ "$TOTAL_CRASHES" -eq 0 ]; then
         ok "크래시 카운터 전체 0"
