@@ -135,7 +135,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Write|Edit|Agent|Read|Glob|Grep",
+        "matcher": "Bash|Write|Edit|Agent",
         "hooks": [
           {
             "type": "command",
@@ -181,16 +181,6 @@
           }
         ]
       },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/scripts/tab-status.sh\" working \"$(basename \"$PWD\")\" || true",
-            "timeout": 3000
-          }
-        ]
-      }
     ]
   },
   "mcpServers": {
