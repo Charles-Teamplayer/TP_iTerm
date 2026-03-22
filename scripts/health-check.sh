@@ -20,7 +20,7 @@ echo -e "$(date '+%Y-%m-%d %H:%M:%S')\n"
 # 1. LaunchAgent 상태
 echo -e "${BOLD}[1] LaunchAgent 상태${NC}"
 UID_NUM=$(id -u)
-for SVC in auto-restore auto-attach magi-restore watchdog tab-focus-monitor; do
+for SVC in auto-restore auto-attach magi-restore watchdog tab-focus-monitor session-manager; do
     LABEL="com.claude.$SVC"
     if launchctl list | grep -q "$LABEL"; then
         PID=$(launchctl list | grep "$LABEL" | awk '{print $1}')

@@ -29,19 +29,34 @@ atomic_write() {
 }
 
 LAST_TTY=""
+CONSECUTIVE_TIMEOUTS=0
+
+# iTerm2 실행 확인 후 시작
+if ! pgrep -x "iTerm2" >/dev/null 2>&1; then
+    log "iTerm2 미실행 — 30초 대기 후 재시도"
+    sleep 30
+fi
 
 # 시작 시 현재 탭 기록
 LAST_TTY=$(osascript -e 'try' -e 'tell application "iTerm2" to return tty of current session of current tab of current window' -e 'end try' 2>/dev/null)
 log "초기 TTY: ${LAST_TTY:-없음}"
 
 while true; do
+    # 연속 타임아웃 시 backoff (CPU 보호)
+    if [ $CONSECUTIVE_TIMEOUTS -ge 5 ]; then
+        log "연속 타임아웃 ${CONSECUTIVE_TIMEOUTS}회 — 30초 backoff"
+        CONSECUTIVE_TIMEOUTS=0
+        sleep 30
+        continue
+    fi
+
     # 현재 포커스 TTY 가져오기
     osascript -e 'try' -e 'tell application "iTerm2" to return tty of current session of current tab of current window' -e 'end try' > "$TMP" 2>/dev/null &
     OSA_PID=$!
 
-    # 최대 2초 대기
+    # 최대 3초 대기 (2초 → 3초로 증가)
     WAIT=0
-    while [ $WAIT -lt 20 ] && kill -0 $OSA_PID 2>/dev/null; do
+    while [ $WAIT -lt 30 ] && kill -0 $OSA_PID 2>/dev/null; do
         sleep 0.1
         WAIT=$((WAIT + 1))
     done
@@ -50,10 +65,12 @@ while true; do
     if kill -0 $OSA_PID 2>/dev/null; then
         kill -9 $OSA_PID 2>/dev/null
         wait $OSA_PID 2>/dev/null
-        log "osascript 타임아웃 — skip"
-        sleep 1
+        CONSECUTIVE_TIMEOUTS=$((CONSECUTIVE_TIMEOUTS + 1))
+        log "osascript 타임아웃 — skip (연속 ${CONSECUTIVE_TIMEOUTS}회)"
+        sleep 2
         continue
     fi
+    CONSECUTIVE_TIMEOUTS=0
     wait $OSA_PID 2>/dev/null
 
     SESSION_TTY=$(cat "$TMP" 2>/dev/null | tr -d '\n\r')
