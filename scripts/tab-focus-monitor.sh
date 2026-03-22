@@ -2,7 +2,7 @@
 # iTerm2 탭 포커스 감지 데몬 v4
 # 탭 선택 시 🟡/🟠/⚫/🔵 → 🟢 자동 전환
 
-STATE_DIR="$HOME/.claude/tab-states"
+STATE_DIR="$HOME/.claude/tab-color/states"
 LOG="$HOME/.claude/logs/tab-focus-monitor.log"
 TMP="/tmp/.iterm2-focus-tty"
 mkdir -p "$STATE_DIR" "$(dirname "$LOG")"
@@ -66,18 +66,18 @@ while true; do
 
     LAST_TTY="$SESSION_TTY"
 
-    # 상태 파일 읽기
+    # 상태 파일 읽기 (v3 JSON 형식)
     TTY_NAME=$(basename "$SESSION_TTY")
-    STATE_FILE="${STATE_DIR}/${TTY_NAME}"
+    STATE_FILE="${STATE_DIR}/${TTY_NAME}.json"
     [ ! -f "$STATE_FILE" ] && { sleep 1; continue; }
 
-    TAB_STATUS=$(cut -d'|' -f1 "$STATE_FILE" 2>/dev/null)
-    TAB_PROJECT=$(cut -d'|' -f2 "$STATE_FILE" 2>/dev/null)
+    TAB_STATUS=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('type',''))" 2>/dev/null)
+    TAB_PROJECT=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('project',''))" 2>/dev/null)
 
     case "$TAB_STATUS" in
-        waiting|idle|stale|working|attention)
+        waiting|attention)
             if [ -c "$SESSION_TTY" ]; then
-                # attention 상태면 flash 프로세스 kill
+                # attention 상태면 flash 프로세스 먼저 kill
                 if [ "$TAB_STATUS" = "attention" ]; then
                     FLASH_PID_FILE="/tmp/tab-flash-${TTY_NAME}.pid"
                     if [ -f "$FLASH_PID_FILE" ]; then
@@ -86,13 +86,10 @@ while true; do
                         rm -f "$FLASH_PID_FILE"
                         log "flash 프로세스 종료 ($FLASH_PID, $TTY_NAME)"
                     fi
-                    # 배지 클리어
-                    printf '\e]1337;SetBadgeFormat=\a' > "$SESSION_TTY" 2>/dev/null
                 fi
 
-                printf '\e]1;%s\a' "$TAB_PROJECT" > "$SESSION_TTY" 2>/dev/null
-                printf '\e]6;1;bg;red;brightness;0\a\e]6;1;bg;green;brightness;220\a\e]6;1;bg;blue;brightness;0\a' > "$SESSION_TTY" 2>/dev/null
-                atomic_write "$STATE_FILE" "active|${TAB_PROJECT}|$(date +%s)"
+                # v3 엔진으로 active 색상 설정 (state file도 갱신됨)
+                TAB_TTY="$SESSION_TTY" bash "$HOME/.claude/tab-color/engine/set-color.sh" active "$TAB_PROJECT"
                 log "${TAB_STATUS} → active ($TAB_PROJECT, $TTY_NAME)"
             fi
             ;;
