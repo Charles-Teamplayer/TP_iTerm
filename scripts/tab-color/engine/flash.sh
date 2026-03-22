@@ -45,10 +45,21 @@ if [ "$STATE" = "crashed" ]; then
         apply_color $MR $MG $MB; sleep "$INTERVAL"
     done
 else
-    # attention: 무한 루프 (SIGTERM으로 종료)
+    # attention: 무한 루프 — TTY 사망 시 자동 종료
     trap 'exit 0' TERM INT
+    FAIL_COUNT=0
     while true; do
-        apply_color $AR $AG $AB; sleep "$INTERVAL"
+        if [ ! -c "$TTY_PATH" ] || [ ! -w "$TTY_PATH" ]; then
+            exit 0  # TTY 사라지면 자동 종료
+        fi
+        apply_color $AR $AG $AB
+        if [ $? -ne 0 ]; then
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            [ $FAIL_COUNT -ge 3 ] && exit 0  # 3회 연속 실패 시 종료
+        else
+            FAIL_COUNT=0
+        fi
+        sleep "$INTERVAL"
         apply_color $MR $MG $MB; sleep "$INTERVAL"
     done
 fi
