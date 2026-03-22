@@ -120,6 +120,12 @@ printf '\e]1;%s\a' "$TITLE" > "$TTY_PATH" 2>/dev/null
 printf '\e]6;1;bg;red;brightness;%s\a\e]6;1;bg;green;brightness;%s\a\e]6;1;bg;blue;brightness;%s\a' \
     "$R" "$G" "$B" > "$TTY_PATH" 2>/dev/null
 
+# tmux -CC 모드: 윈도우 이름으로 탭 제목 설정 (OSC 1은 tmux가 가로채므로)
+if [ -n "${TMUX:-}" ]; then
+    CURRENT_WINDOW=$(tmux display-message -p '#I' 2>/dev/null)
+    [ -n "$CURRENT_WINDOW" ] && tmux rename-window -t "$CURRENT_WINDOW" "$TITLE" 2>/dev/null || true
+fi
+
 # badge
 BADGE_ENABLED=$(jq -r '.badge_enabled // false' "$CONFIG" 2>/dev/null || echo "false")
 if [ "$BADGE_ENABLED" = "true" ]; then
@@ -131,9 +137,14 @@ if [ "$BADGE_ENABLED" = "true" ]; then
     [ -n "$BADGE" ] && printf '\e]1337;SetBadgeFormat=%s\a' "$(printf '%s' "$BADGE" | base64)" > "$TTY_PATH" 2>/dev/null
 fi
 
-# 상태 저장
+# 상태 저장 (JSON — tab-color/states/)
 mkdir -p "$STATE_DIR"
 _save_state "$TTY_NAME" "$PROJECT" "$R" "$G" "$B"
+
+# 하위호환: pipe-delimited 상태 저장 (watchdog/tab-focus-monitor용)
+COMPAT_STATE_DIR="$HOME/.claude/tab-states"
+mkdir -p "$COMPAT_STATE_DIR"
+echo "${STATE}|${PROJECT}|$(date +%s)" > "$COMPAT_STATE_DIR/$TTY_NAME"
 
 # flash 처리
 FLASH=$(jq -r ".states[\"$STATE\"].flash // false" "$CONFIG" 2>/dev/null || echo "false")
