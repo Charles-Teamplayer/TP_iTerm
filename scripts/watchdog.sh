@@ -218,11 +218,15 @@ while true; do
             if command -v jq &>/dev/null; then
                 TAB_PROJECT=$(jq -r '.project // ""' "$STATE_FILE" 2>/dev/null)
                 LAST_TS_ISO=$(jq -r '.timestamp // ""' "$STATE_FILE" 2>/dev/null)
+                TAB_TYPE=$(jq -r '.type // ""' "$STATE_FILE" 2>/dev/null)
             else
                 TAB_PROJECT=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('project',''))" 2>/dev/null)
                 LAST_TS_ISO=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('timestamp',''))" 2>/dev/null)
+                TAB_TYPE=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('type',''))" 2>/dev/null)
             fi
             [ -z "$LAST_TS_ISO" ] && continue
+            # active/working 상태는 aging 스킵 (사용자가 현재 보고 있는 탭)
+            [ "$TAB_TYPE" = "active" ] || [ "$TAB_TYPE" = "working" ] && continue
 
             LAST_TS=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_TS_ISO" +%s 2>/dev/null || echo 0)
             [ "$LAST_TS" = "0" ] && continue
