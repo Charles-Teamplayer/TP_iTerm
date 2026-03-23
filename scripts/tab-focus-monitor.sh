@@ -56,7 +56,7 @@ except: print('')
 " 2>/dev/null)
 
         case "$TAB_STATUS" in
-            waiting|attention)
+            waiting|attention|idle_10m|idle_1h|idle_1d|idle_3d)
                 if [ -c "$PANE_TTY" ]; then
                     # flash 종료
                     FLASH_PID_FILE="/tmp/tab-flash-${TTY_NAME}.pid"

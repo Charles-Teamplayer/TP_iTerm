@@ -158,7 +158,7 @@ DIR_TO_WINDOW = {
     os.path.expanduser("~/claude/TP_newIMSMS_Agent"): "imsms-agent",
     os.path.expanduser("~/claude/TP_MDM"): "mdm",
     os.path.expanduser("~/claude/TP_TESLA_LVDS"): "tesla-lvds",
-    os.path.expanduser("~/ralph-claude-code/TESLA_Status_Dashboard"): "tesla-dashboard",
+    os.path.expanduser("~/ralph-claude-code/TESLA_Status_Dashboard"): "tesla-dash",
     os.path.expanduser("~/claude/TP_MindMap_AutoCC"): "mindmap",
     os.path.expanduser("~/SJ_MindMap"): "sj-mindmap",
     os.path.expanduser("~/claude/TP_A.iMessage_standalone_01067051080"): "imessage",
@@ -167,7 +167,7 @@ DIR_TO_WINDOW = {
     os.path.expanduser("~/claude/TP_skills"): "skills",
     os.path.expanduser("~/claude/AppleTV_ScreenSaver.app"): "appletv",
     os.path.expanduser("~/claude/imsms.im-website"): "imsms-web",
-    os.path.expanduser("~/claude/TP_iTerm"): "auto-restart",
+    os.path.expanduser("~/claude/TP_iTerm"): "session-mgr",
 }
 
 window_name = DIR_TO_WINDOW.get(project_dir)
@@ -223,7 +223,7 @@ DIR_TO_WINDOW = {
     os.path.expanduser("~/claude/TP_newIMSMS_Agent"): "imsms-agent",
     os.path.expanduser("~/claude/TP_MDM"): "mdm",
     os.path.expanduser("~/claude/TP_TESLA_LVDS"): "tesla-lvds",
-    os.path.expanduser("~/ralph-claude-code/TESLA_Status_Dashboard"): "tesla-dashboard",
+    os.path.expanduser("~/ralph-claude-code/TESLA_Status_Dashboard"): "tesla-dash",
     os.path.expanduser("~/claude/TP_MindMap_AutoCC"): "mindmap",
     os.path.expanduser("~/SJ_MindMap"): "sj-mindmap",
     os.path.expanduser("~/claude/TP_A.iMessage_standalone_01067051080"): "imessage",
@@ -232,7 +232,7 @@ DIR_TO_WINDOW = {
     os.path.expanduser("~/claude/TP_skills"): "skills",
     os.path.expanduser("~/claude/AppleTV_ScreenSaver.app"): "appletv",
     os.path.expanduser("~/claude/imsms.im-website"): "imsms-web",
-    os.path.expanduser("~/claude/TP_iTerm"): "auto-restart",
+    os.path.expanduser("~/claude/TP_iTerm"): "session-mgr",
     os.path.expanduser("~/claude/TP_MailSystem"): "mailsystem",
 }
 
@@ -248,18 +248,25 @@ def get_tmux_windows():
         _tmux_windows = r.stdout.strip().splitlines() if r.returncode == 0 else []
     return _tmux_windows
 
+def strip_prefix(name):
+    """이모지/공백 접두사 제거 (tmux rename-window 이모지 포함 대응)"""
+    import re
+    return re.sub(r'^[\s\U00010000-\U0010FFFF\u2600-\u27FF\u2B00-\u2BFF]+', '', name).strip()
+
 def tmux_window_exists(session_dir, project_name):
     """dir 또는 project_name으로 tmux 윈도우 존재 확인"""
     windows = get_tmux_windows()
     if not windows:
         return False
+    # 이모지 제거한 클린 윈도우명 목록
+    clean_windows = [strip_prefix(w) for w in windows if w]
     # 정확한 매핑으로 확인
     window_name = DIR_TO_WINDOW.get(session_dir)
-    if window_name and window_name in windows:
+    if window_name and window_name in clean_windows:
         return True
     # fallback: 프로젝트명 fuzzy 매칭
     proj_base = os.path.basename(project_name) if project_name else ''
-    if proj_base and any(proj_base.lower() in w.lower() or w.lower() in proj_base.lower() for w in windows if w):
+    if proj_base and any(proj_base.lower() in w.lower() or w.lower() in proj_base.lower() for w in clean_windows if w):
         return True
     return False
 
@@ -268,7 +275,7 @@ def is_claude_process(pid):
     try:
         r = subprocess.run(['ps', '-o', 'command=', '-p', str(pid)], capture_output=True, text=True)
         cmd = r.stdout.strip()
-        return 'claude' in cmd.lower() or 'node' in cmd.lower()
+        return 'claude' in cmd.lower()
     except Exception:
         return False
 

@@ -43,8 +43,20 @@ def _kill_flash(tty_name):
     return True
 
 
+CONFIG_FILE = os.path.expanduser("~/.claude/tab-color/config.json")
+
+def _get_focus_clear_states():
+    """config.json에서 focus_clear_states 읽기 (없으면 기본값)"""
+    try:
+        with open(CONFIG_FILE) as f:
+            cfg = json.load(f)
+        return cfg.get("focus_clear_states", ["waiting", "attention"])
+    except Exception:
+        return ["waiting", "attention", "idle_10m", "idle_1h", "idle_1d", "idle_3d"]
+
+
 def _restore_active(tty, tty_name):
-    """waiting/attention → active 색상 복원"""
+    """focus_clear_states → active 색상 복원"""
     state_file = os.path.join(STATE_DIR, f"{tty_name}.json")
     if not os.path.exists(state_file):
         return
@@ -54,7 +66,7 @@ def _restore_active(tty, tty_name):
     except Exception:
         return
     state = data.get("type", "")
-    if state not in ("waiting", "attention"):
+    if state not in _get_focus_clear_states():
         return
     project = data.get("project", "")
     env = {**ENV, "TAB_TTY": tty}

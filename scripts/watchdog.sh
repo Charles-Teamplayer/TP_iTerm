@@ -198,8 +198,8 @@ while true; do
         fi
     fi
 
-    # 2. 시간 경과 표시 (v3 tab-color/states JSON 기반)
-    #    10분+ → ⚪  |  1시간+ → 🟡  |  1일+ → 🔴  |  3일+ → 🔴⚪ 깜빡임
+    # 2. 시간 경과 표시 (v3 tab-color/states JSON 기반 → set-color.sh 경유)
+    #    10분+ → idle_10m  |  1시간+ → idle_1h  |  1일+ → idle_1d  |  3일+ → idle_3d
     NOW=$(date +%s)
     STATE_DIR="$HOME/.claude/tab-color/states"
     LEGACY_STATE_DIR="$HOME/.claude/tab-states"
@@ -233,26 +233,22 @@ while true; do
 
             AGE=$(( NOW - LAST_TS ))
 
+            # 이미 해당 idle 상태면 재호출 스킵 (불필요한 ESC 반복 방지)
             if [ $AGE -ge 259200 ]; then
-                TOGGLE_FILE="/tmp/.tab-blink-${TTY_NAME}"
-                if [ -f "$TOGGLE_FILE" ]; then
-                    printf '\e]1;⚪ %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
-                    rm "$TOGGLE_FILE"
-                else
-                    printf '\e]1;🔴 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
-                    touch "$TOGGLE_FILE"
-                fi
-                printf '\e]6;1;bg;red;brightness;80\a\e]6;1;bg;green;brightness;80\a\e]6;1;bg;blue;brightness;80\a' > "$TTY_PATH" 2>/dev/null
+                AGING_STATE="idle_3d"
             elif [ $AGE -ge 86400 ]; then
-                printf '\e]1;🔴 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
-                printf '\e]6;1;bg;red;brightness;200\a\e]6;1;bg;green;brightness;50\a\e]6;1;bg;blue;brightness;50\a' > "$TTY_PATH" 2>/dev/null
+                AGING_STATE="idle_1d"
             elif [ $AGE -ge 3600 ]; then
-                printf '\e]1;🟡 %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
-                printf '\e]6;1;bg;red;brightness;200\a\e]6;1;bg;green;brightness;150\a\e]6;1;bg;blue;brightness;0\a' > "$TTY_PATH" 2>/dev/null
+                AGING_STATE="idle_1h"
             elif [ $AGE -ge 600 ]; then
-                printf '\e]1;⚪ %s\a' "$TAB_PROJECT" > "$TTY_PATH" 2>/dev/null
-                printf '\e]6;1;bg;red;brightness;220\a\e]6;1;bg;green;brightness;220\a\e]6;1;bg;blue;brightness;220\a' > "$TTY_PATH" 2>/dev/null
+                AGING_STATE="idle_10m"
+            else
+                continue
             fi
+            # 이미 같은 idle 상태면 스킵 (30초마다 재호출 불필요)
+            [ "$TAB_TYPE" = "$AGING_STATE" ] && continue
+            # set-color.sh 경유: state 파일 갱신 + config 색상 사용
+            TAB_TTY="$TTY_PATH" bash "$HOME/.claude/tab-color/engine/set-color.sh" "$AGING_STATE" "$TAB_PROJECT" 2>/dev/null &
         done
     fi
     # 레거시 tab-states 잔존 파일 일괄 정리

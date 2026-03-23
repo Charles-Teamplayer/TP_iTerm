@@ -8,21 +8,40 @@
     },
     "working": {
       "color": [255, 230, 0],
-      "title_prefix": ""
+      "title_prefix": "\u26a1 "
     },
     "waiting": {
       "color": [0, 120, 255],
-      "title_prefix": ""
+      "title_prefix": "\ud83d\udca4 "
     },
     "attention": {
-      "color": [0, 120, 255],
-      "title_prefix": "",
+      "color": [255, 80, 0],
+      "title_prefix": "\ud83d\udd14 ",
       "flash": true,
       "flash_interval": 0.8,
-      "flash_alt_color": [255, 230, 0]
+      "flash_alt_color": [255, 200, 0]
+    },
+    "idle_10m": {
+      "color": [220, 220, 220],
+      "title_prefix": "\u26aa "
+    },
+    "idle_1h": {
+      "color": [200, 150, 0],
+      "title_prefix": "\ud83d\udfe1 "
+    },
+    "idle_1d": {
+      "color": [200, 50, 50],
+      "title_prefix": "\ud83d\udd34 "
+    },
+    "idle_3d": {
+      "color": [80, 80, 80],
+      "title_prefix": "\ud83d\udd34\u26aa ",
+      "flash": true,
+      "flash_interval": 1.0,
+      "flash_alt_color": [220, 220, 220]
     }
   },
-  "focus_clear_states": ["waiting", "attention"],
+  "focus_clear_states": ["waiting", "attention", "idle_10m", "idle_1h", "idle_1d", "idle_3d"],
   "focus_restore_state": "active",
   "badge_enabled": false,
   "pid_tracking_depth": 15,
