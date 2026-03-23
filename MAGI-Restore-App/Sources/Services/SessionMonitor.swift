@@ -145,6 +145,16 @@ final class SessionMonitor: ObservableObject {
         }
     }
 
+    func stopAllRunning() async {
+        let running = sessions.filter { $0.isRunning && $0.pid > 0 }
+        for session in running {
+            await ShellService.intentionalStopAsync(projectDir: session.projectName)
+            await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
+        }
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        await refresh()
+    }
+
     func selectAllStopped() {
         for session in sessions where !session.isRunning {
             selectedForRestore.insert(session.id)
@@ -155,20 +165,22 @@ final class SessionMonitor: ObservableObject {
         selectedForRestore.removeAll()
     }
 
-    func launchProfile(name: String, root: String, delay: Int) async {
+    func launchProfile(name: String, root: String, delay: Int, createDir: Bool = false) async {
         let safeRoot = root.hasPrefix("~")
             ? root.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: root.range(of: "~"))
             : root
 
-        // 기존에 중단된 세션이 있으면 --continue, 완전 새 세션이면 생략
-        let hasPrior = sessions.contains { $0.projectName == name || $0.windowName == name }
+        // claude 프로젝트 데이터(.jsonl)가 있을 때만 --continue
+        let hasPrior = !createDir && hasClaudeProject(at: safeRoot)
         let claudeCmd = hasPrior
             ? "claude --dangerously-skip-permissions --continue"
             : "claude --dangerously-skip-permissions"
 
+        let mkdirPart = createDir ? "mkdir -p '\(safeRoot)' && " : ""
         let cmd = """
         tmux new-window -t claude-work -n '\(name)' -c '\(safeRoot)' \\; \
-        send-keys "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(name)' && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; true
+        send-keys "\(mkdirPart)sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(name)' && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
+        true
         """
         await ShellService.runAsync(cmd)
         try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -205,6 +217,17 @@ final class SessionMonitor: ObservableObject {
         let pid: String
         let tty: String
         let started: String
+    }
+
+    private func hasClaudeProject(at path: String) -> Bool {
+        // /Users/foo/claude/proj → -Users-foo-claude-proj
+        let encoded = path.unicodeScalars.map { c in
+            CharacterSet.alphanumerics.contains(c) ? String(c) : "-"
+        }.joined()
+        let projectDir = NSHomeDirectory() + "/.claude/projects/" + encoded
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(atPath: projectDir) else { return false }
+        return files.contains { $0.hasSuffix(".jsonl") }
     }
 
     private func loadTmuxWindows() async -> [TmuxWindow] {

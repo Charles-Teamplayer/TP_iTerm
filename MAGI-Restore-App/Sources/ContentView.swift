@@ -171,19 +171,33 @@ struct ContentView: View {
 
             Divider()
             VStack(spacing: 4) {
-                // 전체 복원 버튼 (중단 세션 있을 때만)
-                if stoppedCount > 0 {
-                    Button {
-                        Task {
-                            monitor.selectAllStopped()
-                            await monitor.restoreSelected()
+                if stoppedCount > 0 || runningCount > 0 {
+                    HStack(spacing: 6) {
+                        if stoppedCount > 0 {
+                            Button {
+                                Task {
+                                    monitor.selectAllStopped()
+                                    await monitor.restoreSelected()
+                                }
+                            } label: {
+                                Label("전체 복원 (\(stoppedCount))", systemImage: "arrow.clockwise.circle.fill")
+                                    .font(.caption)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                    } label: {
-                        Label("중단 세션 전체 복원 (\(stoppedCount)개)", systemImage: "arrow.clockwise.circle.fill")
-                            .font(.caption)
-                            .frame(maxWidth: .infinity)
+                        if runningCount > 0 {
+                            Button {
+                                Task { await monitor.stopAllRunning() }
+                            } label: {
+                                Label("전체 중지 (\(runningCount))", systemImage: "stop.circle.fill")
+                                    .font(.caption)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.orange)
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
                     .padding(.horizontal, 10)
                     .padding(.top, 6)
                 }

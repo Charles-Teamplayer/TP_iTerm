@@ -38,8 +38,9 @@ struct SessionDetailView: View {
                                 if !session.startTime.isEmpty {
                                     LabeledContent("시작 시각", value: session.startTime)
                                 }
-                                if !session.directory.isEmpty {
-                                    LabeledContent("경로", value: session.directory)
+                                let displayDir = session.profileRoot ?? session.directory
+                                if !displayDir.isEmpty {
+                                    LabeledContent("경로", value: displayDir)
                                 }
                             }
                             .padding(4)
@@ -93,22 +94,30 @@ struct SessionDetailView: View {
                                     .font(.caption).foregroundStyle(.secondary)
                                 HStack(spacing: 10) {
                                     if let root = session.profileRoot {
-                                        // 프로필 기반 세션 → 시작
+                                        // 프로필 기반 세션 → 디렉토리 존재 여부로 생성/시작 분기
+                                        let safeRoot = root.hasPrefix("~")
+                                            ? root.replacingOccurrences(of: "~", with: NSHomeDirectory(),
+                                                range: root.range(of: "~"))
+                                            : root
+                                        let dirExists = FileManager.default.fileExists(atPath: safeRoot)
                                         Button {
                                             Task {
                                                 isRestoring = true
                                                 await monitor.launchProfile(
                                                     name: session.projectName,
                                                     root: root,
-                                                    delay: session.profileDelay
+                                                    delay: session.profileDelay,
+                                                    createDir: !dirExists
                                                 )
                                                 isRestoring = false
                                             }
                                         } label: {
                                             if isRestoring {
-                                                Label("시작 중...", systemImage: "play.fill")
+                                                Label(dirExists ? "시작 중..." : "생성 중...",
+                                                      systemImage: dirExists ? "play.fill" : "folder.badge.plus")
                                             } else {
-                                                Label("시작", systemImage: "play.fill")
+                                                Label(dirExists ? "시작" : "생성",
+                                                      systemImage: dirExists ? "play.fill" : "folder.badge.plus")
                                             }
                                         }
                                         .buttonStyle(.borderedProminent)
