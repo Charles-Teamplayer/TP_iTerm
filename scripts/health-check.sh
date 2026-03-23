@@ -37,7 +37,7 @@ for SVC in auto-restore auto-attach magi-restore watchdog tab-focus-monitor sess
     fi
 done
 
-# 2. tmux 세션 상태
+# 2. tmux 세션 상태 + 좀비 윈도우 감지
 echo -e "\n${BOLD}[2] tmux 세션 상태${NC}"
 if tmux has-session -t claude-work 2>/dev/null; then
     WIN_COUNT=$(tmux list-windows -t claude-work 2>/dev/null | wc -l | tr -d ' ')
@@ -46,13 +46,40 @@ if tmux has-session -t claude-work 2>/dev/null; then
     else
         warn "claude-work 세션 활성 (윈도우 ${WIN_COUNT}개 — 기대: 15개)"
     fi
+
+    # 좀비/orphan 윈도우 검사 (pane PID가 0이거나 프로세스 없는 경우)
+    ZOMBIE_WINS=0
+    ZOMBIE_LIST=""
+    while IFS='|' read -r wname pid; do
+        if [ -z "$pid" ] || [ "$pid" = "0" ] || ! kill -0 "$pid" 2>/dev/null; then
+            ZOMBIE_WINS=$((ZOMBIE_WINS + 1))
+            ZOMBIE_LIST="$ZOMBIE_LIST
+    - $wname (PID: $pid)"
+        fi
+    done < <(tmux list-windows -t claude-work -F "#{window_name}|#{pane_pid}" 2>/dev/null)
+
+    if [ "$ZOMBIE_WINS" -gt 5 ]; then
+        warn "좀비 윈도우: ${ZOMBIE_WINS}개 (정리 권장 — tmux kill-window 사용)"
+        echo "$ZOMBIE_LIST" | head -5 | awk '{print "    " $0}'
+        if [ "$ZOMBIE_WINS" -gt 5 ]; then
+            info "    ... (외 $((ZOMBIE_WINS - 5))개)"
+        fi
+    elif [ "$ZOMBIE_WINS" -gt 0 ]; then
+        info "좀비 윈도우: ${ZOMBIE_WINS}개"
+    fi
+
     # monitor 창 존재 확인
     if tmux list-windows -t claude-work -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
         ok "monitor 창 존재"
     else
         fail "monitor 창 없음 — 수동 복구: tmux new-window -t claude-work -n monitor -c \"\$HOME/claude\""
     fi
-    tmux list-windows -t claude-work 2>/dev/null | awk '{print "    " $0}'
+
+    # 윈도우 목록 (처음 20개만 표시)
+    tmux list-windows -t claude-work 2>/dev/null | head -20 | awk '{print "    " $0}'
+    if [ "$WIN_COUNT" -gt 20 ]; then
+        info "    ... (총 ${WIN_COUNT}개 윈도우 중 처음 20개만 표시)"
+    fi
 else
     fail "claude-work tmux 세션 없음 — 복원 필요"
 fi
@@ -114,43 +141,62 @@ for s in d.get('stops',[]): print('    - ' + s.get('window_name','?'))
     fi
 fi
 
-# 8. Crash Count 현황
+# 8. Crash Count 현황 (상세 분석)
 echo -e "\n${BOLD}[8] Crash Count 현황${NC}"
 CRASH_DIR="$HOME/.claude/crash-counts"
 if [ -d "$CRASH_DIR" ] && [ "$(ls -A "$CRASH_DIR" 2>/dev/null)" ]; then
     TOTAL_CRASHES=0
+    RECENT_CRASHES=0
     CC_NOW=$(date +%s)
+    CRASH_LIST=""
     while IFS= read -r cfile; do
         CNAME=$(basename "$cfile")
         CC_RAW=$(cat "$cfile" 2>/dev/null || echo "0|0")
         CVAL=$(echo "$CC_RAW" | cut -d'|' -f1)
         CC_TS=$(echo "$CC_RAW" | cut -d'|' -f2)
         CC_AGE=$(( CC_NOW - ${CC_TS:-0} ))
-        if [ "$CC_AGE" -gt 86400 ]; then
-            info "크래시 $CNAME: ${CVAL}회 (만료됨, 24h+)"
-        elif [ "$CVAL" -ge 3 ]; then
-            fail "크래시 $CNAME: ${CVAL}회 (임계치 초과)"
-        elif [ "$CVAL" -ge 1 ]; then
-            warn "크래시 $CNAME: ${CVAL}회"
+
+        # 24시간 이내 크래시만 카운트
+        if [ "$CC_AGE" -lt 86400 ]; then
+            RECENT_CRASHES=$((RECENT_CRASHES + CVAL))
+            if [ "$CVAL" -ge 3 ]; then
+                CRASH_LIST="$CRASH_LIST
+    ❌ $CNAME: ${CVAL}회 (임계치 초과, ${CC_AGE}초 전)"
+            elif [ "$CVAL" -ge 1 ]; then
+                CRASH_LIST="$CRASH_LIST
+    ⚠️  $CNAME: ${CVAL}회 (${CC_AGE}초 전)"
+            fi
         else
-            ok "크래시 $CNAME: 0회"
+            info "크래시 $CNAME: ${CVAL}회 (만료됨, 24h+)"
         fi
         TOTAL_CRASHES=$((TOTAL_CRASHES + CVAL))
     done < <(find "$CRASH_DIR" -type f 2>/dev/null)
-    if [ "$TOTAL_CRASHES" -eq 0 ]; then
-        ok "크래시 카운터 전체 0"
+
+    if [ "$RECENT_CRASHES" -gt 0 ]; then
+        warn "최근 24h 크래시: ${RECENT_CRASHES}회 (누적: ${TOTAL_CRASHES}회)"
+        echo "$CRASH_LIST"
+    else
+        ok "크래시 카운터 전체 0 (누적: ${TOTAL_CRASHES}회)"
     fi
 else
     ok "크래시 기록 없음 ($CRASH_DIR 비어있음)"
 fi
 
 # 9. tmux 클라이언트 연결 상태 + %extended-output 위험도
-echo -e "\n${BOLD}[9] tmux 클라이언트 연결 상태${NC}"
+echo -e "\n${BOLD}[9] tmux 클라이언트 연결 상태 (%extended-output)${NC}"
 if tmux has-session -t claude-work 2>/dev/null; then
     CLIENT_COUNT=$(tmux list-clients -t claude-work 2>/dev/null | wc -l | tr -d ' ')
+    EXTENDED_CHK=$(tmux list-clients -t claude-work 2>/dev/null | grep "extended-output" | wc -l | tr -d ' ')
+
     if [ "$CLIENT_COUNT" -ge 1 ]; then
         ok "연결된 클라이언트: ${CLIENT_COUNT}개"
         tmux list-clients -t claude-work 2>/dev/null | awk '{print "    " $0}'
+        if [ "$EXTENDED_CHK" -gt 0 ]; then
+            ok "%extended-output 감지됨 (iTerm CC 모드 정상)"
+        else
+            warn "%extended-output 미감지 — iTerm이 CC 모드로 연결되지 않았을 수 있음"
+            info "필요 시: tmux -CC attach -t claude-work (iTerm2에서 실행)"
+        fi
     else
         fail "클라이언트 0개 — %extended-output 위험! (iTerm CC 모드 미연결)"
         warn "해결: iTerm2에서 tmux -CC attach -t claude-work 실행"
@@ -159,25 +205,32 @@ else
     fail "claude-work 세션 없음 — 클라이언트 확인 불가"
 fi
 
-# 10. Orphan tab-states 현황
+# 10. Orphan tab-states 현황 (강화된 검사)
 echo -e "\n${BOLD}[10] Orphan tab-states 검사${NC}"
 TAB_STATES_DIR="$HOME/.claude/tab-states"
 if [ -d "$TAB_STATES_DIR" ]; then
     ORPHAN_COUNT=0
     TOTAL_STATES=0
+    ORPHAN_LIST=""
     while IFS= read -r tsfile; do
         TOTAL_STATES=$((TOTAL_STATES + 1))
         TTY_NAME=$(basename "$tsfile")
         if [ ! -e "/dev/$TTY_NAME" ]; then
             ORPHAN_COUNT=$((ORPHAN_COUNT + 1))
-            warn "orphan: $TTY_NAME (TTY 존재하지 않음)"
+            ORPHAN_LIST="$ORPHAN_LIST
+    - $TTY_NAME (TTY 존재하지 않음)"
         fi
     done < <(find "$TAB_STATES_DIR" -type f 2>/dev/null)
+
     if [ "$ORPHAN_COUNT" -eq 0 ]; then
         ok "tab-states ${TOTAL_STATES}개 — orphan 없음"
     else
         warn "tab-states ${TOTAL_STATES}개 중 orphan ${ORPHAN_COUNT}개 발견"
-        info "정리: rm $TAB_STATES_DIR/<orphan-tty>"
+        echo "$ORPHAN_LIST" | head -3
+        if [ "$ORPHAN_COUNT" -gt 3 ]; then
+            info "    ... (외 $((ORPHAN_COUNT - 3))개)"
+        fi
+        info "정리 권장: find $TAB_STATES_DIR -type f ! -exec test -e /dev/{} \; -delete"
     fi
 else
     info "tab-states 디렉토리 없음"
@@ -192,6 +245,27 @@ if [ -f "$HOME/.claude/logs/auto-restore.log" ]; then
     [ -n "$LAST_RESULT" ] && ok "$LAST_RESULT"
 else
     warn "auto-restore 로그 없음"
+fi
+
+# 12. 실시간 상태 서마리
+echo -e "\n${BOLD}[12] 실시간 상태 점검 요약${NC}"
+HEALTH_SCORE=0
+HEALTH_MAX=10
+
+# 각 항목별 점수 계산
+if [ -n "$WIN_COUNT" ] && [ "$WIN_COUNT" -gt 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 2)); fi
+if [ -n "$ZOMBIE_WINS" ] && [ "$ZOMBIE_WINS" -eq 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 1)); fi
+if [ -z "$RECENT_CRASHES" ] || [ "$RECENT_CRASHES" -eq 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 2)); fi
+if [ -n "$ORPHAN_COUNT" ] && [ "$ORPHAN_COUNT" -eq 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 1)); fi
+if [ -n "$CLIENT_COUNT" ] && [ "$CLIENT_COUNT" -ge 1 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 2)); fi
+if [ -n "$EXTENDED_CHK" ] && [ "$EXTENDED_CHK" -gt 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 2)); fi
+
+if [ "$HEALTH_SCORE" -ge 9 ]; then
+    ok "종합 상태: ${HEALTH_SCORE}/${HEALTH_MAX} (정상)"
+elif [ "$HEALTH_SCORE" -ge 6 ]; then
+    warn "종합 상태: ${HEALTH_SCORE}/${HEALTH_MAX} (경고)"
+else
+    fail "종합 상태: ${HEALTH_SCORE}/${HEALTH_MAX} (주의 필요)"
 fi
 
 echo -e "\n${BOLD}━━━ 완료 ━━━${NC}\n"
