@@ -242,7 +242,7 @@ struct ContentView: View {
 
             Divider()
             VStack(spacing: 4) {
-                if restorableCount > 0 || runningCount > 0 {
+                if restorableCount > 0 || runningCount > 0 || restorableStoppedCount > 0 {
                     HStack(spacing: 6) {
                         if restorableCount > 0 {
                             Button {
@@ -261,12 +261,23 @@ struct ContentView: View {
                             Button {
                                 Task { await monitor.stopAllRunning() }
                             } label: {
-                                Label("전체 중지 (\(runningCount))", systemImage: "stop.circle.fill")
+                                Label("중지 (\(runningCount))", systemImage: "stop.circle.fill")
                                     .font(.caption)
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
                             .tint(.orange)
+                        }
+                        if restorableStoppedCount > 0 {
+                            Button {
+                                Task { await monitor.purgeIdleZshWindows() }
+                            } label: {
+                                Label("zsh 정리 (\(restorableStoppedCount))", systemImage: "xmark.circle.fill")
+                                    .font(.caption)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.red)
                         }
                     }
                     .padding(.horizontal, 10)

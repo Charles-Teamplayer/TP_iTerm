@@ -147,9 +147,15 @@ final class SessionMonitor: ObservableObject {
             && !$0.id.hasPrefix("profile-")
             && $0.windowIndex != Int.max
         }
+        guard !toRestore.isEmpty else { return }
+
+        // 복원 중 Timer refresh 차단 (isRefreshing 재활용)
+        isRefreshing = true
+        defer { isRefreshing = false }
+
         for (i, session) in toRestore.enumerated() {
-            let delay = session.profileDelay > 0 ? session.profileDelay : i * 5
-            let windowName = shellEscape(session.windowName)
+            let delay = session.profileDelay > 0 ? session.profileDelay : 0
+            let winName = shellEscape(session.windowName)
             let dir = session.directory.isEmpty ? "~/claude/\(session.windowName)" : session.directory
             let safeDir = dir.hasPrefix("~")
                 ? dir.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: dir.range(of: "~"))
@@ -158,18 +164,37 @@ final class SessionMonitor: ObservableObject {
             let claudeCmd = hasClaudeProject(at: safeDir)
                 ? "claude --dangerously-skip-permissions --continue"
                 : "claude --dangerously-skip-permissions"
-            let cmd = """
-            tmux send-keys -t 'claude-work:\(windowName)' \
-            "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(windowName)' && unset CLAUDECODE && \(claudeCmd)" Enter \
-            2>/dev/null || \
-            tmux new-window -t claude-work -n '\(windowName)' -c '\(escapedDir)' \\; \
-            send-keys "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(windowName)' && unset CLAUDECODE && \(claudeCmd)" Enter
-            """
-            await ShellService.runAsync(cmd)
+            let claudeEntry = "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(session.windowName)' && unset CLAUDECODE && \(claudeCmd)"
+
+            // 창 존재 여부 먼저 확인 — windowIndex 기반 (이모지/특수문자 안전)
+            let winIdx = session.windowIndex
+            let paneCmd = await ShellService.runAsync(
+                "tmux list-panes -t 'claude-work:\(winIdx)' -F '#{pane_current_command}' 2>/dev/null | head -1"
+            )
+
+            if paneCmd.isEmpty {
+                // 창이 사라진 경우 — 새로 생성 후 claude 실행
+                await ShellService.runAsync(
+                    "tmux new-window -t claude-work -n '\(winName)' -c '\(escapedDir)'"
+                )
+                // 새 창은 이름으로 targeting (방금 만들었으므로 안전)
+                await ShellService.runAsync(
+                    "tmux send-keys -t 'claude-work:\(winName)' '\(claudeEntry)' Enter 2>/dev/null"
+                )
+            } else {
+                // 창이 있음 — windowIndex로 targeting (특수문자 무관)
+                await ShellService.runAsync(
+                    "tmux send-keys -t 'claude-work:\(winIdx)' '\(claudeEntry)' Enter 2>/dev/null"
+                )
+            }
+
+            // 배치 5개마다 2초 대기 (tmux 부하 분산)
+            if (i + 1) % 5 == 0 {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
         }
-        if !toRestore.isEmpty {
-            NotificationService.shared.notifyRestoreComplete(count: toRestore.count)
-        }
+
+        NotificationService.shared.notifyRestoreComplete(count: toRestore.count)
         selectedForRestore.removeAll()
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh()
@@ -195,23 +220,41 @@ final class SessionMonitor: ObservableObject {
         }
     }
 
+    // claude 실행 중 세션 중지 + tmux 창 닫기
     func stopAllRunning() async {
-        let running = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") }
-        for session in running {
+        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") }
+        for session in toStop {
             let dir = session.directory.isEmpty ? session.projectName : session.directory
             await ShellService.intentionalStopAsync(projectDir: dir)
             if session.pid > 0 {
                 await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
             }
-            let escapedName = session.windowName.replacingOccurrences(of: "'", with: "'\\''")
-            await ShellService.runAsync("""
-            tmux list-windows -t claude-work -F '#{window_index} #{window_name}' 2>/dev/null \
-            | while IFS=' ' read -r idx name; do \
-              [ "$name" = '\(escapedName)' ] && tmux kill-window -t "claude-work:$idx" 2>/dev/null; \
-            done; true
-            """)
+            // windowIndex 기반 tmux kill-window (이름 특수문자 무관)
+            if session.windowIndex != Int.max {
+                await ShellService.runAsync(
+                    "tmux kill-window -t 'claude-work:\(session.windowIndex)' 2>/dev/null; true"
+                )
+            }
         }
         try? await Task.sleep(nanoseconds: 2_000_000_000)
+        await refresh()
+    }
+
+    // zsh만 있는 유휴 창 전체 닫기 (복원 실패 후 남은 zsh 정리용)
+    func purgeIdleZshWindows() async {
+        let idleZsh = sessions.filter {
+            !$0.isRunning
+            && !$0.id.hasPrefix("profile-")
+            && $0.windowIndex != Int.max
+        }
+        for session in idleZsh {
+            let dir = session.directory.isEmpty ? session.projectName : session.directory
+            await ShellService.intentionalStopAsync(projectDir: dir)
+            await ShellService.runAsync(
+                "tmux kill-window -t 'claude-work:\(session.windowIndex)' 2>/dev/null; true"
+            )
+        }
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
         await refresh()
     }
 
