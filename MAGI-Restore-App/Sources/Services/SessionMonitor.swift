@@ -120,6 +120,20 @@ final class SessionMonitor: ObservableObject {
         selectedForRestore.removeAll()
     }
 
+    func createSession(name: String, directory: String) async {
+        let safeName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !safeName.isEmpty, !safeDir.isEmpty else { return }
+
+        let cmd = """
+        tmux new-window -t claude-work -n '\(safeName)' -c '\(safeDir)' \\; \
+        send-keys "bash ~/.claude/scripts/tab-status.sh starting '\(safeName)' && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; true
+        """
+        await ShellService.runAsync(cmd)
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        await refresh()
+    }
+
     // MARK: - Data Loading
 
     private struct TmuxWindow {

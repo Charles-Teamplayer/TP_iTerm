@@ -6,6 +6,7 @@ struct SessionDetailView: View {
     let session: ClaudeSession?
     @ObservedObject var monitor: SessionMonitor
     @State private var showKillConfirm = false
+    @State private var showStopConfirm = false
     @State private var showHideConfirm = false
     @State private var showPurgeConfirm = false
     @State private var isRestoring = false
@@ -44,55 +45,73 @@ struct SessionDetailView: View {
                             .padding(4)
                         }
 
-                        HStack(spacing: 12) {
-                            if session.isRunning {
-                                Button("Hide") { showHideConfirm = true }
-                                    .confirmationDialog(
-                                        "iTerm2 창을 최소화하시겠습니까?",
-                                        isPresented: $showHideConfirm,
-                                        titleVisibility: .visible
-                                    ) {
-                                        Button("최소화") { doHide(session) }
-                                        Button("취소", role: .cancel) {}
-                                    }
+                        // 액션 버튼
+                        if session.isRunning {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("제어").font(.caption).foregroundStyle(.secondary)
+                                HStack(spacing: 10) {
+                                    Button("숨기기") { showHideConfirm = true }
+                                        .help("iTerm2 창 최소화 — 프로세스는 계속 실행")
+                                        .confirmationDialog(
+                                            "iTerm2 창을 숨기시겠습니까?\n프로세스는 계속 실행됩니다",
+                                            isPresented: $showHideConfirm,
+                                            titleVisibility: .visible
+                                        ) {
+                                            Button("숨기기") { doHide(session) }
+                                            Button("취소", role: .cancel) {}
+                                        }
 
-                                Button("Kill", role: .destructive) { showKillConfirm = true }
-                                    .confirmationDialog(
-                                        "PID \(session.pid) 세션을 종료하시겠습니까?",
-                                        isPresented: $showKillConfirm,
-                                        titleVisibility: .visible
-                                    ) {
-                                        Button("종료", role: .destructive) { doKill(session) }
-                                        Button("취소", role: .cancel) {}
-                                    }
+                                    Button("종료") { showStopConfirm = true }
+                                        .help("SIGTERM — 정상 종료 요청 (나중에 복원 가능)")
+                                        .confirmationDialog(
+                                            "'\(session.projectName)' 세션을 종료하시겠습니까?\n정상 종료 후 나중에 복원할 수 있습니다",
+                                            isPresented: $showStopConfirm,
+                                            titleVisibility: .visible
+                                        ) {
+                                            Button("종료") { doStop(session) }
+                                            Button("취소", role: .cancel) {}
+                                        }
 
-                                Button("완전 삭제", role: .destructive) { showPurgeConfirm = true }
-                                    .help("프로세스 kill + tmux window + 레지스트리 + state 파일")
+                                    Button("강제종료", role: .destructive) { showKillConfirm = true }
+                                        .help("SIGKILL — 즉시 강제 종료 (응답 없을 때 사용)")
+                                        .confirmationDialog(
+                                            "'\(session.projectName)' 세션을 강제종료하시겠습니까?\n저장 없이 즉시 종료됩니다",
+                                            isPresented: $showKillConfirm,
+                                            titleVisibility: .visible
+                                        ) {
+                                            Button("강제종료", role: .destructive) { doKill(session) }
+                                            Button("취소", role: .cancel) {}
+                                        }
 
-                            } else {
-                                Button {
-                                    Task {
-                                        monitor.selectedForRestore = [session.id]
-                                        isRestoring = true
-                                        await monitor.restoreSelected()
-                                        isRestoring = false
-                                    }
-                                } label: {
-                                    Label("이 세션 복원", systemImage: "arrow.clockwise")
+                                    Button("완전삭제", role: .destructive) { showPurgeConfirm = true }
+                                        .help("강제종료 + tmux window 제거 + 레지스트리 + state 파일 삭제")
                                 }
-                                .disabled(isRestoring)
-
-                                Button("완전 삭제", role: .destructive) { showPurgeConfirm = true }
-                                    .disabled(isPurging)
                             }
-                        }
-                        .confirmationDialog(
-                            "'\(session.projectName)' 세션을 완전히 삭제하시겠습니까?",
-                            isPresented: $showPurgeConfirm,
-                            titleVisibility: .visible
-                        ) {
-                            Button("완전 삭제", role: .destructive) { doPurge(session) }
-                            Button("취소", role: .cancel) {}
+                        } else {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("복원").font(.caption).foregroundStyle(.secondary)
+                                HStack(spacing: 10) {
+                                    Button {
+                                        Task {
+                                            monitor.selectedForRestore = [session.id]
+                                            isRestoring = true
+                                            await monitor.restoreSelected()
+                                            isRestoring = false
+                                        }
+                                    } label: {
+                                        if isRestoring {
+                                            Label("복원 중...", systemImage: "arrow.clockwise")
+                                        } else {
+                                            Label("이 세션 복원", systemImage: "arrow.clockwise")
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(isRestoring)
+
+                                    Button("완전 삭제", role: .destructive) { showPurgeConfirm = true }
+                                        .disabled(isPurging)
+                                }
+                            }
                         }
 
                         Spacer()
@@ -100,6 +119,14 @@ struct SessionDetailView: View {
                     .padding()
                 }
                 .navigationTitle(session.projectName)
+                .confirmationDialog(
+                    "'\(session.projectName)' 세션을 완전히 삭제하시겠습니까?",
+                    isPresented: $showPurgeConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button("완전 삭제", role: .destructive) { doPurge(session) }
+                    Button("취소", role: .cancel) {}
+                }
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "cursorarrow.click")
@@ -120,6 +147,15 @@ struct SessionDetailView: View {
             try? script.write(toFile: tmp, atomically: true, encoding: .utf8)
             await ShellService.runAsync("osascript '\(tmp)'")
             await ShellService.runAsync("rm -f '\(tmp)'")
+            await monitor.refresh()
+        }
+    }
+
+    private func doStop(_ session: ClaudeSession) {
+        Task {
+            await ShellService.intentionalStopAsync(projectDir: session.projectName)
+            await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
             await monitor.refresh()
         }
     }
