@@ -117,7 +117,8 @@ final class SessionMonitor: ObservableObject {
 
     private func detectChanges(old: [ClaudeSession], new: [ClaudeSession]) {
         guard !old.isEmpty else { return }
-        let oldMap = Dictionary(uniqueKeysWithValues: old.map { ($0.id, $0.isRunning) })
+        var oldMap: [String: Bool] = [:]
+        for session in old { oldMap[session.id] = session.isRunning }
         for session in new {
             guard let wasRunning = oldMap[session.id] else { continue }
             if wasRunning && !session.isRunning {
