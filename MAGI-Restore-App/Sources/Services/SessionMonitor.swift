@@ -115,20 +115,28 @@ final class SessionMonitor: ObservableObject {
     // MARK: - Restore
 
     func restoreSelected() async {
-        let toRestore = sessions.filter { selectedForRestore.contains($0.id) && !$0.isRunning }
+        let toRestore = sessions.filter {
+            selectedForRestore.contains($0.id)
+            && !$0.isRunning
+            && !$0.id.hasPrefix("profile-")
+            && $0.windowIndex != Int.max
+        }
         for (i, session) in toRestore.enumerated() {
-            let delay = i * 5
+            let delay = session.profileDelay > 0 ? session.profileDelay : i * 5
             let windowName = session.windowName
-            let dir = session.directory.isEmpty
-                ? "~/claude/\(windowName)"
-                : session.directory
-
+            let dir = session.directory.isEmpty ? "~/claude/\(windowName)" : session.directory
+            let safeDir = dir.hasPrefix("~")
+                ? dir.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: dir.range(of: "~"))
+                : dir
+            let claudeCmd = hasClaudeProject(at: safeDir)
+                ? "claude --dangerously-skip-permissions --continue"
+                : "claude --dangerously-skip-permissions"
             let cmd = """
-            tmux send-keys -t claude-work:\(windowName) \
-            "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting \(windowName) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue" Enter \
+            tmux send-keys -t 'claude-work:\(windowName)' \
+            "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(windowName)' && unset CLAUDECODE && \(claudeCmd)" Enter \
             2>/dev/null || \
             tmux new-window -t claude-work -n '\(windowName)' -c '\(dir)' \\; \
-            send-keys "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting \(windowName) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue" Enter
+            send-keys "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(windowName)' && unset CLAUDECODE && \(claudeCmd)" Enter
             """
             await ShellService.runAsync(cmd)
         }
@@ -148,7 +156,8 @@ final class SessionMonitor: ObservableObject {
     func stopAllRunning() async {
         let running = sessions.filter { $0.isRunning && $0.pid > 0 }
         for session in running {
-            await ShellService.intentionalStopAsync(projectDir: session.projectName)
+            let dir = session.directory.isEmpty ? session.projectName : session.directory
+            await ShellService.intentionalStopAsync(projectDir: dir)
             await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
         }
         try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -156,7 +165,9 @@ final class SessionMonitor: ObservableObject {
     }
 
     func selectAllStopped() {
-        for session in sessions where !session.isRunning {
+        for session in sessions where !session.isRunning
+            && !session.id.hasPrefix("profile-")
+            && session.windowIndex != Int.max {
             selectedForRestore.insert(session.id)
         }
     }

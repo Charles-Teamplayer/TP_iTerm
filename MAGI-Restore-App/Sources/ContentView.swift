@@ -55,6 +55,11 @@ struct ContentView: View {
             FileManager.default.createFile(atPath: "/tmp/restore_debug.log",
                                            contents: msg.data(using: .utf8))
         }
+        .onChange(of: monitor.sessions) { sessions in
+            if let current = selectedSession {
+                selectedSession = sessions.first { $0.id == current.id }
+            }
+        }
         .onDisappear { monitor.stop() }
         .background {
             Group {
@@ -287,43 +292,20 @@ struct EmptyStateView: View {
 struct NewSessionSheet: View {
     @ObservedObject var monitor: SessionMonitor
     @Binding var isPresented: Bool
-    @State private var sessionName = ""
     @State private var directory = ""
     @State private var isCreating = false
-    @StateObject private var profileService = ProfileService()
-    @State private var selectedProfile: SmugProfile? = nil
+
+    var derivedName: String {
+        (directory as NSString).lastPathComponent
+    }
 
     var canCreate: Bool {
-        !sessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !directory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("새 세션 추가").font(.headline)
-
-            // 프로필에서 선택
-            if !profileService.profiles.isEmpty {
-                GroupBox("저장된 프로필에서 선택") {
-                    Picker("프로필", selection: $selectedProfile) {
-                        Text("직접 입력").tag(Optional<SmugProfile>.none)
-                        ForEach(profileService.profiles) { p in
-                            Text(p.name).tag(Optional(p))
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .onChange(of: selectedProfile) { profile in
-                        if let p = profile {
-                            sessionName = p.name
-                            directory = p.root.hasPrefix("~")
-                                ? p.root.replacingOccurrences(of: "~", with: NSHomeDirectory(),
-                                    range: p.root.range(of: "~"))
-                                : p.root
-                        }
-                    }
-                    .padding(4)
-                }
-            }
 
             GroupBox("프로젝트 디렉토리") {
                 HStack {
@@ -340,10 +322,6 @@ struct NewSessionSheet: View {
                         panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory() + "/claude")
                         if panel.runModal() == .OK, let url = panel.url {
                             directory = url.path
-                            if sessionName.isEmpty {
-                                sessionName = url.lastPathComponent
-                            }
-                            selectedProfile = nil
                         }
                     }
                 }
@@ -351,10 +329,11 @@ struct NewSessionSheet: View {
             }
 
             GroupBox("세션 이름 (tmux 윈도우명)") {
-                TextField("예: my-project", text: $sessionName)
-                    .textFieldStyle(.plain)
-                    .padding(4)
-                    .onChange(of: sessionName) { _ in selectedProfile = nil }
+                LabeledContent("이름") {
+                    Text(derivedName.isEmpty ? "경로 선택 후 자동 입력" : derivedName)
+                        .foregroundStyle(derivedName.isEmpty ? .secondary : .primary)
+                }
+                .padding(4)
             }
 
             HStack {
@@ -364,7 +343,7 @@ struct NewSessionSheet: View {
                 Button("생성") {
                     Task {
                         isCreating = true
-                        await monitor.createSession(name: sessionName, directory: directory)
+                        await monitor.createSession(name: derivedName, directory: directory)
                         isCreating = false
                         isPresented = false
                     }
@@ -376,6 +355,5 @@ struct NewSessionSheet: View {
         }
         .padding(20)
         .frame(width: 420)
-        .onAppear { profileService.load() }
     }
 }

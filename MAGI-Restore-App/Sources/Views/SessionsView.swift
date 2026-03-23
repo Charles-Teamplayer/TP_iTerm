@@ -187,7 +187,8 @@ struct SessionDetailView: View {
 
     private func doStop(_ session: ClaudeSession) {
         Task {
-            await ShellService.intentionalStopAsync(projectDir: session.projectName)
+            let dir = session.directory.isEmpty ? session.projectName : session.directory
+            await ShellService.intentionalStopAsync(projectDir: dir)
             await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await monitor.refresh()

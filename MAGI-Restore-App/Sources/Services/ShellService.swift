@@ -62,7 +62,7 @@ struct ShellService {
         }
         // 3. tmux window 종료 (이름이 같은 모든 중복 윈도우 제거)
         if !windowName.isEmpty {
-            let killCmd = "tmux list-windows -t claude-work -F '#{window_index} #{window_name}' 2>/dev/null | awk '{print $2, $1}' | grep '^\\(windowName) ' | awk '{print $2}' | sort -rn | while read idx; do tmux kill-window -t \"claude-work:$idx\" 2>/dev/null; done; true"
+            let killCmd = "tmux list-windows -t claude-work -F '#{window_index} #{window_name}' 2>/dev/null | awk '{print $2, $1}' | grep -F '\(windowName) ' | awk '{print $2}' | sort -rn | while read idx; do tmux kill-window -t \"claude-work:$idx\" 2>/dev/null; done; true"
             await runAsync(killCmd)
         }
         // 4. active-sessions.json에서 해당 TTY 항목 제거

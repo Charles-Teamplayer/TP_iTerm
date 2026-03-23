@@ -124,7 +124,6 @@ struct ProfileFormSheet: View {
     let onSave: (SmugProfile) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var name: String
     @State private var root: String
     @State private var delay: Int
 
@@ -132,7 +131,6 @@ struct ProfileFormSheet: View {
         self.title = title
         self.existing = existing
         self.onSave = onSave
-        _name = State(initialValue: existing?.name ?? "")
         _root = State(initialValue: existing?.root ?? "~/claude/")
         _delay = State(initialValue: existing?.delay ?? 0)
     }
@@ -162,7 +160,6 @@ struct ProfileFormSheet: View {
                         panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory() + "/claude")
                         if panel.runModal() == .OK, let url = panel.url {
                             root = url.path
-                            if name.isEmpty { name = url.lastPathComponent }
                         }
                     }
                 }
