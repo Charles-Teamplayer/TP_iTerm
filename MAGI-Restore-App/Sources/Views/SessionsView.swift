@@ -5,7 +5,9 @@ struct SessionsView: View {
     @State private var selectedSession: ClaudeSession?
     @State private var showKillConfirm = false
     @State private var showHideConfirm = false
+    @State private var showPurgeConfirm = false
     @State private var isRestoring = false
+    @State private var isPurging = false
 
     private var runningCount: Int { monitor.sessions.filter(\.isRunning).count }
     private var stoppedCount: Int { monitor.sessions.filter { !$0.isRunning }.count }
@@ -158,6 +160,19 @@ struct SessionsView: View {
                                     Button("종료", role: .destructive) { killSession(session) }
                                     Button("취소", role: .cancel) {}
                                 }
+
+                                Button("완전 삭제", role: .destructive) {
+                                    showPurgeConfirm = true
+                                }
+                                .confirmationDialog(
+                                    "'\(session.projectName)' 세션을 완전히 삭제하시겠습니까?",
+                                    isPresented: $showPurgeConfirm,
+                                    titleVisibility: .visible
+                                ) {
+                                    Button("완전 삭제", role: .destructive) { purgeSession(session) }
+                                    Button("취소", role: .cancel) {}
+                                }
+                                .help("프로세스 kill + tmux window 제거 + 레지스트리 삭제 + state 파일 제거")
                             } else {
                                 Button {
                                     Task {
@@ -170,6 +185,20 @@ struct SessionsView: View {
                                     Label("이 세션 복원", systemImage: "arrow.clockwise")
                                 }
                                 .disabled(isRestoring)
+
+                                Button("완전 삭제", role: .destructive) {
+                                    showPurgeConfirm = true
+                                }
+                                .confirmationDialog(
+                                    "'\(session.projectName)' 기록을 완전히 삭제하시겠습니까?",
+                                    isPresented: $showPurgeConfirm,
+                                    titleVisibility: .visible
+                                ) {
+                                    Button("완전 삭제", role: .destructive) { purgeSession(session) }
+                                    Button("취소", role: .cancel) {}
+                                }
+                                .help("tmux window + 레지스트리 + state 파일 완전 제거")
+                                .disabled(isPurging)
                             }
                         }
 
@@ -217,6 +246,22 @@ end tell
             selectedSession = nil
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             await monitor.refresh()
+        }
+    }
+
+    private func purgeSession(_ session: ClaudeSession) {
+        Task {
+            isPurging = true
+            await ShellService.purgeSessionAsync(
+                pid: session.pid,
+                windowName: session.windowName,
+                tty: session.tty,
+                projectDir: session.directory.isEmpty ? session.projectName : session.directory
+            )
+            selectedSession = nil
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            await monitor.refresh()
+            isPurging = false
         }
     }
 }
