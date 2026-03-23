@@ -3,7 +3,6 @@ import AppKit
 
 struct ContentView: View {
     @StateObject private var monitor = SessionMonitor()
-    @StateObject private var profileService = ProfileService()
     @State private var selectedTab: Tab = .sessions
     @State private var selectedSession: ClaudeSession?
     @State private var profileSelection: UUID? = nil
@@ -53,7 +52,7 @@ struct ContentView: View {
         .onAppear {
             NotificationService.shared.requestPermission()
             monitor.start()
-            profileService.load()
+            monitor.profileService.load()
             let msg = "APP_V8_LAUNCHED \(Date())\n"
             FileManager.default.createFile(atPath: "/tmp/restore_debug.log",
                                            contents: msg.data(using: .utf8))
@@ -73,7 +72,7 @@ struct ContentView: View {
                 }.keyboardShortcut("1", modifiers: .command)
                 Button("") {
                     selectedTab = .profiles
-                    if profileSelection == nil { profileSelection = profileService.profiles.first?.id }
+                    if profileSelection == nil { profileSelection = monitor.profileService.profiles.first?.id }
                 }.keyboardShortcut("2", modifiers: .command)
                 Button("") { selectedTab = .backup  }.keyboardShortcut("3", modifiers: .command)
                 Button("") { selectedTab = .system  }.keyboardShortcut("4", modifiers: .command)
@@ -116,7 +115,7 @@ struct ContentView: View {
                                         .offset(x: 10, y: -6)
                                 }
                             } else if tab == .profiles {
-                                let count = profileService.profiles.count
+                                let count = monitor.profileService.profiles.count
                                 if count > 0 {
                                     Text("\(count)")
                                         .font(.system(size: 9, weight: .bold))
@@ -156,10 +155,6 @@ struct ContentView: View {
         let runningCount = profileSessions.filter(\.isRunning).count
         // 복원 대상 = 실제 tmux window가 있었던 중단 세션 (프로필 가상 세션 제외)
         let restorableCount = profileSessions.filter {
-            !$0.isRunning && !$0.id.hasPrefix("profile-") && $0.windowIndex != Int.max
-        }.count
-        // 복원 가능 = tmux 창이 있었던 중단 세션 / 시작 가능 = 가상 프로필 세션
-        let restorableStoppedCount = profileSessions.filter {
             !$0.isRunning && !$0.id.hasPrefix("profile-") && $0.windowIndex != Int.max
         }.count
         let launchableCount = profileSessions.filter {
@@ -242,7 +237,7 @@ struct ContentView: View {
 
             Divider()
             VStack(spacing: 4) {
-                if restorableCount > 0 || runningCount > 0 || restorableStoppedCount > 0 {
+                if restorableCount > 0 || runningCount > 0 || restorableCount > 0 {
                     HStack(spacing: 6) {
                         if restorableCount > 0 {
                             Button {
@@ -268,11 +263,11 @@ struct ContentView: View {
                             .buttonStyle(.bordered)
                             .tint(.orange)
                         }
-                        if restorableStoppedCount > 0 {
+                        if restorableCount > 0 {
                             Button {
                                 Task { await monitor.purgeIdleZshWindows() }
                             } label: {
-                                Label("zsh 정리 (\(restorableStoppedCount))", systemImage: "xmark.circle.fill")
+                                Label("zsh 정리 (\(restorableCount))", systemImage: "xmark.circle.fill")
                                     .font(.caption)
                                     .frame(maxWidth: .infinity)
                             }
@@ -284,12 +279,31 @@ struct ContentView: View {
                     .padding(.top, 6)
                 }
 
+                if monitor.isBatchRestoring, let progress = monitor.restoreProgress {
+                    VStack(spacing: 3) {
+                        ProgressView(value: Double(progress.current), total: Double(progress.total))
+                            .progressViewStyle(.linear)
+                        HStack {
+                            Text("복원 중... \(progress.current)/\(progress.total)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("취소") { monitor.cancelRestore() }
+                                .font(.caption2)
+                                .buttonStyle(.bordered)
+                                .tint(.red)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                }
+
                 HStack(spacing: 6) {
                     Circle().fill(Color.green).frame(width: 6, height: 6)
                     Text("실행 \(runningCount)").font(.caption).foregroundStyle(.secondary)
-                    if restorableStoppedCount > 0 {
+                    if restorableCount > 0 {
                         Circle().fill(Color.orange).frame(width: 6, height: 6)
-                        Text("복원 \(restorableStoppedCount)").font(.caption).foregroundStyle(.secondary)
+                        Text("복원 \(restorableCount)").font(.caption).foregroundStyle(.secondary)
                     }
                     if launchableCount > 0 {
                         Circle().fill(Color.secondary).frame(width: 6, height: 6)

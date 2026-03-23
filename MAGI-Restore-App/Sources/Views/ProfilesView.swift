@@ -4,7 +4,6 @@ struct ProfilesView: View {
     @ObservedObject var monitor: SessionMonitor
     var searchFocused: FocusState<Bool>.Binding
     @Binding var selection: UUID?
-    @StateObject private var service = ProfileService()
     @State private var searchText = ""
     @State private var showAddSheet = false
     @State private var syncResult: String? = nil
@@ -13,8 +12,8 @@ struct ProfilesView: View {
     @State private var showDeleteConfirm = false
 
     var filtered: [SmugProfile] {
-        searchText.isEmpty ? service.profiles
-            : service.profiles.filter { $0.name.localizedCaseInsensitiveContains(searchText) || $0.root.localizedCaseInsensitiveContains(searchText) }
+        searchText.isEmpty ? monitor.profileService.profiles
+            : monitor.profileService.profiles.filter { $0.name.localizedCaseInsensitiveContains(searchText) || $0.root.localizedCaseInsensitiveContains(searchText) }
     }
 
     var body: some View {
@@ -42,18 +41,18 @@ struct ProfilesView: View {
             Divider()
             bottomBar
         }
-        .onAppear { service.load() }
+        .onAppear { monitor.profileService.load() }
         .sheet(isPresented: $showAddSheet) {
             ProfileFormSheet(title: "프로필 추가") { newProfile in
-                service.add(newProfile)
+                monitor.profileService.add(newProfile)
             }
         }
         .sheet(item: $editingProfile) { profile in
             ProfileFormSheet(title: "프로필 편집", existing: profile) { updated in
-                var list = service.profiles
+                var list = monitor.profileService.profiles
                 if let idx = list.firstIndex(where: { $0.id == profile.id }) {
                     list[idx] = updated
-                    service.save(list)
+                    monitor.profileService.save(list)
                 }
             }
         }
@@ -63,7 +62,7 @@ struct ProfilesView: View {
             titleVisibility: .visible
         ) {
             Button("삭제", role: .destructive) {
-                if let p = profileToDelete { service.delete(p) }
+                if let p = profileToDelete { monitor.profileService.delete(p) }
             }
             Button("취소", role: .cancel) {}
         }
@@ -111,13 +110,13 @@ struct ProfilesView: View {
                     .padding(.top, 4)
             }
             HStack {
-                Button { service.load() } label: {
+                Button { monitor.profileService.load() } label: {
                     Image(systemName: "arrow.clockwise")
                     Text("새로고침")
                 }
                 Button {
                     let (added, removed) = monitor.syncProfilesWithDirectory()
-                    service.load()
+                    monitor.profileService.load()
                     if added.isEmpty && removed.isEmpty {
                         syncResult = "이미 동기화됨"
                     } else {
@@ -132,7 +131,7 @@ struct ProfilesView: View {
                     Text("디렉토리 동기화")
                 }
                 Spacer()
-                Text("\(service.profiles.count)개 프로필")
+                Text("\(monitor.profileService.profiles.count)개 프로필")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Button { showAddSheet = true } label: {
