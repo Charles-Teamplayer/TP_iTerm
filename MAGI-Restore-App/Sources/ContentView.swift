@@ -6,6 +6,7 @@ struct ContentView: View {
     @StateObject private var profileService = ProfileService()
     @State private var selectedTab: Tab = .sessions
     @State private var selectedSession: ClaudeSession?
+    @State private var profileSelection: UUID? = nil
     @State private var showNewSession = false
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
@@ -65,10 +66,17 @@ struct ContentView: View {
         .onDisappear { monitor.stop() }
         .background {
             Group {
-                Button("") { selectedTab = .sessions }.keyboardShortcut("1", modifiers: .command)
-                Button("") { selectedTab = .profiles }.keyboardShortcut("2", modifiers: .command)
-                Button("") { selectedTab = .backup   }.keyboardShortcut("3", modifiers: .command)
-                Button("") { selectedTab = .system   }.keyboardShortcut("4", modifiers: .command)
+                Button("") {
+                    selectedTab = .sessions
+                    let ps = monitor.sessions.filter { $0.profileRoot != nil }
+                    if selectedSession == nil { selectedSession = ps.first }
+                }.keyboardShortcut("1", modifiers: .command)
+                Button("") {
+                    selectedTab = .profiles
+                    if profileSelection == nil { profileSelection = profileService.profiles.first?.id }
+                }.keyboardShortcut("2", modifiers: .command)
+                Button("") { selectedTab = .backup  }.keyboardShortcut("3", modifiers: .command)
+                Button("") { selectedTab = .system  }.keyboardShortcut("4", modifiers: .command)
                 Button("") {
                     switch selectedTab {
                     case .sessions: searchFocused = true
@@ -282,10 +290,20 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                     .help("새 세션 추가")
+                    Button {
+                        selectedSession = nil
+                        monitor.deselectAll()
+                        Task { await monitor.refresh() }
+                    } label: {
+                        Image(systemName: "xmark.circle").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .help("선택 초기화")
                     Button { Task { await monitor.refresh() } } label: {
                         Image(systemName: "arrow.clockwise").font(.caption)
                     }
                     .buttonStyle(.plain)
+                    .help("새로고침")
                 }
                 .padding(.horizontal, 10).padding(.vertical, 5)
             }
@@ -305,7 +323,7 @@ struct ContentView: View {
     @ViewBuilder
     private var otherTabContent: some View {
         switch selectedTab {
-        case .profiles: ProfilesView(monitor: monitor, searchFocused: $profileSearchFocused)
+        case .profiles: ProfilesView(monitor: monitor, searchFocused: $profileSearchFocused, selection: $profileSelection)
         case .backup:   BackupView()
         case .system:   SystemView()
         default:        EmptyStateView(title: "항목을 선택하세요", systemImage: "sidebar.left")

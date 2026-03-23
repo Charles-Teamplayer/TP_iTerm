@@ -196,17 +196,80 @@ final class SessionMonitor: ObservableObject {
     }
 
     func stopAllRunning() async {
-        let running = sessions.filter { $0.isRunning && $0.pid > 0 }
+        let running = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") }
         for session in running {
             let dir = session.directory.isEmpty ? session.projectName : session.directory
             await ShellService.intentionalStopAsync(projectDir: dir)
-            await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
+            if session.pid > 0 {
+                await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
+            }
+            let escapedName = session.windowName.replacingOccurrences(of: "'", with: "'\\''")
+            await ShellService.runAsync("""
+            tmux list-windows -t claude-work -F '#{window_index} #{window_name}' 2>/dev/null \
+            | while IFS=' ' read -r idx name; do \
+              [ "$name" = '\(escapedName)' ] && tmux kill-window -t "claude-work:$idx" 2>/dev/null; \
+            done; true
+            """)
         }
-        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh()
     }
 
+    /// ~/claude/ 디렉토리 기준 smug YAML 동기화
+    /// — 디렉토리에 있는데 프로필에 없으면 추가, 디렉토리가 삭제된 프로필은 제거
+    @discardableResult
+    func syncProfilesWithDirectory(baseDir: String = "~/claude") -> (added: [String], removed: [String]) {
+        let safeBase = baseDir.hasPrefix("~")
+            ? baseDir.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: baseDir.range(of: "~"))
+            : baseDir
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(atPath: safeBase) else { return ([], []) }
+
+        let ignorePatterns = [
+            "Claude_code_", "Claude-code_", "Claude-Code-",
+            "_아카이빙", "_archived_", "_archive", "archive",
+            "claude-squad", "claude_squad", "claude_gpt",
+            "teamplean-github-pages", "teamplayer-github-pages",
+            "TP_Infra_reduce_Project",
+        ]
+
+        let dirs = entries.filter { name in
+            !name.hasPrefix(".") && !name.hasPrefix("_") &&
+            !ignorePatterns.contains(where: { name.hasPrefix($0) || name.contains($0) }) &&
+            (try? fm.attributesOfItem(atPath: safeBase + "/" + name)[.type] as? FileAttributeType) == .typeDirectory
+        }
+
+        profileService.load()
+        let existingNames = Set(profileService.profiles.map { $0.name })
+        let dirSet = Set(dirs)
+
+        // 추가: 디렉토리에는 있는데 프로필에 없는 것
+        var added: [String] = []
+        for name in dirs.sorted() where !existingNames.contains(name) {
+            let profile = SmugProfile(
+                id: UUID(),
+                name: name,
+                root: baseDir + "/" + name,
+                delay: 0,
+                enabled: true
+            )
+            profileService.add(profile)
+            added.append(name)
+        }
+
+        // 제거: 프로필에는 있는데 디렉토리가 없는 것
+        var removed: [String] = []
+        for profile in profileService.profiles where !dirSet.contains(profile.name) {
+            profileService.delete(profile)
+            removed.append(profile.name)
+        }
+
+        profileService.load()
+        return (added, removed)
+    }
+
     func selectAllStopped() {
+        selectedForRestore.removeAll()
         for session in sessions where !session.isRunning
             && !session.id.hasPrefix("profile-")
             && session.windowIndex != Int.max {

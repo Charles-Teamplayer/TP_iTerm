@@ -3,10 +3,11 @@ import SwiftUI
 struct ProfilesView: View {
     @ObservedObject var monitor: SessionMonitor
     var searchFocused: FocusState<Bool>.Binding
+    @Binding var selection: UUID?
     @StateObject private var service = ProfileService()
-    @State private var selection: UUID? = nil
     @State private var searchText = ""
     @State private var showAddSheet = false
+    @State private var syncResult: String? = nil
     @State private var editingProfile: SmugProfile?
     @State private var profileToDelete: SmugProfile?
     @State private var showDeleteConfirm = false
@@ -101,22 +102,47 @@ struct ProfilesView: View {
     }
 
     private var bottomBar: some View {
-        HStack {
-            Button { service.load() } label: {
-                Image(systemName: "arrow.clockwise")
-                Text("새로고침")
+        VStack(spacing: 0) {
+            if let result = syncResult {
+                Text(result)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 4)
             }
-            Spacer()
-            Text("\(service.profiles.count)개 프로필")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Button { showAddSheet = true } label: {
-                Image(systemName: "plus")
-                Text("추가")
+            HStack {
+                Button { service.load() } label: {
+                    Image(systemName: "arrow.clockwise")
+                    Text("새로고침")
+                }
+                Button {
+                    let (added, removed) = monitor.syncProfilesWithDirectory()
+                    service.load()
+                    if added.isEmpty && removed.isEmpty {
+                        syncResult = "이미 동기화됨"
+                    } else {
+                        var parts: [String] = []
+                        if !added.isEmpty { parts.append("추가 \(added.count)개") }
+                        if !removed.isEmpty { parts.append("제거 \(removed.count)개") }
+                        syncResult = "동기화 완료: " + parts.joined(separator: ", ")
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { syncResult = nil }
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Text("디렉토리 동기화")
+                }
+                Spacer()
+                Text("\(service.profiles.count)개 프로필")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button { showAddSheet = true } label: {
+                    Image(systemName: "plus")
+                    Text("추가")
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
+            .padding(8)
         }
-        .padding(8)
     }
 }
 
