@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var selectedTab: Tab = .sessions
     @State private var selectedSession: ClaudeSession?
     @State private var showNewSession = false
+    @State private var searchText = ""
 
     enum Tab: String, CaseIterable {
         case sessions = "세션"
@@ -89,20 +90,46 @@ struct ContentView: View {
     // MARK: - Session List Panel
 
     private var sessionListPanel: some View {
+        let filtered = searchText.isEmpty
+            ? monitor.sessions
+            : monitor.sessions.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
         let runningCount = monitor.sessions.filter(\.isRunning).count
         let stoppedCount = monitor.sessions.filter { !$0.isRunning }.count
 
         return VStack(spacing: 0) {
+            // 검색바
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.caption)
+                TextField("검색...", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.caption)
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            Divider()
+
             if monitor.sessions.isEmpty {
                 Spacer()
                 Image(systemName: "terminal")
                     .font(.system(size: 32)).foregroundStyle(.secondary)
                 Text("tmux 세션 없음").foregroundStyle(.secondary)
                 Spacer()
+            } else if filtered.isEmpty {
+                Spacer()
+                Text("검색 결과 없음").foregroundStyle(.secondary).font(.caption)
+                Spacer()
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(monitor.sessions) { session in
+                        ForEach(filtered) { session in
                             Button {
                                 selectedSession = session
                                 let msg = "CLICKED:\(session.projectName) \(Date())\n"
@@ -195,7 +222,7 @@ struct ContentView: View {
     @ViewBuilder
     private var otherTabContent: some View {
         switch selectedTab {
-        case .profiles: ProfilesView()
+        case .profiles: ProfilesView(monitor: monitor)
         case .backup:   BackupView()
         case .system:   SystemView()
         default:        EmptyStateView(title: "항목을 선택하세요", systemImage: "sidebar.left")
@@ -223,6 +250,8 @@ struct NewSessionSheet: View {
     @State private var sessionName = ""
     @State private var directory = ""
     @State private var isCreating = false
+    @StateObject private var profileService = ProfileService()
+    @State private var selectedProfile: SmugProfile? = nil
 
     var canCreate: Bool {
         !sessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
@@ -232,6 +261,29 @@ struct NewSessionSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("새 세션 추가").font(.headline)
+
+            // 프로필에서 선택
+            if !profileService.profiles.isEmpty {
+                GroupBox("저장된 프로필에서 선택") {
+                    Picker("프로필", selection: $selectedProfile) {
+                        Text("직접 입력").tag(Optional<SmugProfile>.none)
+                        ForEach(profileService.profiles) { p in
+                            Text(p.name).tag(Optional(p))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: selectedProfile) { profile in
+                        if let p = profile {
+                            sessionName = p.name
+                            directory = p.root.hasPrefix("~")
+                                ? p.root.replacingOccurrences(of: "~", with: NSHomeDirectory(),
+                                    range: p.root.range(of: "~"))
+                                : p.root
+                        }
+                    }
+                    .padding(4)
+                }
+            }
 
             GroupBox("프로젝트 디렉토리") {
                 HStack {
@@ -251,6 +303,7 @@ struct NewSessionSheet: View {
                             if sessionName.isEmpty {
                                 sessionName = url.lastPathComponent
                             }
+                            selectedProfile = nil
                         }
                     }
                 }
@@ -261,6 +314,7 @@ struct NewSessionSheet: View {
                 TextField("예: my-project", text: $sessionName)
                     .textFieldStyle(.plain)
                     .padding(4)
+                    .onChange(of: sessionName) { _ in selectedProfile = nil }
             }
 
             HStack {
@@ -282,5 +336,6 @@ struct NewSessionSheet: View {
         }
         .padding(20)
         .frame(width: 420)
+        .onAppear { profileService.load() }
     }
 }

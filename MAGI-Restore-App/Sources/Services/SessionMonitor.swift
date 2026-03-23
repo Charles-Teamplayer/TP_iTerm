@@ -8,6 +8,7 @@ final class SessionMonitor: ObservableObject {
 
     private var timer: Timer?
     private let activeSessionsPath = NSHomeDirectory() + "/.claude/active-sessions.json"
+    private let profileService = ProfileService()
 
     func start() {
         Task { await refresh() }
@@ -74,7 +75,41 @@ final class SessionMonitor: ObservableObject {
             }
         }
 
-        sessions = result.sorted { $0.windowIndex < $1.windowIndex }
+        // 프로필 병합 — 세션 목록에 없는 프로필은 가상 정지 세션으로 추가
+        profileService.load()
+        let existingNames = Set(result.map { $0.projectName } + result.map { $0.windowName })
+        for profile in profileService.profiles {
+            guard !existingNames.contains(profile.name) else { continue }
+            result.append(ClaudeSession(
+                id: "profile-\(profile.id)",
+                pid: 0,
+                tty: "",
+                projectName: profile.name,
+                startTime: "",
+                directory: profile.root,
+                windowName: profile.name,
+                windowIndex: Int.max,
+                isRunning: false,
+                profileRoot: profile.root,
+                profileDelay: profile.delay
+            ))
+        }
+
+        // 기존 세션 중 프로필과 이름 매칭되면 profileRoot 주입
+        let profileMap = Dictionary(uniqueKeysWithValues: profileService.profiles.map { ($0.name, $0) })
+        result = result.map { session in
+            var s = session
+            if s.profileRoot == nil, let p = profileMap[s.projectName] ?? profileMap[s.windowName] {
+                s.profileRoot = p.root
+                s.profileDelay = p.delay
+            }
+            return s
+        }
+
+        sessions = result.sorted {
+            if $0.windowIndex == $1.windowIndex { return $0.projectName < $1.projectName }
+            return $0.windowIndex < $1.windowIndex
+        }
     }
 
     // MARK: - Restore
@@ -118,6 +153,26 @@ final class SessionMonitor: ObservableObject {
 
     func deselectAll() {
         selectedForRestore.removeAll()
+    }
+
+    func launchProfile(name: String, root: String, delay: Int) async {
+        let safeRoot = root.hasPrefix("~")
+            ? root.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: root.range(of: "~"))
+            : root
+
+        // 기존에 중단된 세션이 있으면 --continue, 완전 새 세션이면 생략
+        let hasPrior = sessions.contains { $0.projectName == name || $0.windowName == name }
+        let claudeCmd = hasPrior
+            ? "claude --dangerously-skip-permissions --continue"
+            : "claude --dangerously-skip-permissions"
+
+        let cmd = """
+        tmux new-window -t claude-work -n '\(name)' -c '\(safeRoot)' \\; \
+        send-keys "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(name)' && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; true
+        """
+        await ShellService.runAsync(cmd)
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        await refresh()
     }
 
     func createSession(name: String, directory: String) async {

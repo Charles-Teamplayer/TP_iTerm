@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ProfilesView: View {
+    @ObservedObject var monitor: SessionMonitor
     @StateObject private var service = ProfileService()
     @State private var showAddSheet = false
     @State private var editingProfile: SmugProfile?

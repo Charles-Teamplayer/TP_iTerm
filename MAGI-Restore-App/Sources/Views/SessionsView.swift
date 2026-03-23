@@ -89,24 +89,49 @@ struct SessionDetailView: View {
                             }
                         } else {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("복원").font(.caption).foregroundStyle(.secondary)
+                                Text(session.profileRoot != nil ? "시작" : "복원")
+                                    .font(.caption).foregroundStyle(.secondary)
                                 HStack(spacing: 10) {
-                                    Button {
-                                        Task {
-                                            monitor.selectedForRestore = [session.id]
-                                            isRestoring = true
-                                            await monitor.restoreSelected()
-                                            isRestoring = false
+                                    if let root = session.profileRoot {
+                                        // 프로필 기반 세션 → 시작
+                                        Button {
+                                            Task {
+                                                isRestoring = true
+                                                await monitor.launchProfile(
+                                                    name: session.projectName,
+                                                    root: root,
+                                                    delay: session.profileDelay
+                                                )
+                                                isRestoring = false
+                                            }
+                                        } label: {
+                                            if isRestoring {
+                                                Label("시작 중...", systemImage: "play.fill")
+                                            } else {
+                                                Label("시작", systemImage: "play.fill")
+                                            }
                                         }
-                                    } label: {
-                                        if isRestoring {
-                                            Label("복원 중...", systemImage: "arrow.clockwise")
-                                        } else {
-                                            Label("이 세션 복원", systemImage: "arrow.clockwise")
+                                        .buttonStyle(.borderedProminent)
+                                        .disabled(isRestoring)
+                                    } else {
+                                        // 일반 중단 세션 → 복원
+                                        Button {
+                                            Task {
+                                                monitor.selectedForRestore = [session.id]
+                                                isRestoring = true
+                                                await monitor.restoreSelected()
+                                                isRestoring = false
+                                            }
+                                        } label: {
+                                            if isRestoring {
+                                                Label("복원 중...", systemImage: "arrow.clockwise")
+                                            } else {
+                                                Label("복원", systemImage: "arrow.clockwise")
+                                            }
                                         }
+                                        .buttonStyle(.borderedProminent)
+                                        .disabled(isRestoring)
                                     }
-                                    .buttonStyle(.borderedProminent)
-                                    .disabled(isRestoring)
 
                                     Button("완전 삭제", role: .destructive) { showPurgeConfirm = true }
                                         .disabled(isPurging)
