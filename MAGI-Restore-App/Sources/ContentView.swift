@@ -192,6 +192,7 @@ struct ContentView: View {
                     .tag(session)
                 }
                 .listStyle(.plain)
+                .focusable(false)
             }
 
             Divider()

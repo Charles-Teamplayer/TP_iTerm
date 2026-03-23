@@ -137,12 +137,21 @@ struct ProfileFormSheet: View {
         _delay = State(initialValue: existing?.delay ?? 0)
     }
 
+    // 이름은 항상 디렉토리명 (lastPathComponent)
+    var derivedName: String {
+        let last = (root as NSString).lastPathComponent
+        return last.isEmpty ? root : last
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title).font(.headline).padding()
             Divider()
             Form {
-                TextField("이름", text: $name)
+                LabeledContent("이름") {
+                    Text(derivedName.isEmpty ? "경로 선택 후 자동 입력" : derivedName)
+                        .foregroundStyle(derivedName.isEmpty ? .secondary : .primary)
+                }
                 HStack {
                     TextField("경로 (root)", text: $root)
                     Button("선택...") {
@@ -167,14 +176,14 @@ struct ProfileFormSheet: View {
                 Button("저장") {
                     let profile = SmugProfile(
                         id: existing?.id ?? UUID(),
-                        name: name, root: root, delay: delay,
+                        name: derivedName, root: root, delay: delay,
                         enabled: existing?.enabled ?? true
                     )
                     onSave(profile)
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(name.isEmpty || root.isEmpty)
+                .disabled(derivedName.isEmpty || root.isEmpty)
             }
             .padding()
         }
