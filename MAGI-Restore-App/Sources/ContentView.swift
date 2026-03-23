@@ -49,6 +49,7 @@ struct ContentView: View {
         }
         .frame(minWidth: 700, minHeight: 450)
         .onAppear {
+            NotificationService.shared.requestPermission()
             monitor.start()
             profileService.load()
             let msg = "APP_V8_LAUNCHED \(Date())\n"

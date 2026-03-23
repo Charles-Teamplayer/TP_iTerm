@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UserNotifications
 
 @MainActor
 final class SessionMonitor: ObservableObject {
@@ -106,9 +107,22 @@ final class SessionMonitor: ObservableObject {
             return s
         }
 
-        sessions = result.sorted {
+        let newSessions = result.sorted {
             if $0.windowIndex == $1.windowIndex { return $0.projectName < $1.projectName }
             return $0.windowIndex < $1.windowIndex
+        }
+        detectChanges(old: sessions, new: newSessions)
+        sessions = newSessions
+    }
+
+    private func detectChanges(old: [ClaudeSession], new: [ClaudeSession]) {
+        guard !old.isEmpty else { return }
+        let oldMap = Dictionary(uniqueKeysWithValues: old.map { ($0.id, $0.isRunning) })
+        for session in new {
+            guard let wasRunning = oldMap[session.id] else { continue }
+            if wasRunning && !session.isRunning {
+                NotificationService.shared.notifySessionCrashed(name: session.projectName)
+            }
         }
     }
 
@@ -139,6 +153,9 @@ final class SessionMonitor: ObservableObject {
             send-keys "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(windowName)' && unset CLAUDECODE && \(claudeCmd)" Enter
             """
             await ShellService.runAsync(cmd)
+        }
+        if !toRestore.isEmpty {
+            NotificationService.shared.notifyRestoreComplete(count: toRestore.count)
         }
         selectedForRestore.removeAll()
         try? await Task.sleep(nanoseconds: 2_000_000_000)
