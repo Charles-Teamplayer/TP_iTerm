@@ -8,12 +8,13 @@ final class SessionMonitor: ObservableObject {
     @Published var selectedForRestore: Set<String> = []
 
     private var timer: Timer?
+    private var isRefreshing = false
     private let activeSessionsPath = NSHomeDirectory() + "/.claude/active-sessions.json"
     private let profileService = ProfileService()
 
     func start() {
         Task { await refresh() }
-        timer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
         }
     }
@@ -24,14 +25,23 @@ final class SessionMonitor: ObservableObject {
     }
 
     func refresh() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
         let tmuxWindows = await loadTmuxWindows()
         let activeSessions = await loadActiveSessions()
+
+        // ps 한 번만 실행해서 전체 claude 프로세스 캐시 (pid,ppid,tty,command 포함)
+        let claudeProcessSnapshot = await ShellService.runAsync(
+            "ps -o pid,ppid,tty,command -ax 2>/dev/null | grep '[c]laude'"
+        )
 
         var result: [ClaudeSession] = []
         var matchedProjects = Set<String>()
 
         for tw in tmuxWindows {
-            let claudePid = await findClaudePid(panePid: tw.panePid, paneTty: tw.paneTty)
+            let claudePid = findClaudePidFromSnapshot(claudeProcessSnapshot, panePid: tw.panePid, paneTty: tw.paneTty)
             let isRunning = claudePid != nil
 
             let activeInfo = activeSessions.first { info in
@@ -97,7 +107,8 @@ final class SessionMonitor: ObservableObject {
         }
 
         // 기존 세션 중 프로필과 이름 매칭되면 profileRoot 주입
-        let profileMap = Dictionary(uniqueKeysWithValues: profileService.profiles.map { ($0.name, $0) })
+        var profileMap: [String: SmugProfile] = [:]
+        for p in profileService.profiles { profileMap[p.name] = p }
         result = result.map { session in
             var s = session
             if s.profileRoot == nil, let p = profileMap[s.projectName] ?? profileMap[s.windowName] {
@@ -143,7 +154,7 @@ final class SessionMonitor: ObservableObject {
             let safeDir = dir.hasPrefix("~")
                 ? dir.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: dir.range(of: "~"))
                 : dir
-            let escapedDir = shellEscape(dir)
+            let escapedDir = shellEscape(safeDir)
             let claudeCmd = hasClaudeProject(at: safeDir)
                 ? "claude --dangerously-skip-permissions --continue"
                 : "claude --dangerously-skip-permissions"
@@ -161,6 +172,18 @@ final class SessionMonitor: ObservableObject {
         }
         selectedForRestore.removeAll()
         try? await Task.sleep(nanoseconds: 2_000_000_000)
+        await refresh()
+    }
+
+    func purgeSession(_ session: ClaudeSession) async {
+        let projectDir = session.directory.isEmpty ? session.projectName : session.directory
+        await ShellService.purgeSessionAsync(
+            pid: session.pid,
+            windowName: session.windowName,
+            tty: session.tty,
+            projectDir: projectDir
+        )
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
         await refresh()
     }
 
@@ -307,24 +330,25 @@ final class SessionMonitor: ObservableObject {
         }
     }
 
-    private func findClaudePid(panePid: Int, paneTty: String = "") async -> Int? {
-        // 방법1: TTY 기반 (손자 프로세스도 탐지)
-        if !paneTty.isEmpty {
-            let ttyBase = (paneTty as NSString).lastPathComponent
-            if !ttyBase.isEmpty {
-                let ttyResult = await ShellService.runAsync(
-                    "ps -o pid,tty,command -ax 2>/dev/null | grep '\(ttyBase)' | grep '[c]laude' | grep -v grep | awk '{print $1}'"
-                )
-                let ttyPid = ttyResult.components(separatedBy: "\n").first?.trimmingCharacters(in: .whitespaces) ?? ""
-                if let pid = Int(ttyPid) { return pid }
+    // ps 스냅샷(pid,ppid,tty,command)에서 Claude PID 탐색 — ps 중복 실행 없음
+    // 출력 형식: "  PID  PPID TTY  COMMAND..."
+    private func findClaudePidFromSnapshot(_ snapshot: String, panePid: Int, paneTty: String) -> Int? {
+        let ttyBase = paneTty.isEmpty ? "" : (paneTty as NSString).lastPathComponent
+        for line in snapshot.components(separatedBy: "\n") {
+            let parts = line.trimmingCharacters(in: .whitespaces)
+                .components(separatedBy: .whitespaces)
+            guard parts.count >= 3,
+                  let pid = Int(parts[0]) else { continue }
+            // 방법1: TTY 매칭
+            if !ttyBase.isEmpty && parts[2] == ttyBase {
+                return pid
+            }
+            // 방법2: PPID 매칭 (직계 자식)
+            if let ppid = Int(parts[1]), ppid == panePid {
+                return pid
             }
         }
-        // 방법2: pgrep fallback (직계 자식)
-        let output = await ShellService.runAsync(
-            "pgrep -P \(panePid) -f claude 2>/dev/null"
-        )
-        let firstLine = output.components(separatedBy: "\n").first ?? ""
-        return Int(firstLine.trimmingCharacters(in: .whitespaces))
+        return nil
     }
 
     private func isProcessAlive(pid: Int) async -> Bool {

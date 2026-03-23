@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showNewSession = false
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
+    @FocusState private var profileSearchFocused: Bool
 
     enum Tab: String, CaseIterable {
         case sessions = "세션"
@@ -69,8 +70,11 @@ struct ContentView: View {
                 Button("") { selectedTab = .backup   }.keyboardShortcut("3", modifiers: .command)
                 Button("") { selectedTab = .system   }.keyboardShortcut("4", modifiers: .command)
                 Button("") {
-                    selectedTab = .sessions
-                    searchFocused = true
+                    switch selectedTab {
+                    case .sessions: searchFocused = true
+                    case .profiles: profileSearchFocused = true
+                    default: break
+                    }
                 }.keyboardShortcut("f", modifiers: .command)
             }
             .opacity(0)
@@ -125,6 +129,7 @@ struct ContentView: View {
                     .foregroundStyle(selectedTab == tab ? Color.accentColor : Color.secondary)
                 }
                 .buttonStyle(.plain)
+                .focusEffectDisabled()
             }
             Spacer()
         }
@@ -145,7 +150,13 @@ struct ContentView: View {
         let restorableCount = profileSessions.filter {
             !$0.isRunning && !$0.id.hasPrefix("profile-") && $0.windowIndex != Int.max
         }.count
-        let stoppedCount = profileSessions.filter { !$0.isRunning }.count
+        // 복원 가능 = tmux 창이 있었던 중단 세션 / 시작 가능 = 가상 프로필 세션
+        let restorableStoppedCount = profileSessions.filter {
+            !$0.isRunning && !$0.id.hasPrefix("profile-") && $0.windowIndex != Int.max
+        }.count
+        let launchableCount = profileSessions.filter {
+            !$0.isRunning && ($0.id.hasPrefix("profile-") || $0.windowIndex == Int.max)
+        }.count
 
         return VStack(spacing: 0) {
             // 검색바
@@ -174,6 +185,13 @@ struct ContentView: View {
                     .font(.system(size: 32)).foregroundStyle(.secondary)
                 Text("tmux 세션 없음").foregroundStyle(.secondary)
                 Spacer()
+            } else if profileSessions.isEmpty {
+                Spacer()
+                Image(systemName: "rectangle.3.group")
+                    .font(.system(size: 32)).foregroundStyle(.secondary)
+                Text("프로필 설정 없음").foregroundStyle(.secondary).font(.callout)
+                Text("프로필 탭에서 세션을 추가하세요").foregroundStyle(.tertiary).font(.caption)
+                Spacer()
             } else if filtered.isEmpty {
                 Spacer()
                 Text("검색 결과 없음").foregroundStyle(.secondary).font(.caption)
@@ -181,16 +199,28 @@ struct ContentView: View {
             } else {
                 List(filtered, selection: $selectedSession) { session in
                     HStack(spacing: 8) {
+                        // 상태별 색상: 실행중=초록, 복원가능(tmux)=주황, 가상프로필=회색
+                        let dotColor: Color = session.isRunning ? .green
+                            : (!session.id.hasPrefix("profile-") && session.windowIndex != Int.max) ? .orange
+                            : .secondary
                         Circle()
-                            .fill(session.isRunning ? Color.green : Color.red)
+                            .fill(dotColor)
                             .frame(width: 8, height: 8)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(session.projectName)
                                 .font(.headline)
                                 .lineLimit(1)
-                            Text(session.isRunning ? "PID: \(session.pid)" : "대기 중")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            Group {
+                                if session.isRunning {
+                                    Text("PID: \(session.pid)")
+                                } else if session.id.hasPrefix("profile-") || session.windowIndex == Int.max {
+                                    Text("시작 가능")
+                                } else {
+                                    Text("복원 가능")
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
@@ -199,6 +229,7 @@ struct ContentView: View {
                 }
                 .listStyle(.plain)
                 .focusable(false)
+                .focusEffectDisabled()
             }
 
             Divider()
@@ -237,8 +268,14 @@ struct ContentView: View {
                 HStack(spacing: 6) {
                     Circle().fill(Color.green).frame(width: 6, height: 6)
                     Text("실행 \(runningCount)").font(.caption).foregroundStyle(.secondary)
-                    Circle().fill(Color.red).frame(width: 6, height: 6)
-                    Text("대기 \(stoppedCount)").font(.caption).foregroundStyle(.secondary)
+                    if restorableStoppedCount > 0 {
+                        Circle().fill(Color.orange).frame(width: 6, height: 6)
+                        Text("복원 \(restorableStoppedCount)").font(.caption).foregroundStyle(.secondary)
+                    }
+                    if launchableCount > 0 {
+                        Circle().fill(Color.secondary).frame(width: 6, height: 6)
+                        Text("대기 \(launchableCount)").font(.caption).foregroundStyle(.secondary)
+                    }
                     Spacer()
                     Button { showNewSession = true } label: {
                         Image(systemName: "plus").font(.caption)
@@ -268,7 +305,7 @@ struct ContentView: View {
     @ViewBuilder
     private var otherTabContent: some View {
         switch selectedTab {
-        case .profiles: ProfilesView(monitor: monitor)
+        case .profiles: ProfilesView(monitor: monitor, searchFocused: $profileSearchFocused)
         case .backup:   BackupView()
         case .system:   SystemView()
         default:        EmptyStateView(title: "항목을 선택하세요", systemImage: "sidebar.left")

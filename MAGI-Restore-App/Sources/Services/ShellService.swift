@@ -48,7 +48,7 @@ struct ShellService {
         await runAsync("bash \(registryScript) intentional-stop '\(projectDir)'")
     }
 
-    /// 세션 완전 삭제: 프로세스 kill + tmux window 제거 + 레지스트리 제거 + state 파일 제거
+    /// 세션 완전 삭제: 프로세스 kill + tmux window 제거 + 레지스트리 제거 + state 파일 제거 + smug YAML 제거
     static func purgeSessionAsync(pid: Int, windowName: String, tty: String, projectDir: String) async {
         let ttyBase = (tty as NSString).lastPathComponent
 
@@ -62,15 +62,49 @@ struct ShellService {
         }
         // 3. tmux window 종료 (이름이 같은 모든 중복 윈도우 제거)
         if !windowName.isEmpty {
-            let killCmd = "tmux list-windows -t claude-work -F '#{window_index} #{window_name}' 2>/dev/null | awk '{print $2, $1}' | grep -F '\(windowName) ' | awk '{print $2}' | sort -rn | while read idx; do tmux kill-window -t \"claude-work:$idx\" 2>/dev/null; done; true"
+            let escapedName = windowName.replacingOccurrences(of: "'", with: "'\\''")
+            let killCmd = """
+            tmux list-windows -t claude-work -F '#{window_index} #{window_name}' 2>/dev/null \
+            | while IFS=' ' read -r idx name; do \
+              [ "$name" = '\(escapedName)' ] && tmux kill-window -t "claude-work:$idx" 2>/dev/null; \
+            done; true
+            """
             await runAsync(killCmd)
         }
-        // 4. active-sessions.json에서 해당 TTY 항목 제거
-        if !ttyBase.isEmpty {
-            let pyCmd = "python3 -c \"import json,os; path=os.path.expanduser('~/.claude/active-sessions.json'); d=json.load(open(path)); d['sessions']=[s for s in d.get('sessions',[]) if s.get('tty')!='\\(ttyBase)']; f=open(path+'.tmp','w'); json.dump(d,f,indent=2); f.close(); os.replace(path+'.tmp',path)\" 2>/dev/null; true"
-            await runAsync(pyCmd)
+        // 4. active-sessions.json에서 해당 세션 항목 제거 (TTY 또는 project 이름 기준)
+        let pyRemoveSession = """
+        python3 -c "
+        import json, os, re
+        path = os.path.expanduser('~/.claude/active-sessions.json')
+        try:
+            d = json.load(open(path))
+            d['sessions'] = [s for s in d.get('sessions', [])
+                if s.get('tty') != '\(ttyBase)' and s.get('project') != '\(windowName)']
+            tmp = path + '.tmp'
+            json.dump(d, open(tmp, 'w'), indent=2)
+            os.replace(tmp, path)
+        except: pass
+        " 2>/dev/null; true
+        """
+        await runAsync(pyRemoveSession)
+        // 5. smug YAML에서 해당 창 블록 제거 (원본 형식 보존)
+        if !windowName.isEmpty {
+            let escapedName = windowName.replacingOccurrences(of: "'", with: "'\\''")
+            let pyRemoveYml = """
+            python3 -c "
+            import re, os
+            path = os.path.expanduser('~/.config/smug/claude-work.yml')
+            try:
+                content = open(path).read()
+                pattern = r'  - name: \(escapedName)\\n(?:(?!  - name:).)*'
+                new_content = re.sub(pattern, '', content, flags=re.DOTALL)
+                open(path, 'w').write(new_content)
+            except: pass
+            " 2>/dev/null; true
+            """
+            await runAsync(pyRemoveYml)
         }
-        // 5. tab-color state 파일 제거
+        // 6. tab-color state 파일 제거
         if !ttyBase.isEmpty {
             await runAsync("rm -f ~/.claude/tab-color/states/\(ttyBase).json 2>/dev/null; true")
         }

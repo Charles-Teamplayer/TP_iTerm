@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProfilesView: View {
     @ObservedObject var monitor: SessionMonitor
+    var searchFocused: FocusState<Bool>.Binding
     @StateObject private var service = ProfileService()
     @State private var selection: UUID? = nil
     @State private var searchText = ""
@@ -23,6 +24,7 @@ struct ProfilesView: View {
                 TextField("검색...", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.caption)
+                    .focused(searchFocused)
                 if !searchText.isEmpty {
                     Button { searchText = "" } label: {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.caption)

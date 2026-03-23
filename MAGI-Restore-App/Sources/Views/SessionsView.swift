@@ -30,11 +30,15 @@ struct SessionDetailView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 LabeledContent("프로젝트", value: session.projectName)
                                 LabeledContent("tmux 윈도우", value: session.windowName)
-                                if session.windowIndex >= 0 {
+                                if session.windowIndex >= 0 && session.windowIndex != Int.max {
                                     LabeledContent("윈도우 #", value: "\(session.windowIndex)")
                                 }
-                                LabeledContent("PID", value: "\(session.pid)")
-                                LabeledContent("TTY", value: session.tty)
+                                if session.pid > 0 {
+                                    LabeledContent("PID", value: "\(session.pid)")
+                                }
+                                if !session.tty.isEmpty {
+                                    LabeledContent("TTY", value: session.tty)
+                                }
                                 if !session.startTime.isEmpty {
                                     LabeledContent("시작 시각", value: session.startTime)
                                 }
@@ -207,14 +211,7 @@ struct SessionDetailView: View {
     private func doPurge(_ session: ClaudeSession) {
         Task {
             isPurging = true
-            await ShellService.purgeSessionAsync(
-                pid: session.pid,
-                windowName: session.windowName,
-                tty: session.tty,
-                projectDir: session.directory.isEmpty ? session.projectName : session.directory
-            )
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            await monitor.refresh()
+            await monitor.purgeSession(session)
             isPurging = false
         }
     }
