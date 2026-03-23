@@ -3,6 +3,8 @@ import SwiftUI
 struct SessionsView: View {
     @ObservedObject var monitor: SessionMonitor
     @State private var selectedSession: ClaudeSession?
+    @State private var sessionToPurge: ClaudeSession?
+    @State private var sessionToKill: ClaudeSession?
     @State private var showKillConfirm = false
     @State private var showHideConfirm = false
     @State private var showPurgeConfirm = false
@@ -64,19 +66,60 @@ struct SessionsView: View {
 
     private var sessionList: some View {
         VStack(spacing: 0) {
-            List(monitor.sessions, selection: $selectedSession) { session in
-                SessionRowView(
-                    session: session,
-                    isSelected: monitor.selectedForRestore.contains(session.id),
-                    onToggle: { monitor.toggleSelection(session.id) }
-                )
-                .tag(session as ClaudeSession?)
+            List {
+                ForEach(monitor.sessions) { session in
+                    SessionRowView(
+                        session: session,
+                        isSelectedForRestore: monitor.selectedForRestore.contains(session.id),
+                        isSelectedDetail: selectedSession?.id == session.id,
+                        onToggle: { monitor.toggleSelection(session.id) }
+                    )
+                    .listRowBackground(
+                        selectedSession?.id == session.id
+                            ? Color.accentColor.opacity(0.15)
+                            : Color.clear
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture { selectedSession = session }
+                    .contextMenu {
+                        if !session.isRunning {
+                            Button {
+                                Task {
+                                    monitor.selectedForRestore = [session.id]
+                                    isRestoring = true
+                                    await monitor.restoreSelected()
+                                    isRestoring = false
+                                }
+                            } label: {
+                                Label("복원", systemImage: "arrow.clockwise")
+                            }
+                            .disabled(isRestoring)
+                            Divider()
+                        }
+                        Button(role: .destructive) {
+                            sessionToPurge = session
+                            showPurgeConfirm = true
+                        } label: {
+                            Label("완전 삭제", systemImage: "trash")
+                        }
+                    }
+                }
             }
             .listStyle(.sidebar)
             .overlay {
                 if monitor.sessions.isEmpty {
                     EmptyStateView(title: "tmux 세션 없음", systemImage: "terminal")
                 }
+            }
+            .confirmationDialog(
+                "'\(sessionToPurge?.projectName ?? "")' 세션을 완전히 삭제하시겠습니까?",
+                isPresented: $showPurgeConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("완전 삭제", role: .destructive) {
+                    if let s = sessionToPurge { purgeSession(s) }
+                }
+                Button("취소", role: .cancel) { sessionToPurge = nil }
             }
 
             HStack {
@@ -162,15 +205,8 @@ struct SessionsView: View {
                                 }
 
                                 Button("완전 삭제", role: .destructive) {
+                                    sessionToPurge = session
                                     showPurgeConfirm = true
-                                }
-                                .confirmationDialog(
-                                    "'\(session.projectName)' 세션을 완전히 삭제하시겠습니까?",
-                                    isPresented: $showPurgeConfirm,
-                                    titleVisibility: .visible
-                                ) {
-                                    Button("완전 삭제", role: .destructive) { purgeSession(session) }
-                                    Button("취소", role: .cancel) {}
                                 }
                                 .help("프로세스 kill + tmux window 제거 + 레지스트리 삭제 + state 파일 제거")
                             } else {
@@ -187,15 +223,8 @@ struct SessionsView: View {
                                 .disabled(isRestoring)
 
                                 Button("완전 삭제", role: .destructive) {
+                                    sessionToPurge = session
                                     showPurgeConfirm = true
-                                }
-                                .confirmationDialog(
-                                    "'\(session.projectName)' 기록을 완전히 삭제하시겠습니까?",
-                                    isPresented: $showPurgeConfirm,
-                                    titleVisibility: .visible
-                                ) {
-                                    Button("완전 삭제", role: .destructive) { purgeSession(session) }
-                                    Button("취소", role: .cancel) {}
                                 }
                                 .help("tmux window + 레지스트리 + state 파일 완전 제거")
                                 .disabled(isPurging)
@@ -259,6 +288,7 @@ end tell
                 projectDir: session.directory.isEmpty ? session.projectName : session.directory
             )
             selectedSession = nil
+            sessionToPurge = nil
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await monitor.refresh()
             isPurging = false
@@ -270,17 +300,16 @@ end tell
 
 struct SessionRowView: View {
     let session: ClaudeSession
-    let isSelected: Bool
+    let isSelectedForRestore: Bool
+    let isSelectedDetail: Bool
     let onToggle: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
             if !session.isRunning {
-                Button(action: onToggle) {
-                    Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(isSelected ? .blue : .secondary)
-                }
-                .buttonStyle(.plain)
+                Image(systemName: isSelectedForRestore ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(isSelectedForRestore ? .blue : .secondary)
+                    .onTapGesture { onToggle() }
             } else {
                 Circle()
                     .fill(.green)
