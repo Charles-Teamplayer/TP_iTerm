@@ -137,11 +137,12 @@ final class SessionMonitor: ObservableObject {
         }
         for (i, session) in toRestore.enumerated() {
             let delay = session.profileDelay > 0 ? session.profileDelay : i * 5
-            let windowName = session.windowName
-            let dir = session.directory.isEmpty ? "~/claude/\(windowName)" : session.directory
+            let windowName = shellEscape(session.windowName)
+            let dir = session.directory.isEmpty ? "~/claude/\(session.windowName)" : session.directory
             let safeDir = dir.hasPrefix("~")
                 ? dir.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: dir.range(of: "~"))
                 : dir
+            let escapedDir = shellEscape(dir)
             let claudeCmd = hasClaudeProject(at: safeDir)
                 ? "claude --dangerously-skip-permissions --continue"
                 : "claude --dangerously-skip-permissions"
@@ -149,7 +150,7 @@ final class SessionMonitor: ObservableObject {
             tmux send-keys -t 'claude-work:\(windowName)' \
             "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(windowName)' && unset CLAUDECODE && \(claudeCmd)" Enter \
             2>/dev/null || \
-            tmux new-window -t claude-work -n '\(windowName)' -c '\(dir)' \\; \
+            tmux new-window -t claude-work -n '\(windowName)' -c '\(escapedDir)' \\; \
             send-keys "sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(windowName)' && unset CLAUDECODE && \(claudeCmd)" Enter
             """
             await ShellService.runAsync(cmd)
@@ -204,10 +205,12 @@ final class SessionMonitor: ObservableObject {
             ? "claude --dangerously-skip-permissions --continue"
             : "claude --dangerously-skip-permissions"
 
-        let mkdirPart = createDir ? "mkdir -p '\(safeRoot)' && " : ""
+        let escapedName = shellEscape(name)
+        let escapedRoot = shellEscape(safeRoot)
+        let mkdirPart = createDir ? "mkdir -p '\(escapedRoot)' && " : ""
         let cmd = """
-        tmux new-window -t claude-work -n '\(name)' -c '\(safeRoot)' \\; \
-        send-keys "\(mkdirPart)sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(name)' && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
+        tmux new-window -t claude-work -n '\(escapedName)' -c '\(escapedRoot)' \\; \
+        send-keys "\(mkdirPart)sleep \(delay) && bash ~/.claude/scripts/tab-status.sh starting '\(escapedName)' && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
         true
         """
         await ShellService.runAsync(cmd)
@@ -220,13 +223,19 @@ final class SessionMonitor: ObservableObject {
         let safeDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !safeName.isEmpty, !safeDir.isEmpty else { return }
 
+        let escapedName = shellEscape(safeName)
+        let escapedDir = shellEscape(safeDir)
         let cmd = """
-        tmux new-window -t claude-work -n '\(safeName)' -c '\(safeDir)' \\; \
-        send-keys "bash ~/.claude/scripts/tab-status.sh starting '\(safeName)' && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; true
+        tmux new-window -t claude-work -n '\(escapedName)' -c '\(escapedDir)' \\; \
+        send-keys "bash ~/.claude/scripts/tab-status.sh starting '\(escapedName)' && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; true
         """
         await ShellService.runAsync(cmd)
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh()
+    }
+
+    private func shellEscape(_ s: String) -> String {
+        s.replacingOccurrences(of: "'", with: "'\\''")
     }
 
     // MARK: - Data Loading
