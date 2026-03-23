@@ -62,29 +62,47 @@ def _restore_active(tty, tty_name):
     _log(f"{state} → active ({project}, {tty_name})")
 
 
+async def _handle_session(app, session_id):
+    session = app.get_session_by_id(session_id)
+    if session is None:
+        return
+    try:
+        tty = await session.async_get_variable("tty")
+        if tty:
+            tty_name = tty.replace("/dev/", "")
+            _kill_flash(tty_name)
+            _restore_active(tty, tty_name)
+        await session.async_set_variable("user.badge", "")
+    except Exception as e:
+        _log(f"handle_session error: {e}")
+
+
 async def main(connection):
     app = await iterm2.async_get_app(connection)
-    _log("=== FocusMonitor 시작 (색상 복원 활성) ===")
+    _log("=== FocusMonitor 시작 v2 (active_session + selected_tab) ===")
 
     async with iterm2.FocusMonitor(connection) as monitor:
         while True:
             update = await monitor.async_get_next_update()
-            if not update.active_session_changed:
-                continue
-            session_id = update.active_session_changed.session_id
-            session = app.get_session_by_id(session_id)
-            if session is None:
-                continue
-            try:
-                tty = await session.async_get_variable("tty")
-                if tty:
-                    tty_name = tty.replace("/dev/", "")
-                    _kill_flash(tty_name)
-                    _restore_active(tty, tty_name)
-                # 배지 클리어
-                await session.async_set_variable("user.badge", "")
-            except Exception:
-                pass
+
+            # active_session_changed: 세션 직접 전환
+            if update.active_session_changed:
+                session_id = update.active_session_changed.session_id
+                _log(f"active_session_changed: {session_id[:8]}")
+                await _handle_session(app, session_id)
+
+            # selected_tab_changed: tmux -CC 탭 전환 시 발생
+            elif update.selected_tab_changed:
+                tab_id = update.selected_tab_changed.tab_id
+                _log(f"selected_tab_changed: {tab_id[:8]}")
+                # 탭의 current session 가져오기
+                for window in app.windows:
+                    for tab in window.tabs:
+                        if tab.tab_id == tab_id:
+                            session = tab.current_session
+                            if session:
+                                await _handle_session(app, session.session_id)
+                            break
 
 
 iterm2.run_forever(main)
