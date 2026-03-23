@@ -3,10 +3,12 @@ import AppKit
 
 struct ContentView: View {
     @StateObject private var monitor = SessionMonitor()
+    @StateObject private var profileService = ProfileService()
     @State private var selectedTab: Tab = .sessions
     @State private var selectedSession: ClaudeSession?
     @State private var showNewSession = false
     @State private var searchText = ""
+    @FocusState private var searchFocused: Bool
 
     enum Tab: String, CaseIterable {
         case sessions = "세션"
@@ -48,11 +50,25 @@ struct ContentView: View {
         .frame(minWidth: 700, minHeight: 450)
         .onAppear {
             monitor.start()
+            profileService.load()
             let msg = "APP_V8_LAUNCHED \(Date())\n"
             FileManager.default.createFile(atPath: "/tmp/restore_debug.log",
                                            contents: msg.data(using: .utf8))
         }
         .onDisappear { monitor.stop() }
+        .background {
+            Group {
+                Button("") { selectedTab = .sessions }.keyboardShortcut("1", modifiers: .command)
+                Button("") { selectedTab = .profiles }.keyboardShortcut("2", modifiers: .command)
+                Button("") { selectedTab = .backup   }.keyboardShortcut("3", modifiers: .command)
+                Button("") { selectedTab = .system   }.keyboardShortcut("4", modifiers: .command)
+                Button("") {
+                    selectedTab = .sessions
+                    searchFocused = true
+                }.keyboardShortcut("f", modifiers: .command)
+            }
+            .opacity(0)
+        }
         .sheet(isPresented: $showNewSession) {
             NewSessionSheet(monitor: monitor, isPresented: $showNewSession)
         }
@@ -68,8 +84,31 @@ struct ContentView: View {
                     if tab != .sessions { selectedSession = nil }
                 } label: {
                     VStack(spacing: 4) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 18))
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 18))
+                            if tab == .sessions {
+                                let running = monitor.sessions.filter { $0.isRunning && $0.profileRoot != nil }.count
+                                if running > 0 {
+                                    Text("\(running)")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 4)
+                                        .background(Color.green, in: Capsule())
+                                        .offset(x: 10, y: -6)
+                                }
+                            } else if tab == .profiles {
+                                let count = profileService.profiles.count
+                                if count > 0 {
+                                    Text("\(count)")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 4)
+                                        .background(Color.accentColor, in: Capsule())
+                                        .offset(x: 10, y: -6)
+                                }
+                            }
+                        }
                         Text(tab.rawValue)
                             .font(.caption2)
                     }
@@ -90,11 +129,17 @@ struct ContentView: View {
     // MARK: - Session List Panel
 
     private var sessionListPanel: some View {
+        // 1:1 — 프로필 기반 세션만 표시
+        let profileSessions = monitor.sessions.filter { $0.profileRoot != nil }
         let filtered = searchText.isEmpty
-            ? monitor.sessions
-            : monitor.sessions.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
-        let runningCount = monitor.sessions.filter(\.isRunning).count
-        let stoppedCount = monitor.sessions.filter { !$0.isRunning }.count
+            ? profileSessions
+            : profileSessions.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
+        let runningCount = profileSessions.filter(\.isRunning).count
+        // 복원 대상 = 실제 tmux window가 있었던 중단 세션 (프로필 가상 세션 제외)
+        let restorableCount = profileSessions.filter {
+            !$0.isRunning && !$0.id.hasPrefix("profile-") && $0.windowIndex != Int.max
+        }.count
+        let stoppedCount = profileSessions.filter { !$0.isRunning }.count
 
         return VStack(spacing: 0) {
             // 검색바
@@ -103,6 +148,7 @@ struct ContentView: View {
                 TextField("검색...", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.caption)
+                    .focused($searchFocused)
                 if !searchText.isEmpty {
                     Button { searchText = "" } label: {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.caption)
@@ -127,60 +173,39 @@ struct ContentView: View {
                 Text("검색 결과 없음").foregroundStyle(.secondary).font(.caption)
                 Spacer()
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(filtered) { session in
-                            Button {
-                                selectedSession = session
-                                let msg = "CLICKED:\(session.projectName) \(Date())\n"
-                                if let fh = FileHandle(forWritingAtPath: "/tmp/restore_debug.log") {
-                                    fh.seekToEndOfFile()
-                                    fh.write(msg.data(using: .utf8) ?? Data())
-                                    fh.closeFile()
-                                }
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Circle()
-                                        .fill(session.isRunning ? Color.green : Color.red)
-                                        .frame(width: 8, height: 8)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(session.projectName)
-                                            .font(.headline)
-                                            .foregroundStyle(session.isRunning ? Color.primary : Color.secondary)
-                                            .lineLimit(1)
-                                        Text("PID: \(session.pid)")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(
-                                    selectedSession?.id == session.id
-                                        ? Color.accentColor.opacity(0.15) : Color.clear
-                                )
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            Divider()
+                List(filtered, selection: $selectedSession) { session in
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(session.isRunning ? Color.green : Color.red)
+                            .frame(width: 8, height: 8)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(session.projectName)
+                                .font(.headline)
+                                .lineLimit(1)
+                            Text(session.isRunning ? "PID: \(session.pid)" : "대기 중")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
+                        Spacer()
                     }
+                    .padding(.vertical, 2)
+                    .tag(session)
                 }
+                .listStyle(.plain)
             }
 
             Divider()
             VStack(spacing: 4) {
-                if stoppedCount > 0 || runningCount > 0 {
+                if restorableCount > 0 || runningCount > 0 {
                     HStack(spacing: 6) {
-                        if stoppedCount > 0 {
+                        if restorableCount > 0 {
                             Button {
                                 Task {
                                     monitor.selectAllStopped()
                                     await monitor.restoreSelected()
                                 }
                             } label: {
-                                Label("전체 복원 (\(stoppedCount))", systemImage: "arrow.clockwise.circle.fill")
+                                Label("전체 복원 (\(restorableCount))", systemImage: "arrow.clockwise.circle.fill")
                                     .font(.caption)
                                     .frame(maxWidth: .infinity)
                             }
@@ -206,7 +231,7 @@ struct ContentView: View {
                     Circle().fill(Color.green).frame(width: 6, height: 6)
                     Text("실행 \(runningCount)").font(.caption).foregroundStyle(.secondary)
                     Circle().fill(Color.red).frame(width: 6, height: 6)
-                    Text("중단 \(stoppedCount)").font(.caption).foregroundStyle(.secondary)
+                    Text("대기 \(stoppedCount)").font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button { showNewSession = true } label: {
                         Image(systemName: "plus").font(.caption)

@@ -3,13 +3,38 @@ import SwiftUI
 struct ProfilesView: View {
     @ObservedObject var monitor: SessionMonitor
     @StateObject private var service = ProfileService()
+    @State private var selection: UUID? = nil
+    @State private var searchText = ""
     @State private var showAddSheet = false
     @State private var editingProfile: SmugProfile?
     @State private var profileToDelete: SmugProfile?
     @State private var showDeleteConfirm = false
 
+    var filtered: [SmugProfile] {
+        searchText.isEmpty ? service.profiles
+            : service.profiles.filter { $0.name.localizedCaseInsensitiveContains(searchText) || $0.root.localizedCaseInsensitiveContains(searchText) }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            // 검색바
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.caption)
+                TextField("검색...", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.caption)
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            Divider()
             profileTable
             Divider()
             bottomBar
@@ -30,7 +55,7 @@ struct ProfilesView: View {
             }
         }
         .confirmationDialog(
-            "프로필을 삭제하시겠습니까?",
+            "'\(profileToDelete?.name ?? "")' 프로필을 삭제하시겠습니까?",
             isPresented: $showDeleteConfirm,
             titleVisibility: .visible
         ) {
@@ -42,7 +67,7 @@ struct ProfilesView: View {
     }
 
     private var profileTable: some View {
-        Table(service.profiles) {
+        Table(filtered, selection: $selection) {
             TableColumn("이름") { profile in
                 Text(profile.name)
                     .foregroundStyle(profile.enabled ? .primary : .secondary)
@@ -56,8 +81,9 @@ struct ProfilesView: View {
                 Text("\(profile.delay)초")
                     .monospacedDigit()
             }
-            TableColumn("액션") { profile in
-                HStack {
+            .width(60)
+            TableColumn("") { profile in
+                HStack(spacing: 8) {
                     Button("편집") { editingProfile = profile }
                         .buttonStyle(.link)
                     Button("삭제") {
@@ -68,12 +94,13 @@ struct ProfilesView: View {
                     .foregroundStyle(.red)
                 }
             }
+            .width(80)
         }
     }
 
     private var bottomBar: some View {
         HStack {
-            Button(action: { service.load() }) {
+            Button { service.load() } label: {
                 Image(systemName: "arrow.clockwise")
                 Text("새로고침")
             }
@@ -81,7 +108,7 @@ struct ProfilesView: View {
             Text("\(service.profiles.count)개 프로필")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Button(action: { showAddSheet = true }) {
+            Button { showAddSheet = true } label: {
                 Image(systemName: "plus")
                 Text("추가")
             }
@@ -112,30 +139,35 @@ struct ProfileFormSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(.headline)
-                .padding()
-
+            Text(title).font(.headline).padding()
             Divider()
-
             Form {
                 TextField("이름", text: $name)
-                TextField("경로 (root)", text: $root)
+                HStack {
+                    TextField("경로 (root)", text: $root)
+                    Button("선택...") {
+                        let panel = NSOpenPanel()
+                        panel.canChooseFiles = false
+                        panel.canChooseDirectories = true
+                        panel.allowsMultipleSelection = false
+                        panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory() + "/claude")
+                        if panel.runModal() == .OK, let url = panel.url {
+                            root = url.path
+                            if name.isEmpty { name = url.lastPathComponent }
+                        }
+                    }
+                }
                 Stepper("딜레이: \(delay)초", value: $delay, in: 0...60, step: 5)
             }
             .padding()
-
             Divider()
-
             HStack {
                 Button("취소") { dismiss() }
                 Spacer()
                 Button("저장") {
                     let profile = SmugProfile(
                         id: existing?.id ?? UUID(),
-                        name: name,
-                        root: root,
-                        delay: delay,
+                        name: name, root: root, delay: delay,
                         enabled: existing?.enabled ?? true
                     )
                     onSave(profile)
@@ -146,6 +178,6 @@ struct ProfileFormSheet: View {
             }
             .padding()
         }
-        .frame(width: 400)
+        .frame(width: 420)
     }
 }
