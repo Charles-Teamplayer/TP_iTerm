@@ -117,7 +117,9 @@ struct ShellService {
                 content = open(path).read()
                 pattern = r'  - name: ' + re.escape(name) + r'\\n(?:(?!  - name:).)*'
                 new_content = re.sub(pattern, '', content, flags=re.DOTALL)
-                open(path, 'w').write(new_content)
+                tmp = path + '.tmp'
+                open(tmp, 'w').write(new_content)
+                os.replace(tmp, path)
             except: pass
             " 2>/dev/null; true
             """
