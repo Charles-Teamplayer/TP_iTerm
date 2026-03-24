@@ -30,3 +30,7 @@ build/
 logs/
 MAGI-Restore-App/.build/
 TP-iTerm-Restore-App/.build/
+
+# Ralph Loop
+.claude/ralph-loop.local.md
+*/.claude/ralph-loop.local.md
