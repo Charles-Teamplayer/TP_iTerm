@@ -180,11 +180,13 @@ struct SessionDetailView: View {
     private func doHide(_ session: ClaudeSession) {
         let tty = session.tty
         Task {
-            let tmp = "/tmp/hide_\(Int.random(in: 1000...9999)).scpt"
-            let script = "tell application \"iTerm2\"\nrepeat with w in windows\nrepeat with t in tabs of w\nrepeat with s in sessions of t\ntry\nif tty of s is \"\(tty)\" then set miniaturized of w to true\nend try\nend repeat\nend repeat\nend repeat\nend tell"
+            let tmp = NSTemporaryDirectory() + "hide_\(UUID().uuidString).scpt"
+            let safeTty = tty.replacingOccurrences(of: "\"", with: "\\\"")
+            let script = "tell application \"iTerm2\"\nrepeat with w in windows\nrepeat with t in tabs of w\nrepeat with s in sessions of t\ntry\nif tty of s is \"\(safeTty)\" then set miniaturized of w to true\nend try\nend repeat\nend repeat\nend repeat\nend tell"
             try? script.write(toFile: tmp, atomically: true, encoding: .utf8)
-            await ShellService.runAsync("osascript '\(tmp)'")
-            await ShellService.runAsync("rm -f '\(tmp)'")
+            let escapedTmp = tmp.replacingOccurrences(of: "'", with: "'\\''")
+            await ShellService.runAsync("osascript '\(escapedTmp)'")
+            await ShellService.runAsync("rm -f '\(escapedTmp)'")
             await monitor.refresh()
         }
     }

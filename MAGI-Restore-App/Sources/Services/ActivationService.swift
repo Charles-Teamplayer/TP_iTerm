@@ -42,10 +42,8 @@ final class ActivationService {
     // MARK: - Private
 
     private func normalizedRoot(_ root: String) -> String {
-        root.hasPrefix("~")
-            ? root.replacingOccurrences(of: "~", with: NSHomeDirectory(),
-                                        range: root.range(of: "~"))
-            : root
+        guard root.hasPrefix("~") else { return root }
+        return NSHomeDirectory() + root.dropFirst()
     }
 
     private func persist(_ set: Set<String>) {

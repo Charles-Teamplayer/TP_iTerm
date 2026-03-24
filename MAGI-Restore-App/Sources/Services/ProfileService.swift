@@ -114,7 +114,7 @@ final class ProfileService: ObservableObject {
             lines.append("    root: \(rootStr)")
             lines.append("    commands:")
             let name = profile.name
-            let shellName = name.contains(" ") ? "'\(name)'" : name
+            let shellName = "'" + name.replacingOccurrences(of: "'", with: "'\\''") + "'"
             let delay = profile.delay
             let statusCmd = "bash ~/.claude/scripts/tab-status.sh starting \(shellName) && "
             let cmd = "sleep \(delay) && \(statusCmd)unset CLAUDECODE && claude --dangerously-skip-permissions --continue"
