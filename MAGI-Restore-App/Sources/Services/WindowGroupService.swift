@@ -97,6 +97,6 @@ final class WindowGroupService: ObservableObject {
         guard !FileManager.default.fileExists(atPath: path) else { return }
         let defaults = [WindowPane(name: "메인", sessionName: "claude-work", profileNames: [])]
         guard let data = try? JSONEncoder().encode(defaults) else { return }
-        try? data.write(to: URL(fileURLWithPath: path))
+        try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
     }
 }
