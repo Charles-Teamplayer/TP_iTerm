@@ -27,6 +27,13 @@ struct ContentView: View {
     // 드래그 앤 드롭
     @State private var dragHighlightPane: UUID? = nil
 
+    // 접이식 pane
+    @State private var collapsedPanes: Set<UUID> = []
+
+    // 창별 색상 팔레트
+    static let paneColors: [Color] = [.blue, .purple, .orange, .green, .pink, .cyan, .indigo, .mint]
+    func paneColor(at index: Int) -> Color { Self.paneColors[index % Self.paneColors.count] }
+
     enum Tab: String, CaseIterable {
         case sessions = "세션"
         case profiles = "프로필"
@@ -76,6 +83,14 @@ struct ContentView: View {
             try? "[AppStart] \(Date())\n".write(toFile: logPath, atomically: true, encoding: .utf8)
             NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
                 let line = "[AppMonitor] mouseDown at=\(event.locationInWindow)\n"
+                if let data = line.data(using: .utf8),
+                   let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: logPath)) {
+                    h.seekToEndOfFile(); h.write(data); h.closeFile()
+                }
+                return event
+            }
+            NSEvent.addLocalMonitorForEvents(matching: .leftMouseDragged) { event in
+                let line = "[AppMonitor] mouseDragged at=\(event.locationInWindow) delta=(\(event.deltaX),\(event.deltaY))\n"
                 if let data = line.data(using: .utf8),
                    let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: logPath)) {
                     h.seekToEndOfFile(); h.write(data); h.closeFile()
@@ -270,14 +285,25 @@ struct ContentView: View {
                         .foregroundStyle(.blue)
                         Divider()
 
-                        ForEach(wgs.groups) { pane in
+                        ForEach(Array(wgs.groups.enumerated()), id: \.element.id) { paneIdx, pane in
                             let paneSess = paneSessions(pane, all: profileSessions)
                             let filtered = searchText.isEmpty ? paneSess
                                 : paneSess.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
+                            let color = paneColor(at: paneIdx)
+                            let isCollapsed = collapsedPanes.contains(pane.id)
                             if !filtered.isEmpty || searchText.isEmpty {
-                                paneHeader(pane, sessions: paneSess)
-                                    .padding(.horizontal, 10)
-                                    .background(Color(nsColor: .controlBackgroundColor))
+                                // Pane 헤더 (drop target + 색상 구분)
+                                paneHeader(pane, sessions: paneSess, color: color, isCollapsed: isCollapsed) {
+                                        if isCollapsed { collapsedPanes.remove(pane.id) }
+                                        else { collapsedPanes.insert(pane.id) }
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(color.opacity(dragHighlightPane == pane.id ? 0.30 : 0.08))
+                                    .overlay(alignment: .leading) {
+                                        Rectangle().fill(color).frame(width: 3)
+                                    }
+                                    .contentShape(Rectangle())
                                     .dropDestination(for: String.self) { payloads, _ in
                                         let payload = payloads.first ?? ""
                                         badgeLog("[drop] pane=\(pane.name) payload=\(payload)")
@@ -294,50 +320,61 @@ struct ContentView: View {
                                         badgeLog("[isTargeted] pane=\(pane.name) targeted=\(targeted)")
                                         dragHighlightPane = targeted ? pane.id : nil
                                     }
-                                Divider()
-                                ForEach(Array(filtered.enumerated()), id: \.element.id) { idx, session in
-                                    sessionRow(session, order: idx + 1, pane: pane, total: filtered.count,
-                                               isSelected: selectedSession?.id == session.id,
-                                               onSelect: {
-                                                   selectedSession = session
-                                                   editingTabKey = nil
-                                               })
-                                        .padding(.horizontal, 10)
-                                        .dropDestination(for: String.self) { payloads, _ in
-                                            let payload = payloads.first ?? ""
-                                            badgeLog("[row-drop] pane=\(pane.name) target=\(session.projectName) payload=\(payload)")
-                                            guard !payload.isEmpty else { return false }
-                                            let parts = payload.split(separator: "|", maxSplits: 1)
-                                            guard let profileName = parts.first.map(String.init) else { return false }
-                                            let srcPaneIdStr = parts.count > 1 ? String(parts[1]) : ""
-                                            // 같은 pane 내 이동
-                                            if pane.id.uuidString != srcPaneIdStr {
-                                                monitor.windowGroupService.moveProfile(profileName, to: pane)
+
+                                if !isCollapsed {
+                                    ForEach(Array(filtered.enumerated()), id: \.element.id) { idx, session in
+                                        sessionRow(session, order: idx + 1, pane: pane, total: filtered.count,
+                                                   paneColor: color,
+                                                   isSelected: selectedSession?.id == session.id,
+                                                   onSelect: {
+                                                       selectedSession = session
+                                                       editingTabKey = nil
+                                                   })
+                                            .padding(.horizontal, 8)
+                                            .padding(.leading, 3)
+                                            .background(color.opacity(0.04))
+                                            .overlay(alignment: .leading) {
+                                                Rectangle().fill(color.opacity(0.3)).frame(width: 3)
                                             }
-                                            if let destIdx = monitor.windowGroupService.groups
-                                                .first(where: { $0.id == pane.id })?
-                                                .profileNames.firstIndex(of: session.projectName) {
-                                                monitor.windowGroupService.moveProfileToIndex(profileName, groupId: pane.id, index: destIdx)
+                                            .dropDestination(for: String.self) { payloads, _ in
+                                                let payload = payloads.first ?? ""
+                                                badgeLog("[row-drop] pane=\(pane.name) target=\(session.projectName) payload=\(payload)")
+                                                guard !payload.isEmpty else { return false }
+                                                let parts = payload.split(separator: "|", maxSplits: 1)
+                                                guard let profileName = parts.first.map(String.init) else { return false }
+                                                let srcPaneIdStr = parts.count > 1 ? String(parts[1]) : ""
+                                                if pane.id.uuidString != srcPaneIdStr {
+                                                    monitor.windowGroupService.moveProfile(profileName, to: pane)
+                                                }
+                                                if let destIdx = monitor.windowGroupService.groups
+                                                    .first(where: { $0.id == pane.id })?
+                                                    .profileNames.firstIndex(of: session.projectName) {
+                                                    monitor.windowGroupService.moveProfileToIndex(profileName, groupId: pane.id, index: destIdx)
+                                                }
+                                                return true
+                                            } isTargeted: { targeted in
+                                                dragHighlightPane = targeted ? pane.id : nil
                                             }
-                                            return true
-                                        } isTargeted: { targeted in
-                                            dragHighlightPane = targeted ? pane.id : nil
-                                        }
-                                    Divider().padding(.leading, 10)
+                                        Divider().padding(.leading, 11)
+                                    }
                                 }
+                                Divider()
                             }
                         }
 
                         if !filteredUnassigned.isEmpty {
-                            Text("미배정")
-                                .font(.caption.bold())
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 10).padding(.vertical, 4)
-                                .background(Color(nsColor: .controlBackgroundColor))
+                            HStack(spacing: 6) {
+                                Image(systemName: "tray").font(.caption).foregroundStyle(.secondary)
+                                Text("미배정").font(.caption.bold()).foregroundStyle(.secondary)
+                                Spacer()
+                                Text("\(filteredUnassigned.count)개").font(.caption2).foregroundStyle(.tertiary)
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Color(nsColor: .controlBackgroundColor))
                             Divider()
                             ForEach(filteredUnassigned) { session in
                                 sessionRow(session, order: nil, pane: nil, total: 0,
+                                           paneColor: .secondary,
                                            isSelected: selectedSession?.id == session.id,
                                            onSelect: { selectedSession = session })
                                     .padding(.horizontal, 10)
@@ -460,123 +497,169 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func paneHeader(_ pane: WindowPane, sessions: [ClaudeSession]) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "macwindow").font(.caption).foregroundStyle(.blue)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(pane.name).font(.caption.bold())
-                Text(pane.sessionName).font(.caption2).foregroundStyle(.tertiary)
+    private func paneHeader(_ pane: WindowPane, sessions: [ClaudeSession], color: Color,
+                            isCollapsed: Bool, onToggleCollapse: @escaping () -> Void) -> some View {
+        let runCount = sessions.filter(\.isRunning).count
+        HStack(spacing: 8) {
+            // 좌측: 접이식 영역 (chevron + 아이콘 + 텍스트) — 탭 시 collapse
+            HStack(spacing: 6) {
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(color.opacity(0.7))
+                    .frame(width: 12)
+                Image(systemName: "macwindow")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(color)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(pane.name)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    HStack(spacing: 4) {
+                        Text(pane.sessionName)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                        if sessions.count > 0 {
+                            Text("·").font(.system(size: 10)).foregroundStyle(.tertiary)
+                            Text(runCount > 0 ? "\(runCount)개 실행 중" : "\(sessions.count)개")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(runCount > 0 ? Color.green : Color.secondary)
+                        }
+                    }
+                }
             }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.2)) { onToggleCollapse() }
+            }
+
             Spacer()
-            let runCount = sessions.filter(\.isRunning).count
-            if runCount > 0 {
-                Text("\(runCount)/\(sessions.count)")
-                    .font(.caption2).foregroundStyle(.green)
-            } else {
-                Text("\(sessions.count)개")
-                    .font(.caption2).foregroundStyle(.secondary)
+
+            // 우측: 버튼 그룹 (각 버튼이 독립 탭 처리)
+            HStack(spacing: 4) {
+                Button { Task { await monitor.startGroup(pane) } } label: {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(sessions.isEmpty ? Color.secondary : color)
+                }
+                .buttonStyle(.plain).help("이 창 전체 시작").disabled(sessions.isEmpty)
+
+                Button { Task { await monitor.stopGroup(pane) } } label: {
+                    Image(systemName: "stop.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(runCount == 0 ? Color.secondary : Color.orange)
+                }
+                .buttonStyle(.plain).help("이 창 실행 중인 세션 중지").disabled(runCount == 0)
+
+                Button { renamingPane = pane } label: {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color.secondary)
+                }
+                .buttonStyle(.plain).help("창 이름/세션명 변경")
+
+                Button {
+                    paneToDelete = pane
+                    showDeletePaneConfirm = true
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(monitor.windowGroupService.groups.count <= 1 ? Color.secondary : Color.red.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+                .disabled(monitor.windowGroupService.groups.count <= 1)
+                .help("창 삭제")
             }
-            // 시작
-            Button { Task { await monitor.startGroup(pane) } } label: {
-                Image(systemName: "play.fill").font(.caption2).foregroundStyle(.blue)
-            }
-            .buttonStyle(.plain).help("이 창 전체 시작").disabled(sessions.isEmpty)
-            // 중지
-            let runCount2 = sessions.filter { $0.isRunning }.count
-            Button { Task { await monitor.stopGroup(pane) } } label: {
-                Image(systemName: "stop.fill").font(.caption2).foregroundStyle(.orange)
-            }
-            .buttonStyle(.plain).help("이 창 실행 중인 세션 중지").disabled(runCount2 == 0)
-            // 수정
-            Button { renamingPane = pane } label: {
-                Image(systemName: "pencil").font(.caption2).foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain).help("창 이름/세션명 변경")
-            // 삭제
-            Button {
-                paneToDelete = pane
-                showDeletePaneConfirm = true
-            } label: {
-                Image(systemName: "trash").font(.caption2)
-                    .foregroundStyle(monitor.windowGroupService.groups.count <= 1 ? Color.secondary : Color.red.opacity(0.8))
-            }
-            .buttonStyle(.plain)
-            .disabled(monitor.windowGroupService.groups.count <= 1)
-            .help("창 삭제 (세션은 첫 번째 창으로 이동)")
         }
-        .padding(.vertical, 4)
-        .background(dragHighlightPane == pane.id ? Color.blue.opacity(0.15) : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder
     private func sessionRow(_ session: ClaudeSession, order: Int?, pane: WindowPane?, total: Int,
+                            paneColor: Color = .blue,
                             isSelected: Bool = false, onSelect: @escaping () -> Void = {}) -> some View {
         let payload = "\(session.projectName)|\(pane?.id.uuidString ?? "")"
-        let dotColor: Color = session.isRunning ? .green
+        let statusColor: Color = session.isRunning ? .green
             : (!session.id.hasPrefix("profile-") && session.windowIndex != Int.max) ? .orange
             : .secondary
-        HStack(spacing: 6) {
-            // 탭 번호 (클릭: 편집)
-            if let order, let pane {
-                let editKey = "\(pane.id)|\(session.projectName)"
-                if editingTabKey == editKey {
-                    TextField("", text: $tabNumberInput)
-                        .frame(width: 26)
-                        .font(.caption2.monospacedDigit())
-                        .multilineTextAlignment(.center)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit {
-                            if let num = Int(tabNumberInput), num >= 1 {
-                                monitor.windowGroupService.moveProfileToIndex(
-                                    session.projectName, groupId: pane.id, index: num - 1)
-                            }
-                            editingTabKey = nil
-                        }
-                        .onExitCommand { editingTabKey = nil }
-                } else {
-                    Text("\(order)")
-                        .font(.system(size: 10, design: .monospaced))
-                        .frame(width: 26, height: 18)
-                        .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 3))
-                        .foregroundStyle(Color.blue.opacity(0.8))
-                        .onTapGesture {
-                            tabNumberInput = "\(order)"
-                            editingTabKey = editKey
-                        }
-                }
-            } else {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 10))
-                    .frame(width: 26, height: 18)
-                    .foregroundStyle(Color.secondary.opacity(0.5))
-            }
+        let dirName: String = {
+            let d = session.directory
+            if d.isEmpty { return "" }
+            return URL(fileURLWithPath: d).lastPathComponent
+        }()
 
-            Circle().fill(dotColor).frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(session.projectName).font(.callout).lineLimit(1)
-                Group {
-                    if session.isRunning { Text("PID: \(session.pid)") }
-                    else if session.id.hasPrefix("profile-") || session.windowIndex == Int.max { Text("시작 가능") }
-                    else { Text("복원 가능") }
-                }.font(.caption).foregroundStyle(.secondary)
+        ZStack(alignment: .leading) {
+            // 콘텐츠 레이어
+            HStack(spacing: 8) {
+                // 드래그 핸들 아이콘 (시각적 힌트)
+                DragHandleIcon(color: paneColor)
+
+                // 탭 번호
+                if let order, let pane {
+                    let editKey = "\(pane.id)|\(session.projectName)"
+                    if editingTabKey == editKey {
+                        TextField("", text: $tabNumberInput)
+                            .frame(width: 26)
+                            .font(.caption2.monospacedDigit())
+                            .multilineTextAlignment(.center)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit {
+                                if let num = Int(tabNumberInput), num >= 1 {
+                                    monitor.windowGroupService.moveProfileToIndex(
+                                        session.projectName, groupId: pane.id, index: num - 1)
+                                }
+                                editingTabKey = nil
+                            }
+                            .onExitCommand { editingTabKey = nil }
+                    } else {
+                        Text("\(order)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .frame(width: 24, height: 18)
+                            .background(paneColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 3))
+                            .foregroundStyle(paneColor.opacity(0.9))
+                    }
+                } else {
+                    Image(systemName: "tray")
+                        .font(.system(size: 10))
+                        .frame(width: 24, height: 18)
+                        .foregroundStyle(Color.secondary.opacity(0.5))
+                }
+
+                // 상태 도트 + 이름 + 서브텍스트
+                Circle().fill(statusColor).frame(width: 7, height: 7)
+                    .shadow(color: statusColor.opacity(session.isRunning ? 0.5 : 0), radius: 3)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.projectName)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        if !dirName.isEmpty {
+                            Image(systemName: "folder").font(.system(size: 9)).foregroundStyle(.tertiary)
+                            Text(dirName).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                            if session.isRunning {
+                                Text("· PID \(session.pid)").font(.system(size: 10)).foregroundStyle(.tertiary)
+                            }
+                        } else {
+                            if session.isRunning {
+                                Text("PID \(session.pid)").font(.system(size: 10)).foregroundStyle(.tertiary)
+                            } else if session.id.hasPrefix("profile-") || session.windowIndex == Int.max {
+                                Text("시작 가능").font(.system(size: 10)).foregroundStyle(.secondary)
+                            } else {
+                                Text("복원 가능").font(.system(size: 10)).foregroundStyle(.orange.opacity(0.8))
+                            }
+                        }
+                    }
+                }
+                Spacer()
             }
-            Spacer()
-        }
-        .padding(.vertical, 2)
-        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
-        .contentShape(Rectangle())
-        .onTapGesture { onSelect() }
-        .onHover { inside in
-            if inside { NSCursor.openHand.push() } else { NSCursor.pop() }
-        }
-        .draggable(payload) {
-            HStack(spacing: 6) {
-                Circle().fill(dotColor).frame(width: 8, height: 8)
-                Text(session.projectName).font(.callout)
-            }
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+            .padding(.vertical, 4)
+            .background(isSelected ? paneColor.opacity(0.12) : Color.clear)
+
+            // 드래그 오버레이 레이어 (전체 row, 즉시 드래그 + tap→onSelect)
+            // isEditing 시 hitTest nil → TextField가 직접 이벤트 수신
+            let editKey = pane.map { "\($0.id)|\(session.projectName)" } ?? ""
+            FullRowDragOverlay(payload: payload, onSelect: onSelect,
+                               isEditing: editingTabKey == editKey && !editKey.isEmpty)
         }
         .contextMenu {
             if let pane {
