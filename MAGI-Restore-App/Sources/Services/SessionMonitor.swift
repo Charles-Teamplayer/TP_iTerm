@@ -136,9 +136,7 @@ final class SessionMonitor: ObservableObject {
             // 활성화 플래그 주입
             let root = s.profileRoot ?? s.directory
             s.isActivated = activatedRoots.contains(
-                root.hasPrefix("~")
-                    ? root.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: root.range(of: "~"))
-                    : root
+                root.hasPrefix("~") ? NSHomeDirectory() + root.dropFirst() : root
             )
             return s
         }
@@ -194,9 +192,7 @@ final class SessionMonitor: ObservableObject {
 
             let winName = shellEscape(session.windowName)
             let dir = session.directory.isEmpty ? "~/claude/\(session.windowName)" : session.directory
-            let safeDir = dir.hasPrefix("~")
-                ? dir.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: dir.range(of: "~"))
-                : dir
+            let safeDir = dir.hasPrefix("~") ? NSHomeDirectory() + dir.dropFirst() : dir
             let escapedDir = shellEscape(safeDir)
             let claudeCmd = hasClaudeProject(at: safeDir)
                 ? "claude --dangerously-skip-permissions --continue"
@@ -312,9 +308,7 @@ final class SessionMonitor: ObservableObject {
     /// — 디렉토리에 있는데 프로필에 없으면 추가, 디렉토리가 삭제된 프로필은 제거
     @discardableResult
     func syncProfilesWithDirectory(baseDir: String = "~/claude") -> (added: [String], removed: [String]) {
-        let safeBase = baseDir.hasPrefix("~")
-            ? baseDir.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: baseDir.range(of: "~"))
-            : baseDir
+        let safeBase = baseDir.hasPrefix("~") ? NSHomeDirectory() + baseDir.dropFirst() : baseDir
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(atPath: safeBase) else { return ([], []) }
 
@@ -397,9 +391,7 @@ final class SessionMonitor: ObservableObject {
             await ShellService.runAsync("tmux new-session -s '\(safeSession)' -d 2>/dev/null; true")
         }
 
-        let safeRoot = root.hasPrefix("~")
-            ? root.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: root.range(of: "~"))
-            : root
+        let safeRoot = root.hasPrefix("~") ? NSHomeDirectory() + root.dropFirst() : root
 
         // claude 프로젝트 데이터(.jsonl)가 있을 때만 --continue
         let hasPrior = !createDir && hasClaudeProject(at: safeRoot)
