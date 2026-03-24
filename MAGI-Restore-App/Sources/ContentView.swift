@@ -281,7 +281,22 @@ struct ContentView: View {
                                 paneHeader(pane, sessions: paneSess)
                                     .padding(.horizontal, 10)
                                     .background(Color(nsColor: .controlBackgroundColor))
-                                    .reportPaneFrame(id: pane.id)
+                                    .dropDestination(for: String.self) { payloads, _ in
+                                        let payload = payloads.first ?? ""
+                                        badgeLog("[drop] pane=\(pane.name) payload=\(payload)")
+                                        guard !payload.isEmpty else { return false }
+                                        let parts = payload.split(separator: "|", maxSplits: 1)
+                                        guard let profileName = parts.first.map(String.init) else { return false }
+                                        let srcPaneIdStr = parts.count > 1 ? String(parts[1]) : ""
+                                        if pane.id.uuidString != srcPaneIdStr {
+                                            monitor.windowGroupService.moveProfile(profileName, to: pane)
+                                        }
+                                        badgeLog("[drop done] moved \(profileName) to \(pane.name)")
+                                        return true
+                                    } isTargeted: { targeted in
+                                        badgeLog("[isTargeted] pane=\(pane.name) targeted=\(targeted)")
+                                        dragHighlightPane = targeted ? pane.id : nil
+                                    }
                                 Divider()
                                 ForEach(Array(filtered.enumerated()), id: \.element.id) { idx, session in
                                     sessionRow(session, order: idx + 1, pane: pane, total: filtered.count,
@@ -291,6 +306,26 @@ struct ContentView: View {
                                                    editingTabKey = nil
                                                })
                                         .padding(.horizontal, 10)
+                                        .dropDestination(for: String.self) { payloads, _ in
+                                            let payload = payloads.first ?? ""
+                                            badgeLog("[row-drop] pane=\(pane.name) target=\(session.projectName) payload=\(payload)")
+                                            guard !payload.isEmpty else { return false }
+                                            let parts = payload.split(separator: "|", maxSplits: 1)
+                                            guard let profileName = parts.first.map(String.init) else { return false }
+                                            let srcPaneIdStr = parts.count > 1 ? String(parts[1]) : ""
+                                            // 같은 pane 내 이동
+                                            if pane.id.uuidString != srcPaneIdStr {
+                                                monitor.windowGroupService.moveProfile(profileName, to: pane)
+                                            }
+                                            if let destIdx = monitor.windowGroupService.groups
+                                                .first(where: { $0.id == pane.id })?
+                                                .profileNames.firstIndex(of: session.projectName) {
+                                                monitor.windowGroupService.moveProfileToIndex(profileName, groupId: pane.id, index: destIdx)
+                                            }
+                                            return true
+                                        } isTargeted: { targeted in
+                                            dragHighlightPane = targeted ? pane.id : nil
+                                        }
                                     Divider().padding(.leading, 10)
                                 }
                             }
@@ -495,6 +530,12 @@ struct ContentView: View {
                 Image(systemName: "play.fill").font(.caption2).foregroundStyle(.blue)
             }
             .buttonStyle(.plain).help("이 창 전체 시작").disabled(sessions.isEmpty)
+            // 중지
+            let runCount2 = sessions.filter { $0.isRunning }.count
+            Button { Task { await monitor.stopGroup(pane) } } label: {
+                Image(systemName: "stop.fill").font(.caption2).foregroundStyle(.orange)
+            }
+            .buttonStyle(.plain).help("이 창 실행 중인 세션 중지").disabled(runCount2 == 0)
             // 수정
             Button { renamingPane = pane } label: {
                 Image(systemName: "pencil").font(.caption2).foregroundStyle(.secondary)
@@ -526,76 +567,65 @@ struct ContentView: View {
             : .secondary
         let hoverKey = "\(pane?.id.uuidString ?? "")|\(session.projectName)"
 
-        ZStack {
-            // ── 하단 레이어: 전체 행 드래그 소스 (NSEvent 모니터 방식 — 뱃지와 동일) ──
-            DragBadgeView(
-                label: "", isTabNumber: false, onTap: {},
-                onDragChanged: { loc in
-                    dragHighlightPane = paneFrames.first { $0.value.contains(loc) }?.key
-                    dragHighlightRow = rowFrames.first { $0.value.contains(loc) }?.key
-                },
-                onDragEnded: { loc in
-                    handleDrop(payload: payload, at: loc)
-                    dragHighlightRow = nil; dragHighlightPane = nil
-                },
-                onDragCancelled: { dragHighlightRow = nil; dragHighlightPane = nil }
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            // ── 상단 레이어: 시각적 행 콘텐츠 ──
-            HStack(spacing: 6) {
-                // 탭 번호 (탭 클릭으로 편집)
-                if let order, let pane {
-                    let editKey = "\(pane.id)|\(session.projectName)"
-                    if editingTabKey == editKey {
-                        TextField("", text: $tabNumberInput)
-                            .frame(width: 26)
-                            .font(.caption2.monospacedDigit())
-                            .multilineTextAlignment(.center)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit {
-                                if let num = Int(tabNumberInput), num >= 1 {
-                                    monitor.windowGroupService.moveProfileToIndex(
-                                        session.projectName, groupId: pane.id, index: num - 1)
-                                }
-                                editingTabKey = nil
+        HStack(spacing: 6) {
+            // 탭 번호 (클릭: 편집)
+            if let order, let pane {
+                let editKey = "\(pane.id)|\(session.projectName)"
+                if editingTabKey == editKey {
+                    TextField("", text: $tabNumberInput)
+                        .frame(width: 26)
+                        .font(.caption2.monospacedDigit())
+                        .multilineTextAlignment(.center)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit {
+                            if let num = Int(tabNumberInput), num >= 1 {
+                                monitor.windowGroupService.moveProfileToIndex(
+                                    session.projectName, groupId: pane.id, index: num - 1)
                             }
-                            .onExitCommand { editingTabKey = nil }
-                    } else {
-                        Text("\(order)")
-                            .font(.system(size: 10, design: .monospaced))
-                            .frame(width: 26, height: 18)
-                            .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 3))
-                            .foregroundStyle(Color.blue.opacity(0.8))
-                            .onTapGesture {
-                                tabNumberInput = "\(order)"
-                                editingTabKey = editKey
-                            }
-                    }
+                            editingTabKey = nil
+                        }
+                        .onExitCommand { editingTabKey = nil }
                 } else {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 10))
+                    Text("\(order)")
+                        .font(.system(size: 10, design: .monospaced))
                         .frame(width: 26, height: 18)
-                        .foregroundStyle(Color.secondary.opacity(0.5))
+                        .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 3))
+                        .foregroundStyle(Color.blue.opacity(0.8))
+                        .onTapGesture {
+                            tabNumberInput = "\(order)"
+                            editingTabKey = editKey
+                        }
                 }
-
-                Circle().fill(dotColor).frame(width: 8, height: 8)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(session.projectName).font(.callout).lineLimit(1)
-                    Group {
-                        if session.isRunning { Text("PID: \(session.pid)") }
-                        else if session.id.hasPrefix("profile-") || session.windowIndex == Int.max { Text("시작 가능") }
-                        else { Text("복원 가능") }
-                    }.font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
+            } else {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 10))
+                    .frame(width: 26, height: 18)
+                    .foregroundStyle(Color.secondary.opacity(0.5))
             }
-            .onTapGesture { onSelect() }
+
+            Circle().fill(dotColor).frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.projectName).font(.callout).lineLimit(1)
+                Group {
+                    if session.isRunning { Text("PID: \(session.pid)") }
+                    else if session.id.hasPrefix("profile-") || session.windowIndex == Int.max { Text("시작 가능") }
+                    else { Text("복원 가능") }
+                }.font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
         }
         .padding(.vertical, 2)
-        .background(isSelected ? Color.accentColor.opacity(0.15) :
-                    dragHighlightRow == hoverKey ? Color.accentColor.opacity(0.2) : Color.clear)
+        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
         .contentShape(Rectangle())
+        .onTapGesture { onSelect() }
+        .draggable(payload) {
+            HStack(spacing: 6) {
+                Circle().fill(dotColor).frame(width: 8, height: 8)
+                Text(session.projectName).font(.callout)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+        }
         .contextMenu {
             if let pane {
                 let others = monitor.windowGroupService.groups.filter { $0.id != pane.id }

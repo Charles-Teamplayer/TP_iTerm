@@ -264,6 +264,25 @@ final class SessionMonitor: ObservableObject {
     }
 
     // claude 실행 중 세션 중지 + tmux 창 닫기
+    func stopGroup(_ group: WindowPane) async {
+        let profileNames = Set(group.profileNames)
+        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") && profileNames.contains($0.projectName) }
+        for session in toStop {
+            let dir = session.directory.isEmpty ? session.projectName : session.directory
+            await ShellService.intentionalStopAsync(projectDir: dir)
+            if session.pid > 0 {
+                await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
+            }
+            if session.windowIndex >= 0 {
+                await ShellService.runAsync(
+                    "tmux kill-window -t '\(group.sessionName):\(session.windowIndex)' 2>/dev/null; true"
+                )
+            }
+        }
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        await refresh()
+    }
+
     func stopAllRunning() async {
         let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") }
         for session in toStop {

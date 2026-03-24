@@ -33,9 +33,9 @@ extension View {
     }
 }
 
-// MARK: - Debug Logger (/tmp/badge_debug.log)
+// MARK: - Debug Logger
 
-private func badgeLog(_ msg: String) {
+func badgeLog(_ msg: String) {
     let line = "[\(Date())] \(msg)\n"
     let path = "/tmp/badge_debug.log"
     if let data = line.data(using: .utf8) {
@@ -84,27 +84,24 @@ class BadgeNSView: NSView, NSGestureRecognizerDelegate {
 
     private var isDragging = false
     private var isMouseDown = false
-
-    // Monitor 방식 (SwiftUI가 responder chain 차단해도 작동)
-    private var mouseDownMonitor: Any?
-    private var dragMonitor: Any?
     private var mouseDownPt: NSPoint?
 
-    // GestureRecognizer 방식 (동시 실행, 보조)
+    // Mechanism 1: NSEvent window-level monitors
+    private var mouseDownMonitor: Any?
+    private var dragMonitor: Any?
+
+    // Mechanism 2: NSGestureRecognizers
     private var panGR: NSPanGestureRecognizer?
     private var clickGR: NSClickGestureRecognizer?
 
     private let dragThreshold: CGFloat = 3
 
-    deinit { removeAllMonitors() }
+    deinit {
+        removeAllMonitors()
+    }
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    // label이 비어있을 때(투명 오버레이)는 NSView hitTest pass-through → 아래 SwiftUI Button 클릭 살아있음
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        return _label.isEmpty ? nil : super.hitTest(point)
-    }
 
     // MARK: - viewDidMoveToWindow
 
@@ -115,24 +112,31 @@ class BadgeNSView: NSView, NSGestureRecognizerDelegate {
         badgeLog("viewDidMoveToWindow label=\(_label) window=\(window != nil ? "YES" : "nil")")
         guard window != nil else { return }
 
-        // ── Approach 1: Persistent local monitor ──
+        // ── Mechanism 1a: mouseDown monitor ──
+        // Window-level: fires before event dispatch, regardless of hitTest
         mouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self = self, self.window != nil else { return event }
-            // 뷰 bounds를 window base 좌표로 변환 후 히트 체크 (4px 확장 → Divider/padding 경계 흡수)
             let viewRect = self.convert(self.bounds, to: nil).insetBy(dx: 0, dy: -4)
             let hit = viewRect.contains(event.locationInWindow)
-            badgeLog("monitor mouseDown label=\(self._label) viewRect=\(viewRect) click=\(event.locationInWindow) hit=\(hit)")
-            if hit { self.monitorStartTracking(at: event.locationInWindow) }
+            badgeLog("monitor mouseDown label=\(self._label) viewRect=\(viewRect) hit=\(hit)")
+            if hit {
+                self.mouseDownPt = event.locationInWindow
+                self.isMouseDown = true
+                DispatchQueue.main.async { self.needsDisplay = true }
+                self.installDragMonitor()
+            }
             return event
         }
 
-        // ── Approach 2: NSPanGestureRecognizer (동시 실행 허용) ──
+        // ── Mechanism 2a: NSPanGestureRecognizer ──
+        // Works when hitTest returns this view (DragBadgeView on TOP of ZStack)
         let pan = NSPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         pan.delegate = self
-        pan.buttonMask = 0x1  // left mouse button only
+        pan.buttonMask = 0x1
         addGestureRecognizer(pan)
         panGR = pan
 
+        // ── Mechanism 2b: NSClickGestureRecognizer ──
         let click = NSClickGestureRecognizer(target: self, action: #selector(handleClick(_:)))
         click.delegate = self
         click.numberOfClicksRequired = 1
@@ -142,7 +146,6 @@ class BadgeNSView: NSView, NSGestureRecognizerDelegate {
         badgeLog("monitors+gestures installed label=\(_label)")
     }
 
-    // NSGestureRecognizerDelegate: ScrollView와 동시 실행 허용
     func gestureRecognizer(_ gr: NSGestureRecognizer,
                            shouldRecognizeSimultaneouslyWith other: NSGestureRecognizer) -> Bool {
         return true
@@ -163,10 +166,54 @@ class BadgeNSView: NSView, NSGestureRecognizerDelegate {
         needsDisplay = true
     }
 
-    // MARK: - NSPanGestureRecognizer handler
+    // MARK: - NSEvent Drag Monitor (Mechanism 1b)
+
+    private func installDragMonitor() {
+        removeDragMonitor()
+        dragMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self = self else { return event }
+            self.handleMonitorEvent(event)
+            return event
+        }
+        badgeLog("dragMonitor installed label=\(_label)")
+    }
+
+    private func handleMonitorEvent(_ event: NSEvent) {
+        switch event.type {
+        case .leftMouseDragged:
+            let curPt = event.locationInWindow
+            badgeLog("monitor dragged label=\(_label) pos=\(curPt) startPt=\(String(describing: mouseDownPt)) isDragging=\(isDragging)")
+            guard let startPt = mouseDownPt else { return }
+            let dist = hypot(curPt.x - startPt.x, curPt.y - startPt.y)
+            guard dist >= dragThreshold else { return }
+            if !isDragging {
+                isDragging = true
+                badgeLog("monitor DRAG STARTED label=\(_label)")
+                DispatchQueue.main.async { self.needsDisplay = true }
+            }
+            let pos = toSwiftUIGlobal(curPt)
+            DispatchQueue.main.async { self.onDragChanged?(pos) }
+
+        case .leftMouseUp:
+            removeDragMonitor()
+            let pos = toSwiftUIGlobal(event.locationInWindow)
+            let wasDragging = isDragging
+            badgeLog("monitor mouseUp label=\(_label) wasDragging=\(wasDragging)")
+            mouseDownPt = nil
+            isDragging = false
+            isMouseDown = false
+            DispatchQueue.main.async {
+                self.needsDisplay = true
+                if wasDragging { self.onDragEnded?(pos) }
+                // tap은 clickGR이 처리 (중복 방지)
+            }
+        default: break
+        }
+    }
+
+    // MARK: - NSPanGestureRecognizer (Mechanism 2a)
 
     @objc private func handlePan(_ gr: NSPanGestureRecognizer) {
-        // locationInView → convert to window base → toSwiftUIGlobal
         let localPt = gr.location(in: self)
         let windowPt = convert(localPt, to: nil)
         let globalPt = toSwiftUIGlobal(windowPt)
@@ -174,7 +221,6 @@ class BadgeNSView: NSView, NSGestureRecognizerDelegate {
 
         switch gr.state {
         case .began:
-            // monitor도 이미 시작했을 수 있으므로 중복 체크
             if !isDragging {
                 isDragging = true
                 isMouseDown = true
@@ -188,21 +234,16 @@ class BadgeNSView: NSView, NSGestureRecognizerDelegate {
             }
         case .ended:
             if isDragging {
-                badgeLog("panGR DRAG ENDED label=\(_label)")
                 let wasDragging = isDragging
-                isDragging = false
-                isMouseDown = false
-                needsDisplay = true
-                // monitor 기반 드래그도 종료
-                monitorCancelTracking()
-                DispatchQueue.main.async {
-                    if wasDragging { self.onDragEnded?(globalPt) }
-                }
+                isDragging = false; isMouseDown = false; mouseDownPt = nil; needsDisplay = true
+                removeDragMonitor()
+                badgeLog("panGR DRAG ENDED label=\(_label)")
+                DispatchQueue.main.async { if wasDragging { self.onDragEnded?(globalPt) } }
             }
         case .cancelled, .failed:
             if isDragging {
-                isDragging = false; isMouseDown = false; needsDisplay = true
-                monitorCancelTracking()
+                isDragging = false; isMouseDown = false; mouseDownPt = nil; needsDisplay = true
+                removeDragMonitor()
                 DispatchQueue.main.async { self.onDragCancelled?() }
             }
         default: break
@@ -215,78 +256,47 @@ class BadgeNSView: NSView, NSGestureRecognizerDelegate {
         DispatchQueue.main.async { self.onTap?() }
     }
 
-    // MARK: - Monitor-based tracking
-
-    private func monitorStartTracking(at windowPt: NSPoint) {
-        guard mouseDownPt == nil else { return }
-        mouseDownPt = windowPt
-        isMouseDown = true
-        DispatchQueue.main.async { self.needsDisplay = true }
-        removeDragMonitor()
-
-        dragMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.leftMouseDragged, .leftMouseUp]
-        ) { [weak self] e in
-            self?.handleMonitorDragEvent(e)
-            return e
-        }
-        badgeLog("dragMonitor installed label=\(_label)")
-    }
-
-    private func monitorCancelTracking() {
-        mouseDownPt = nil
-        removeDragMonitor()
-    }
-
-    private func handleMonitorDragEvent(_ event: NSEvent) {
-        switch event.type {
-        case .leftMouseDragged:
-            guard let startPt = mouseDownPt else { return }
-            let curPt = event.locationInWindow
-            let dist = hypot(curPt.x - startPt.x, curPt.y - startPt.y)
-            guard dist >= dragThreshold else { return }
-            if !isDragging {
-                isDragging = true
-                badgeLog("monitor DRAG STARTED label=\(_label)")
-                DispatchQueue.main.async { self.needsDisplay = true }
-            }
-            let pos = toSwiftUIGlobal(curPt)
-            badgeLog("monitor dragging label=\(_label) pos=\(pos)")
-            DispatchQueue.main.async { self.onDragChanged?(pos) }
-
-        case .leftMouseUp:
-            removeDragMonitor()
-            let pos = toSwiftUIGlobal(event.locationInWindow)
-            let wasDragging = isDragging
-            badgeLog("monitor mouseUp label=\(_label) wasDragging=\(wasDragging) pos=\(pos)")
-            mouseDownPt = nil
-            isDragging = false
-            isMouseDown = false
-            DispatchQueue.main.async {
-                self.needsDisplay = true
-                if wasDragging {
-                    self.onDragEnded?(pos)
-                } else {
-                    self.onTap?()
-                }
-            }
-        default: break
-        }
-    }
-
-    // MARK: - Responder chain fallback
+    // MARK: - Responder Chain (Mechanism 3)
 
     override func mouseDown(with event: NSEvent) {
-        badgeLog("mouseDown via responder label=\(_label)")
-        if mouseDownPt == nil { monitorStartTracking(at: event.locationInWindow) }
+        badgeLog("mouseDown(responder) label=\(_label)")
+        if mouseDownPt == nil {
+            mouseDownPt = event.locationInWindow
+            isMouseDown = true
+            needsDisplay = true
+        }
     }
-    override func mouseDragged(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) {}
+
+    override func mouseDragged(with event: NSEvent) {
+        let curPt = event.locationInWindow
+        badgeLog("mouseDragged(responder) label=\(_label) pos=\(curPt) isDragging=\(isDragging)")
+        guard let startPt = mouseDownPt else { return }
+        let dist = hypot(curPt.x - startPt.x, curPt.y - startPt.y)
+        guard dist >= dragThreshold else { return }
+        if !isDragging {
+            isDragging = true
+            badgeLog("responder DRAG STARTED label=\(_label)")
+            DispatchQueue.main.async { self.needsDisplay = true }
+        }
+        let pos = toSwiftUIGlobal(curPt)
+        DispatchQueue.main.async { self.onDragChanged?(pos) }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        let pos = toSwiftUIGlobal(event.locationInWindow)
+        let wasDragging = isDragging
+        badgeLog("mouseUp(responder) label=\(_label) wasDragging=\(wasDragging)")
+        mouseDownPt = nil; isDragging = false; isMouseDown = false
+        removeDragMonitor()
+        DispatchQueue.main.async {
+            self.needsDisplay = true
+            if wasDragging { self.onDragEnded?(pos) }
+        }
+    }
 
     // MARK: - Draw
 
     override func draw(_ dirtyRect: NSRect) {
-        // _label이 비어있으면 시각적 표시 없음 (투명 드래그 오버레이)
         guard !_label.isEmpty else { return }
         let str = _label as NSString
         if _isTabNumber {
