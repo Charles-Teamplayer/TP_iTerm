@@ -70,20 +70,34 @@ final class WindowGroupService: ObservableObject {
         save()
     }
 
-    // 그룹 이름/세션명 업데이트
-    func updateGroup(_ group: WindowPane, name: String) {
-        guard let idx = groups.firstIndex(where: { $0.id == group.id }) else { return }
-        groups[idx].name = name
-        save()
-    }
 
-    // 그룹 내 프로필 순서 변경
+    // 그룹 내 프로필 순서 변경 (위/아래 이동)
     func moveProfileInGroup(_ profileName: String, groupId: UUID, up: Bool) {
         guard let gi = groups.firstIndex(where: { $0.id == groupId }),
               let pi = groups[gi].profileNames.firstIndex(of: profileName) else { return }
         let target = up ? pi - 1 : pi + 1
         guard target >= 0, target < groups[gi].profileNames.count else { return }
         groups[gi].profileNames.swapAt(pi, target)
+        save()
+    }
+
+    // 그룹 내 프로필을 특정 인덱스로 이동 (탭 번호 직접 지정)
+    func moveProfileToIndex(_ profileName: String, groupId: UUID, index: Int) {
+        guard let gi = groups.firstIndex(where: { $0.id == groupId }),
+              let pi = groups[gi].profileNames.firstIndex(of: profileName) else { return }
+        let clamped = max(0, min(index, groups[gi].profileNames.count - 1))
+        var names = groups[gi].profileNames
+        names.remove(at: pi)
+        names.insert(profileName, at: clamped)
+        groups[gi].profileNames = names
+        save()
+    }
+
+    // 그룹 이름 + 세션명 동시 업데이트
+    func updateGroup(_ group: WindowPane, name: String, sessionName: String) {
+        guard let idx = groups.firstIndex(where: { $0.id == group.id }) else { return }
+        groups[idx].name = name
+        groups[idx].sessionName = sessionName
         save()
     }
 
