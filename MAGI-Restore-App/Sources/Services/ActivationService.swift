@@ -51,8 +51,7 @@ final class ActivationService {
             "activated": Array(set).sorted(),
             "last_updated": ISO8601DateFormatter().string(from: Date())
         ]
-        if let data = try? JSONSerialization.data(withJSONObject: obj, options: .prettyPrinted) {
-            FileManager.default.createFile(atPath: filePath, contents: data)
-        }
+        guard let data = try? JSONSerialization.data(withJSONObject: obj, options: .prettyPrinted) else { return }
+        try? data.write(to: URL(fileURLWithPath: filePath), options: .atomic)
     }
 }

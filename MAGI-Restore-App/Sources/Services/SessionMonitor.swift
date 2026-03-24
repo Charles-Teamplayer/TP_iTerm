@@ -107,17 +107,18 @@ final class SessionMonitor: ObservableObject {
         let existingNames = Set(result.map { $0.projectName } + result.map { $0.windowName })
         for profile in profileService.profiles {
             guard !existingNames.contains(profile.name) else { continue }
+            let rootPath = profile.root.isEmpty ? "~/claude/\(profile.name)" : profile.root
             result.append(ClaudeSession(
                 id: "profile-\(profile.id)",
                 pid: 0,
                 tty: "",
                 projectName: profile.name,
                 startTime: "",
-                directory: profile.root,
+                directory: rootPath,
                 windowName: profile.name,
                 windowIndex: Int.max,
                 isRunning: false,
-                profileRoot: profile.root,
+                profileRoot: rootPath,
                 profileDelay: profile.delay
             ))
         }

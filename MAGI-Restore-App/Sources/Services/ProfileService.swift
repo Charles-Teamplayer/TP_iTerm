@@ -65,7 +65,7 @@ final class ProfileService: ObservableObject {
                     result.append(SmugProfile(
                         id: stableID(for: name),
                         name: name,
-                        root: currentRoot ?? "",
+                        root: (currentRoot?.isEmpty == false) ? currentRoot! : "~/claude/\(name)",
                         delay: currentDelay,
                         enabled: true
                     ))
