@@ -80,6 +80,7 @@ fi
 # === Step 1: tmux 세션 생성 (activated-sessions.json 기반) ===
 log "tmux 세션 생성 (activated-sessions.json 기반)"
 tmux new-session -d -s claude-work -n monitor -c "$HOME/claude" 2>/dev/null
+tmux set-window-option -t "claude-work:monitor" automatic-rename off 2>/dev/null
 
 ACTIVATED_FILE="$HOME/.claude/activated-sessions.json"
 

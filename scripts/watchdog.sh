@@ -125,28 +125,25 @@ while true; do
                     fi
                 fi
 
-                # 프로젝트명 → tmux 윈도우명 + 경로 매핑
-                WINDOW_NAME=""
-                PROJ_PATH=""
-                case "$RESTART_PROJECT" in
-                    TP_newIMSMS)           WINDOW_NAME="imsms";           PROJ_PATH="$HOME/claude/TP_newIMSMS" ;;
-                    TP_newIMSMS_Agent)     WINDOW_NAME="imsms-agent";     PROJ_PATH="$HOME/claude/TP_newIMSMS_Agent" ;;
-                    TP_MDM)               WINDOW_NAME="mdm";             PROJ_PATH="$HOME/claude/TP_MDM" ;;
-                    TP_TESLA_LVDS)        WINDOW_NAME="tesla-lvds";      PROJ_PATH="$HOME/claude/TP_TESLA_LVDS" ;;
-                    TESLA_Status_Dashboard) WINDOW_NAME="tesla-dashboard"; PROJ_PATH="$HOME/ralph-claude-code/TESLA_Status_Dashboard" ;;
-                    TP_MindMap_AutoCC)    WINDOW_NAME="mindmap";         PROJ_PATH="$HOME/claude/TP_MindMap_AutoCC" ;;
-                    SJ_MindMap)           WINDOW_NAME="sj-mindmap";      PROJ_PATH="$HOME/SJ_MindMap" ;;
-                    TP_A.iMessage_standalone_01067051080) WINDOW_NAME="imessage"; PROJ_PATH="$HOME/claude/TP_A.iMessage_standalone_01067051080" ;;
-                    TP_BTT)               WINDOW_NAME="btt";             PROJ_PATH="$HOME/claude/TP_BTT" ;;
-                    TP_Infra_reduce_Project) WINDOW_NAME="infra";        PROJ_PATH="$HOME/claude/TP_Infra_reduce_Project" ;;
-                    TP_skills)            WINDOW_NAME="skills";          PROJ_PATH="$HOME/claude/TP_skills" ;;
-                    AppleTV_ScreenSaver.app) WINDOW_NAME="appletv";     PROJ_PATH="$HOME/claude/AppleTV_ScreenSaver.app" ;;
-                    imsms.im-website)     WINDOW_NAME="imsms-web";       PROJ_PATH="$HOME/claude/imsms.im-website" ;;
-                    TP_iTerm) WINDOW_NAME="auto-restart";  PROJ_PATH="$HOME/claude/TP_iTerm" ;;
-                esac
+                # activated-sessions.json에서 프로젝트명으로 경로 조회
+                # window 이름 = 디렉토리 basename (= RESTART_PROJECT)
+                PROJ_PATH=$(python3 -c "
+import json, os, sys
+name = sys.argv[1]
+path = os.path.expanduser('~/.claude/activated-sessions.json')
+try:
+    data = json.load(open(path))
+    for p in data.get('activated', []):
+        if os.path.basename(p) == name:
+            print(p)
+            break
+except Exception:
+    pass
+" "$RESTART_PROJECT" 2>/dev/null)
+                WINDOW_NAME="$RESTART_PROJECT"
 
-                if [ -z "$WINDOW_NAME" ] || [ ! -d "$PROJ_PATH" ]; then
-                    log "SKIP restart: unknown project or missing path: $RESTART_PROJECT"
+                if [ -z "$PROJ_PATH" ] || [ ! -d "$PROJ_PATH" ]; then
+                    log "SKIP restart: $RESTART_PROJECT not in activated-sessions or path missing"
                     continue
                 fi
 
@@ -278,14 +275,16 @@ while true; do
         log "WARNING: iTerm2 not running"
     fi
 
-    # monitor 창 소실 감지 및 자동 복구
+    # monitor 창 소실 감지 및 자동 복구 (idle zsh — claude 명령 없음)
     if tmux has-session -t claude-work 2>/dev/null; then
         if ! tmux list-windows -t claude-work -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
             log "MONITOR 창 없음 — 자동 복구"
-            tmux new-window -t claude-work -n monitor -c "$HOME/claude" 2>/dev/null && \
-                tmux send-keys -t "claude-work:monitor" "bash ~/.claude/scripts/tab-status.sh starting monitor && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter && \
-                log "MONITOR 창 복구 완료" || \
+            if tmux new-window -t claude-work -n monitor -c "$HOME/claude" 2>/dev/null; then
+                tmux set-window-option -t "claude-work:monitor" automatic-rename off 2>/dev/null
+                log "MONITOR 창 복구 완료"
+            else
                 log "ERROR: MONITOR 창 복구 실패"
+            fi
         fi
     fi
 
