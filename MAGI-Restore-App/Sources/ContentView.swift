@@ -24,10 +24,7 @@ struct ContentView: View {
     @State private var editingTabKey: String? = nil   // "paneId|profileName"
     @State private var tabNumberInput: String = ""
 
-    // 드래그 앤 드롭 (DragGesture + GeometryReader 방식)
-    @State private var rowFrames: [String: CGRect] = [:]   // hoverKey → globalFrame
-    @State private var paneFrames: [UUID: CGRect] = [:]    // paneId → globalFrame
-    @State private var dragHighlightRow: String? = nil
+    // 드래그 앤 드롭
     @State private var dragHighlightPane: UUID? = nil
 
     enum Tab: String, CaseIterable {
@@ -357,8 +354,6 @@ struct ContentView: View {
                         }
                     }
                 }
-                .onPreferenceChange(RowFrameKey.self) { rowFrames = $0 }
-                .onPreferenceChange(PaneFrameKey.self) { paneFrames = $0 }
             }
 
             Divider()
@@ -464,50 +459,6 @@ struct ContentView: View {
         pane.profileNames.compactMap { name in all.first { $0.projectName == name } }
     }
 
-    // payload = "profileName|srcPaneId", location = global coords
-    private func handleDrop(payload: String, at location: CGPoint) {
-        let parts = payload.split(separator: "|", maxSplits: 1)
-        guard let profileName = parts.first.map(String.init) else { return }
-        let srcPaneIdStr = parts.count > 1 ? String(parts[1]) : ""
-        let wgs = monitor.windowGroupService
-
-        // 드롭 진단 로그
-        let logLine = "[handleDrop] location=\(location) paneCount=\(paneFrames.count) rowCount=\(rowFrames.count)\n"
-            + paneFrames.map { "  pane \($0.key.uuidString.prefix(8)): \($0.value)" }.joined(separator: "\n")
-            + "\n" + rowFrames.prefix(5).map { "  row \($0.key): \($0.value)" }.joined(separator: "\n") + "\n"
-        if let data = logLine.data(using: .utf8),
-           FileManager.default.fileExists(atPath: "/tmp/badge_debug.log"),
-           let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: "/tmp/badge_debug.log")) {
-            h.seekToEndOfFile(); h.write(data); h.closeFile()
-        }
-
-        // 창 헤더로 드롭 → 해당 창으로 이동
-        if let (paneId, _) = paneFrames.first(where: { $0.value.contains(location) }),
-           let pane = wgs.groups.first(where: { $0.id == paneId }) {
-            if paneId.uuidString != srcPaneIdStr {
-                wgs.moveProfile(profileName, to: pane)
-            }
-            return
-        }
-
-        // 행으로 드롭 → 해당 창 + 해당 위치로 이동
-        // rowKey = "paneId|profileName"
-        if let (rowKey, _) = rowFrames.first(where: { $0.value.contains(location) }) {
-            let rp = rowKey.split(separator: "|", maxSplits: 1)
-            guard rp.count == 2,
-                  let tPaneId = UUID(uuidString: String(rp[0])),
-                  let pane = wgs.groups.first(where: { $0.id == tPaneId }) else { return }
-            let tProfileName = String(rp[1])
-            if tPaneId.uuidString != srcPaneIdStr {
-                wgs.moveProfile(profileName, to: pane)
-            }
-            if let gi = wgs.groups.firstIndex(where: { $0.id == tPaneId }),
-               let destIdx = wgs.groups[gi].profileNames.firstIndex(of: tProfileName) {
-                wgs.moveProfileToIndex(profileName, groupId: tPaneId, index: destIdx)
-            }
-        }
-    }
-
     @ViewBuilder
     private func paneHeader(_ pane: WindowPane, sessions: [ClaudeSession]) -> some View {
         HStack(spacing: 6) {
@@ -565,8 +516,6 @@ struct ContentView: View {
         let dotColor: Color = session.isRunning ? .green
             : (!session.id.hasPrefix("profile-") && session.windowIndex != Int.max) ? .orange
             : .secondary
-        let hoverKey = "\(pane?.id.uuidString ?? "")|\(session.projectName)"
-
         HStack(spacing: 6) {
             // 탭 번호 (클릭: 편집)
             if let order, let pane {
@@ -618,6 +567,9 @@ struct ContentView: View {
         .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { onSelect() }
+        .onHover { inside in
+            if inside { NSCursor.openHand.push() } else { NSCursor.pop() }
+        }
         .draggable(payload) {
             HStack(spacing: 6) {
                 Circle().fill(dotColor).frame(width: 8, height: 8)
