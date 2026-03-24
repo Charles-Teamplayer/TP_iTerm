@@ -14,6 +14,7 @@ final class SessionMonitor: ObservableObject {
     private var isRefreshing = false
     private let activeSessionsPath = NSHomeDirectory() + "/.claude/active-sessions.json"
     let profileService = ProfileService()
+    let windowGroupService = WindowGroupService()
 
     func start() {
         Task { await refresh() }
@@ -372,13 +373,14 @@ final class SessionMonitor: ObservableObject {
         cancelRestoreFlag = true
     }
 
-    func launchProfile(name: String, root: String, delay: Int, createDir: Bool = false) async {
-        // claude-work 세션 없으면 자동 생성
+    func launchProfile(name: String, root: String, delay: Int, sessionName: String = "claude-work", createDir: Bool = false) async {
+        let safeSession = sessionName.isEmpty ? "claude-work" : sessionName
+        // tmux 세션 없으면 자동 생성
         let sessionExists = await ShellService.runAsync(
-            "tmux has-session -t claude-work 2>/dev/null && echo yes || echo no"
+            "tmux has-session -t '\(safeSession)' 2>/dev/null && echo yes || echo no"
         )
         if sessionExists == "no" {
-            await ShellService.runAsync("tmux new-session -s claude-work -d 2>/dev/null; true")
+            await ShellService.runAsync("tmux new-session -s '\(safeSession)' -d 2>/dev/null; true")
         }
 
         let safeRoot = root.hasPrefix("~")
@@ -393,7 +395,7 @@ final class SessionMonitor: ObservableObject {
 
         // 이미 동일 이름 창 존재하면 중복 생성 방지
         let existingNames = await ShellService.runAsync(
-            "tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null"
+            "tmux list-windows -t '\(safeSession)' -F '#{window_name}' 2>/dev/null"
         )
         if existingNames.components(separatedBy: "\n").contains(name) {
             await refresh()
@@ -402,12 +404,13 @@ final class SessionMonitor: ObservableObject {
 
         let escapedName = shellEscape(name)
         let escapedRoot = shellEscape(safeRoot)
+        let escapedSession = shellEscape(safeSession)
         let mkdirPart = createDir ? "mkdir -p '\(escapedRoot)' && " : ""
         let sleepPart = delay > 0 ? "sleep \(delay) && " : ""
         let winNameForStatus = name.replacingOccurrences(of: "\"", with: "\\\"")
                                    .replacingOccurrences(of: "'", with: "'\\''")
         let cmd = """
-        tmux new-window -t claude-work -n '\(escapedName)' -c '\(escapedRoot)' \\; \
+        tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedRoot)' \\; \
         send-keys "\(mkdirPart)\(sleepPart)bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
         true
         """
@@ -415,6 +418,49 @@ final class SessionMonitor: ObservableObject {
         await ShellService.runAsync(cmd)
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh()
+    }
+
+    // 그룹(창) 전체 시작: tmux 세션 생성 + iTerm 새 창 attach + 프로필 순서대로 열기
+    func startGroup(_ group: WindowPane) async {
+        let sessionName = group.sessionName
+        let escapedSession = shellEscape(sessionName)
+
+        // tmux 세션 없으면 생성 (monitor 창 포함)
+        let exists = await ShellService.runAsync(
+            "tmux has-session -t '\(escapedSession)' 2>/dev/null && echo yes || echo no"
+        )
+        if exists == "no" {
+            await ShellService.runAsync(
+                "tmux new-session -d -s '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' 2>/dev/null; true"
+            )
+            await ShellService.runAsync(
+                "tmux set-window-option -t '\(escapedSession):monitor' automatic-rename off 2>/dev/null; true"
+            )
+        }
+
+        // iTerm2 새 창으로 attach (아직 연결 안 된 경우)
+        let clientCount = await ShellService.runAsync(
+            "tmux list-clients -t '\(escapedSession)' 2>/dev/null | wc -l | tr -d ' '"
+        )
+        if (Int(clientCount) ?? 0) == 0 {
+            let script = """
+            osascript -e 'tell application "iTerm2"
+                set newWindow to (create window with default profile)
+                tell current session of newWindow
+                    write text "tmux -CC attach -t \(sessionName)"
+                end tell
+            end tell'
+            """
+            await ShellService.runAsync(script)
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+
+        // 프로필 순서대로 시작
+        let allProfiles = profileService.profiles
+        for (i, profileName) in group.profileNames.enumerated() {
+            guard let profile = allProfiles.first(where: { $0.name == profileName }) else { continue }
+            await launchProfile(name: profile.name, root: profile.root, delay: i * 5, sessionName: sessionName)
+        }
     }
 
     func createSession(name: String, directory: String) async {
