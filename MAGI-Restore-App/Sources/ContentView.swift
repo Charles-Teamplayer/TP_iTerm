@@ -61,10 +61,7 @@ struct ContentView: View {
             monitor.start()
             monitor.profileService.load()
             monitor.windowGroupService.load()
-            let msg = "APP_V8_LAUNCHED \(Date())\n"
-            FileManager.default.createFile(atPath: "/tmp/restore_debug.log",
-                                           contents: msg.data(using: .utf8))
-        }
+            }
         .onChange(of: monitor.sessions) { sessions in
             if let current = selectedSession {
                 selectedSession = sessions.first { $0.id == current.id }
@@ -598,7 +595,9 @@ private struct ImportProfileRow: View {
     @Binding var selected: Set<UUID>
 
     var currentPane: WindowPane {
-        groups.first { $0.profileNames.contains(profile.name) } ?? groups[0]
+        groups.first { $0.profileNames.contains(profile.name) }
+            ?? groups.first
+            ?? WindowPane(name: "메인", sessionName: "claude-work", profileNames: [])
     }
     var isCurrentPane: Bool { currentPane.id == targetPane.id }
 

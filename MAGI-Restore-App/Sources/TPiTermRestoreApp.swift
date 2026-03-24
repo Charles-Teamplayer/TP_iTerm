@@ -1,17 +1,15 @@
 import SwiftUI
+import AppKit
 
 @main
 struct TPiTermRestoreApp: App {
     @StateObject private var menuBarState = MenuBarState()
 
     var body: some Scene {
-        WindowGroup {
+        // 전체 UI는 Settings(Cmd+,)로 접근
+        Settings {
             ContentView()
-        }
-        .windowStyle(.titleBar)
-        .windowToolbarStyle(.unified)
-        .commands {
-            CommandGroup(replacing: .newItem) {}
+                .frame(minWidth: 700, minHeight: 450)
         }
 
         MenuBarExtra {
@@ -29,6 +27,7 @@ final class MenuBarState: ObservableObject {
     @Published var sessionCount: Int = 0
     @Published var allDaemonsRunning: Bool = false
     @Published var isRestoring: Bool = false
+    @Published var tmuxSessionNames: [String] = []
 
     private var timer: Timer?
 
@@ -63,6 +62,10 @@ final class MenuBarState: ObservableObject {
             if !result.contains("state = running") { allRunning = false; break }
         }
         allDaemonsRunning = allRunning
+
+        // tmux 세션 목록 갱신
+        let raw = await ShellService.runAsync("tmux list-sessions -F '#{session_name}' 2>/dev/null")
+        tmuxSessionNames = raw.components(separatedBy: "\n").filter { !$0.isEmpty }
     }
 
     private lazy var systemVM = SystemViewModel()
@@ -74,6 +77,29 @@ final class MenuBarState: ObservableObject {
         isRestoring = false
         await refresh()
     }
+
+    // iTerm2를 열고 tmux -CC attach 실행 (작업탭 표시)
+    func openInITerm(sessionName: String = "claude-work") {
+        let script = """
+        tell application "iTerm2"
+            activate
+            set newWin to (create window with default profile)
+            tell current session of newWin
+                write text "tmux -CC attach -t \(sessionName) 2>/dev/null || echo 'tmux 세션 없음: \(sessionName)'"
+            end tell
+        end tell
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+        }
+    }
+
+    // tmux 세션 목록
+    func tmuxSessions() async -> [String] {
+        let raw = await ShellService.runAsync("tmux list-sessions -F '#{session_name}' 2>/dev/null")
+        return raw.components(separatedBy: "\n").filter { !$0.isEmpty }
+    }
 }
 
 // MARK: - MenuBar Icon
@@ -82,8 +108,15 @@ struct MenuBarIconView: View {
     let allDaemonsRunning: Bool
 
     var body: some View {
-        Text("\(allDaemonsRunning ? "🟢" : "🟠") \(sessionCount)")
-            .font(.system(size: 12, weight: .medium, design: .monospaced))
+        HStack(spacing: 3) {
+            Image(systemName: allDaemonsRunning ? "terminal.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(allDaemonsRunning ? Color.primary : Color.orange)
+            if sessionCount > 0 {
+                Text("\(sessionCount)")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+            }
+        }
     }
 }
 
@@ -92,21 +125,55 @@ struct MenuBarMenuView: View {
     @ObservedObject var state: MenuBarState
 
     var body: some View {
-        Text("TP_iTerm Restore")
-            .font(.headline)
+        // 상태
+        Label("Claude \(state.sessionCount)개 실행 중", systemImage: "terminal")
+            .foregroundStyle(.secondary)
+        Label(state.allDaemonsRunning ? "데몬 정상" : "데몬 이상",
+              systemImage: state.allDaemonsRunning ? "checkmark.circle" : "exclamationmark.circle")
+            .foregroundStyle(state.allDaemonsRunning ? Color.secondary : Color.orange)
+
         Divider()
-        Text("Claude 세션: \(state.sessionCount)개")
-        Text("데몬: \(state.allDaemonsRunning ? "✅ 정상" : "⚠️ 일부 중단")")
+
+        // iTerm2 연결 (세션 1개면 단순 버튼, 여러 개면 submenu)
+        if state.tmuxSessionNames.count <= 1 {
+            Button {
+                state.openInITerm(sessionName: state.tmuxSessionNames.first ?? "claude-work")
+            } label: {
+                Label("iTerm2에서 열기 (\(state.tmuxSessionNames.first ?? "claude-work"))",
+                      systemImage: "macwindow.badge.plus")
+            }
+        } else {
+            Menu {
+                ForEach(state.tmuxSessionNames, id: \.self) { session in
+                    Button(session) { state.openInITerm(sessionName: session) }
+                }
+            } label: {
+                Label("iTerm2에서 열기", systemImage: "macwindow.badge.plus")
+            }
+        }
+
         Divider()
+
+        // 복원
         Button(state.isRestoring ? "복원 중..." : "지금 복원") {
             Task { await state.quickRestore() }
         }
         .disabled(state.isRestoring)
-        Divider()
-        Button("앱 열기") {
-            NSApp.activate(ignoringOtherApps: true)
-            NSApp.windows.first?.makeKeyAndOrderFront(nil)
+
+        Button("새로고침") {
+            Task { await state.refresh() }
         }
+
+        Divider()
+
+        // 설정
+        Button("MAGI 설정 열기") {
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
+
+        Divider()
+
         Button("종료") {
             NSApplication.shared.terminate(nil)
         }

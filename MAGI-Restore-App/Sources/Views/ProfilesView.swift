@@ -82,8 +82,7 @@ struct ProfilesView: View {
                 if let idx = list.firstIndex(where: { $0.id == profile.id }) {
                     // 이름이 바뀌면 windowGroupService에서도 업데이트
                     if list[idx].name != updated.name {
-                        let pane = monitor.windowGroupService.group(for: list[idx].name)
-                        monitor.windowGroupService.moveProfile(list[idx].name, to: pane)
+                        monitor.windowGroupService.renameProfile(oldName: list[idx].name, newName: updated.name)
                     }
                     list[idx] = updated
                     monitor.profileService.save(list)
@@ -216,28 +215,3 @@ struct ProfileFormSheet: View {
     }
 }
 
-// MARK: - Add Group Sheet (창 추가)
-
-struct AddGroupSheet: View {
-    let onSave: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("새 창 추가").font(.headline).padding()
-            Divider()
-            Form { TextField("창 이름 (예: IMSMS, Tesla)", text: $name) }
-                .padding()
-            Divider()
-            HStack {
-                Button("취소") { dismiss() }
-                Spacer()
-                Button("추가") { onSave(name); dismiss() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-            }.padding()
-        }
-        .frame(width: 320)
-    }
-}

@@ -21,9 +21,21 @@ final class WindowGroupService: ObservableObject {
         try? data.write(to: URL(fileURLWithPath: jsonPath))
     }
 
-    // 프로필이 속한 그룹 반환 (없으면 첫 번째 그룹)
+    // 프로필이 속한 그룹 반환 (없으면 첫 번째 그룹, 그것도 없으면 기본값)
     func group(for profileName: String) -> WindowPane {
-        return groups.first { $0.profileNames.contains(profileName) } ?? groups[0]
+        return groups.first { $0.profileNames.contains(profileName) }
+            ?? groups.first
+            ?? WindowPane(name: "메인", sessionName: Self.defaultSessionName, profileNames: [])
+    }
+
+    // 프로필 이름 변경 (windowGroup 내 이름도 동기화)
+    func renameProfile(oldName: String, newName: String) {
+        for i in groups.indices {
+            if let pi = groups[i].profileNames.firstIndex(of: oldName) {
+                groups[i].profileNames[pi] = newName
+            }
+        }
+        save()
     }
 
     // 프로필을 다른 그룹으로 이동

@@ -337,9 +337,10 @@ final class SessionMonitor: ObservableObject {
             added.append(name)
         }
 
-        // 제거: 프로필에는 있는데 디렉토리가 없는 것
+        // 제거: 프로필에는 있는데 디렉토리가 없는 것 (순회 전 스냅샷으로 ConcurrentModification 방지)
         var removed: [String] = []
-        for profile in profileService.profiles where !dirSet.contains(profile.name) {
+        let toRemove = profileService.profiles.filter { !dirSet.contains($0.name) }
+        for profile in toRemove {
             profileService.delete(profile)
             removed.append(profile.name)
         }
@@ -379,7 +380,7 @@ final class SessionMonitor: ObservableObject {
         let sessionExists = await ShellService.runAsync(
             "tmux has-session -t '\(safeSession)' 2>/dev/null && echo yes || echo no"
         )
-        if sessionExists == "no" {
+        if sessionExists.trimmingCharacters(in: .whitespacesAndNewlines) == "no" {
             await ShellService.runAsync("tmux new-session -s '\(safeSession)' -d 2>/dev/null; true")
         }
 
