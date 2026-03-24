@@ -5,6 +5,10 @@ import AppKit
 struct TPiTermRestoreApp: App {
     @StateObject private var menuBarState = MenuBarState()
 
+    init() {
+        WindowGroupService.bootstrapIfNeeded()
+    }
+
     var body: some Scene {
         // 전체 UI는 Settings(Cmd+,)로 접근
         Settings {
