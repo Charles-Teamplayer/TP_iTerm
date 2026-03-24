@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 
 struct ContentView: View {
@@ -73,6 +74,17 @@ struct ContentView: View {
             monitor.profileService.load()
             monitor.windowGroupService.load()
             monitor.syncWindowGroupsWithProfiles()
+            // 진단 로그 파일 생성 (앱 시작 시 반드시 생성)
+            let logPath = "/tmp/badge_debug.log"
+            try? "[AppStart] \(Date())\n".write(toFile: logPath, atomically: true, encoding: .utf8)
+            NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+                let line = "[AppMonitor] mouseDown at=\(event.locationInWindow)\n"
+                if let data = line.data(using: .utf8),
+                   let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: logPath)) {
+                    h.seekToEndOfFile(); h.write(data); h.closeFile()
+                }
+                return event
+            }
             // 대시보드 열릴 때 Cmd+Tab + Dock에 나타나도록 정책 전환
             NSApp.setActivationPolicy(.regular)
             DispatchQueue.main.async {
@@ -266,15 +278,12 @@ struct ContentView: View {
                             let filtered = searchText.isEmpty ? paneSess
                                 : paneSess.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
                             if !filtered.isEmpty || searchText.isEmpty {
-                                // 섹션 헤더 (pane) — reportPaneFrame은 padding 바깥에 위치
                                 paneHeader(pane, sessions: paneSess)
                                     .padding(.horizontal, 10)
                                     .background(Color(nsColor: .controlBackgroundColor))
                                     .reportPaneFrame(id: pane.id)
                                 Divider()
-                                // 섹션 행들 — reportRowFrame은 padding 바깥에 위치
                                 ForEach(Array(filtered.enumerated()), id: \.element.id) { idx, session in
-                                    let rk = "\(pane.id)|\(session.projectName)"
                                     sessionRow(session, order: idx + 1, pane: pane, total: filtered.count,
                                                isSelected: selectedSession?.id == session.id,
                                                onSelect: {
@@ -282,7 +291,6 @@ struct ContentView: View {
                                                    editingTabKey = nil
                                                })
                                         .padding(.horizontal, 10)
-                                        .reportRowFrame(key: rk)
                                     Divider().padding(.leading, 10)
                                 }
                             }
@@ -428,6 +436,16 @@ struct ContentView: View {
         let srcPaneIdStr = parts.count > 1 ? String(parts[1]) : ""
         let wgs = monitor.windowGroupService
 
+        // 드롭 진단 로그
+        let logLine = "[handleDrop] location=\(location) paneCount=\(paneFrames.count) rowCount=\(rowFrames.count)\n"
+            + paneFrames.map { "  pane \($0.key.uuidString.prefix(8)): \($0.value)" }.joined(separator: "\n")
+            + "\n" + rowFrames.prefix(5).map { "  row \($0.key): \($0.value)" }.joined(separator: "\n") + "\n"
+        if let data = logLine.data(using: .utf8),
+           FileManager.default.fileExists(atPath: "/tmp/badge_debug.log"),
+           let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: "/tmp/badge_debug.log")) {
+            h.seekToEndOfFile(); h.write(data); h.closeFile()
+        }
+
         // 창 헤더로 드롭 → 해당 창으로 이동
         if let (paneId, _) = paneFrames.first(where: { $0.value.contains(location) }),
            let pane = wgs.groups.first(where: { $0.id == paneId }) {
@@ -507,87 +525,72 @@ struct ContentView: View {
             : (!session.id.hasPrefix("profile-") && session.windowIndex != Int.max) ? .orange
             : .secondary
         let hoverKey = "\(pane?.id.uuidString ?? "")|\(session.projectName)"
-        HStack(spacing: 6) {
-            // ── 드래그 핸들 (DragGesture + GeometryReader 방식) ──
-            if let order, let pane {
-                let editKey = "\(pane.id)|\(session.projectName)"
-                if editingTabKey == editKey {
-                    TextField("", text: $tabNumberInput)
-                        .frame(width: 26)
-                        .font(.caption2.monospacedDigit())
-                        .multilineTextAlignment(.center)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit {
-                            if let num = Int(tabNumberInput), num >= 1 {
-                                monitor.windowGroupService.moveProfileToIndex(
-                                    session.projectName, groupId: pane.id, index: num - 1)
-                            }
-                            editingTabKey = nil
-                        }
-                        .onExitCommand { editingTabKey = nil }
-                } else {
-                    DragBadgeView(
-                        label: "\(order)",
-                        isTabNumber: true,
-                        onTap: {
-                            tabNumberInput = "\(order)"
-                            editingTabKey = editKey
-                        },
-                        onDragChanged: { loc in
-                            dragHighlightPane = paneFrames.first { $0.value.contains(loc) }?.key
-                            dragHighlightRow = rowFrames.first { $0.value.contains(loc) }?.key
-                        },
-                        onDragEnded: { loc in
-                            handleDrop(payload: payload, at: loc)
-                            dragHighlightRow = nil
-                            dragHighlightPane = nil
-                        },
-                        onDragCancelled: {
-                            dragHighlightRow = nil
-                            dragHighlightPane = nil
-                        }
-                    )
-                    .frame(width: 26, height: 18)
-                }
-            } else {
-                DragBadgeView(
-                    label: "≡",
-                    isTabNumber: false,
-                    onTap: {},
-                    onDragChanged: { loc in
-                        dragHighlightPane = paneFrames.first { $0.value.contains(loc) }?.key
-                        dragHighlightRow = rowFrames.first { $0.value.contains(loc) }?.key
-                    },
-                    onDragEnded: { loc in
-                        handleDrop(payload: payload, at: loc)
-                        dragHighlightRow = nil
-                        dragHighlightPane = nil
-                    },
-                    onDragCancelled: {
-                        dragHighlightRow = nil
-                        dragHighlightPane = nil
-                    }
-                )
-                .frame(width: 26, height: 18)
-            }
 
-            // row body: Button으로 선택 처리
-            Button(action: onSelect) {
-                HStack(spacing: 6) {
-                    Circle().fill(dotColor).frame(width: 8, height: 8)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(session.projectName).font(.callout).lineLimit(1)
-                        Group {
-                            if session.isRunning { Text("PID: \(session.pid)") }
-                            else if session.id.hasPrefix("profile-") || session.windowIndex == Int.max { Text("시작 가능") }
-                            else { Text("복원 가능") }
-                        }.font(.caption).foregroundStyle(.secondary)
+        ZStack {
+            // ── 하단 레이어: 전체 행 드래그 소스 (NSEvent 모니터 방식 — 뱃지와 동일) ──
+            DragBadgeView(
+                label: "", isTabNumber: false, onTap: {},
+                onDragChanged: { loc in
+                    dragHighlightPane = paneFrames.first { $0.value.contains(loc) }?.key
+                    dragHighlightRow = rowFrames.first { $0.value.contains(loc) }?.key
+                },
+                onDragEnded: { loc in
+                    handleDrop(payload: payload, at: loc)
+                    dragHighlightRow = nil; dragHighlightPane = nil
+                },
+                onDragCancelled: { dragHighlightRow = nil; dragHighlightPane = nil }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // ── 상단 레이어: 시각적 행 콘텐츠 ──
+            HStack(spacing: 6) {
+                // 탭 번호 (탭 클릭으로 편집)
+                if let order, let pane {
+                    let editKey = "\(pane.id)|\(session.projectName)"
+                    if editingTabKey == editKey {
+                        TextField("", text: $tabNumberInput)
+                            .frame(width: 26)
+                            .font(.caption2.monospacedDigit())
+                            .multilineTextAlignment(.center)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit {
+                                if let num = Int(tabNumberInput), num >= 1 {
+                                    monitor.windowGroupService.moveProfileToIndex(
+                                        session.projectName, groupId: pane.id, index: num - 1)
+                                }
+                                editingTabKey = nil
+                            }
+                            .onExitCommand { editingTabKey = nil }
+                    } else {
+                        Text("\(order)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .frame(width: 26, height: 18)
+                            .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 3))
+                            .foregroundStyle(Color.blue.opacity(0.8))
+                            .onTapGesture {
+                                tabNumberInput = "\(order)"
+                                editingTabKey = editKey
+                            }
                     }
-                    Spacer()
+                } else {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 10))
+                        .frame(width: 26, height: 18)
+                        .foregroundStyle(Color.secondary.opacity(0.5))
                 }
-                .contentShape(Rectangle())
+
+                Circle().fill(dotColor).frame(width: 8, height: 8)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.projectName).font(.callout).lineLimit(1)
+                    Group {
+                        if session.isRunning { Text("PID: \(session.pid)") }
+                        else if session.id.hasPrefix("profile-") || session.windowIndex == Int.max { Text("시작 가능") }
+                        else { Text("복원 가능") }
+                    }.font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
             }
-            .buttonStyle(.plain)
+            .onTapGesture { onSelect() }
         }
         .padding(.vertical, 2)
         .background(isSelected ? Color.accentColor.opacity(0.15) :
