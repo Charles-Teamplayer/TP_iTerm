@@ -21,7 +21,7 @@ final class WindowGroupService: ObservableObject {
 
     func save() {
         guard let data = try? JSONEncoder().encode(groups) else { return }
-        try? data.write(to: URL(fileURLWithPath: jsonPath))
+        try? data.write(to: URL(fileURLWithPath: jsonPath), options: .atomic)
     }
 
     // 프로필이 속한 그룹 반환 (없으면 첫 번째 그룹, 그것도 없으면 기본값)

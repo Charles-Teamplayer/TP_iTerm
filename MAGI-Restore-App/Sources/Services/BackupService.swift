@@ -19,7 +19,7 @@ final class BackupService: ObservableObject {
     func save(_ updated: BackupConfig) {
         config = updated
         if let data = try? JSONEncoder().encode(updated) {
-            try? data.write(to: URL(fileURLWithPath: configPath))
+            try? data.write(to: URL(fileURLWithPath: configPath), options: .atomic)
         }
     }
 
