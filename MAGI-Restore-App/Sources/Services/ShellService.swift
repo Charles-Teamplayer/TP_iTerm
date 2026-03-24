@@ -46,10 +46,13 @@ struct ShellService {
         await runAsync("kill -TERM \(pid)")
     }
 
-    // projectDir을 싱글쿼트 안전하게 이스케이프
-    private static func shellEscapeArg(_ s: String) -> String {
+    // 싱글쿼트 완전 이스케이프 ('...' 래핑 포함) — 모든 호출부에서 공유
+    static func shellq(_ s: String) -> String {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
+
+    // projectDir을 싱글쿼트 안전하게 이스케이프
+    private static func shellEscapeArg(_ s: String) -> String { shellq(s) }
 
     static func intentionalStop(projectDir: String) {
         let registryScript = "~/.claude/scripts/session-registry.sh"

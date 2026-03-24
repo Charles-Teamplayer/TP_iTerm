@@ -488,9 +488,13 @@ final class SessionMonitor: ObservableObject {
         await refresh()
     }
 
+    // inner escape only (caller wraps in '...')
     private func shellEscape(_ s: String) -> String {
         s.replacingOccurrences(of: "'", with: "'\\''")
     }
+
+    // full shell-quote (wraps in '...')
+    private func shellq(_ s: String) -> String { ShellService.shellq(s) }
 
     // MARK: - Data Loading
 

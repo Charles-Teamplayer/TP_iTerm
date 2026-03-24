@@ -23,12 +23,9 @@ final class SystemViewModel: ObservableObject {
 
     private var refreshTimer: Timer?
 
-    // single-quote shell escape: wraps value in '...' with internal ' escaped as '\''
-    private func shellq(_ s: String) -> String {
-        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
-    }
+    private func shellq(_ s: String) -> String { ShellService.shellq(s) }
 
-    func startAutoRefresh() {
+func startAutoRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }

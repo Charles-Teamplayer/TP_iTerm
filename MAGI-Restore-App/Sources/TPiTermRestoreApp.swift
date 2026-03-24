@@ -52,11 +52,11 @@ final class MenuBarState: ObservableObject {
         var count = 0
         for win in windows {
             let paneInfo = await ShellService.runAsync(
-                "tmux display-message -t 'claude-work:\(win)' -p '#{pane_tty}' 2>/dev/null"
+                "tmux display-message -t \(ShellService.shellq("claude-work:\(win)")) -p '#{pane_tty}' 2>/dev/null"
             ).trimmingCharacters(in: .whitespacesAndNewlines)
             let ttyBase = paneInfo.replacingOccurrences(of: "/dev/", with: "")
             guard !ttyBase.isEmpty else { continue }
-            let procs = await ShellService.runAsync("ps -o command -t '\(ttyBase)' 2>/dev/null | grep '[c]laude' | head -1")
+            let procs = await ShellService.runAsync("ps -o command -t \(ShellService.shellq(ttyBase)) 2>/dev/null | grep '[c]laude' | head -1")
             if !procs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 count += 1
             }
