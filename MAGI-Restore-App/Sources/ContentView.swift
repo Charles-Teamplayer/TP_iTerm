@@ -61,6 +61,7 @@ struct ContentView: View {
             monitor.start()
             monitor.profileService.load()
             monitor.windowGroupService.load()
+            monitor.syncWindowGroupsWithProfiles()  // load() 이후 미배정 프로필 자동 배정
             }
         .onChange(of: monitor.sessions) { sessions in
             if let current = selectedSession {

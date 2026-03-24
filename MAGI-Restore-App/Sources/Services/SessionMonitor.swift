@@ -445,7 +445,7 @@ final class SessionMonitor: ObservableObject {
         let exists = await ShellService.runAsync(
             "tmux has-session -t '\(escapedSession)' 2>/dev/null && echo yes || echo no"
         )
-        if exists == "no" {
+        if exists.trimmingCharacters(in: .whitespacesAndNewlines) == "no" {
             await ShellService.runAsync(
                 "tmux new-session -d -s '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' 2>/dev/null; true"
             )
