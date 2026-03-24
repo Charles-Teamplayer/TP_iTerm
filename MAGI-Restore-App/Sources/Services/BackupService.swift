@@ -30,8 +30,10 @@ final class BackupService: ObservableObject {
 
         let expandedPath = config.path.hasPrefix("~") ? NSHomeDirectory() + config.path.dropFirst() : config.path
         let sourceDir = NSHomeDirectory() + "/.claude"
+        let qDest = ShellService.shellq(expandedPath)
+        let qSrc = ShellService.shellq(sourceDir + "/")
         let result = await ShellService.runAsync(
-            "mkdir -p '\(expandedPath)' && rsync -av --exclude='logs/' --exclude='*.tmp' --exclude='backups/' '\(sourceDir)/' '\(expandedPath)/' && echo '__RSYNC_OK__'"
+            "mkdir -p \(qDest) && rsync -av --exclude='logs/' --exclude='*.tmp' --exclude='backups/' \(qSrc) \(qDest)/ && echo '__RSYNC_OK__'"
         )
 
         var updated = config
