@@ -70,6 +70,28 @@ struct ProfilesView: View {
 
     private var profileTable: some View {
         Table(filtered, selection: $selection) {
+            TableColumn("순서") { profile in
+                if let idx = filtered.firstIndex(where: { $0.id == profile.id }) {
+                    HStack(spacing: 2) {
+                        Text("\(idx + 1)")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                        VStack(spacing: 0) {
+                            Button { moveProfile(profile, up: true) } label: {
+                                Image(systemName: "chevron.up").font(.system(size: 8))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(idx == 0)
+                            Button { moveProfile(profile, up: false) } label: {
+                                Image(systemName: "chevron.down").font(.system(size: 8))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(idx == filtered.count - 1)
+                        }
+                    }
+                }
+            }
+            .width(50)
             TableColumn("이름") { profile in
                 Text(profile.name)
                     .foregroundStyle(profile.enabled ? .primary : .secondary)
@@ -79,11 +101,6 @@ struct ProfilesView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            TableColumn("딜레이") { profile in
-                Text("\(profile.delay)초")
-                    .monospacedDigit()
-            }
-            .width(60)
             TableColumn("") { profile in
                 HStack(spacing: 8) {
                     Button("편집") { editingProfile = profile }
@@ -100,6 +117,34 @@ struct ProfilesView: View {
         }
     }
 
+    private func syncOrderWithTmux() {
+        let output = ShellService.run(
+            "tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null"
+        )
+        let windowNames = output.components(separatedBy: "\n").filter { !$0.isEmpty && $0 != "monitor" }
+        var list = monitor.profileService.profiles
+        var reordered: [SmugProfile] = []
+        var remaining = list
+        for name in windowNames {
+            if let idx = remaining.firstIndex(where: { $0.name == name }) {
+                reordered.append(remaining.remove(at: idx))
+            }
+        }
+        reordered.append(contentsOf: remaining)
+        monitor.profileService.save(reordered)
+        syncResult = "탭 순서 동기화 완료 (\(windowNames.count)개)"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { syncResult = nil }
+    }
+
+    private func moveProfile(_ profile: SmugProfile, up: Bool) {
+        var list = monitor.profileService.profiles
+        guard let from = list.firstIndex(where: { $0.id == profile.id }) else { return }
+        let to = up ? from - 1 : from + 1
+        guard to >= 0, to < list.count else { return }
+        list.swapAt(from, to)
+        monitor.profileService.save(list)
+    }
+
     private var bottomBar: some View {
         VStack(spacing: 0) {
             if let result = syncResult {
@@ -113,6 +158,12 @@ struct ProfilesView: View {
                 Button { monitor.profileService.load() } label: {
                     Image(systemName: "arrow.clockwise")
                     Text("새로고침")
+                }
+                Button {
+                    syncOrderWithTmux()
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                    Text("탭 순서로")
                 }
                 Button {
                     let (added, removed) = monitor.syncProfilesWithDirectory()
@@ -152,14 +203,11 @@ struct ProfileFormSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var root: String
-    @State private var delay: Int
-
     init(title: String, existing: SmugProfile? = nil, onSave: @escaping (SmugProfile) -> Void) {
         self.title = title
         self.existing = existing
         self.onSave = onSave
         _root = State(initialValue: existing?.root ?? "~/claude/")
-        _delay = State(initialValue: existing?.delay ?? 0)
     }
 
     // 이름은 항상 디렉토리명 (lastPathComponent)
@@ -190,7 +238,6 @@ struct ProfileFormSheet: View {
                         }
                     }
                 }
-                Stepper("딜레이: \(delay)초", value: $delay, in: 0...60, step: 5)
             }
             .padding()
             Divider()
@@ -200,7 +247,7 @@ struct ProfileFormSheet: View {
                 Button("저장") {
                     let profile = SmugProfile(
                         id: existing?.id ?? UUID(),
-                        name: derivedName, root: root, delay: delay,
+                        name: derivedName, root: root, delay: existing?.delay ?? 0,
                         enabled: existing?.enabled ?? true
                     )
                     onSave(profile)

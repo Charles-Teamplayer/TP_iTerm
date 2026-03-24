@@ -15,9 +15,13 @@ final class ProfileService: ObservableObject {
     }
 
     func save(_ profiles: [SmugProfile]) {
-        let yml = generateYml(profiles)
+        // 저장 시 delay를 position 기반으로 정규화 (0, 5, 10, 15...)
+        let normalized = profiles.enumerated().map { idx, p in
+            SmugProfile(id: p.id, name: p.name, root: p.root, delay: idx * 5, enabled: p.enabled)
+        }
+        let yml = generateYml(normalized)
         try? yml.write(toFile: ymlPath, atomically: true, encoding: .utf8)
-        self.profiles = profiles
+        self.profiles = normalized
     }
 
     func add(_ profile: SmugProfile) {
