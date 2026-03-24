@@ -56,10 +56,17 @@ if [ -f "$SCRIPT_DIR/configs/settings.json" ]; then
     echo "    (기존 설정이 있다면 수동으로 병합하세요)"
 fi
 
-# 5. auto-restore.sh 내 프로젝트 경로 안내
-echo ""
-echo "⚠️  auto-restore.sh의 PROJECTS 배열을 이 Mac의 프로젝트 경로로 수정하세요:"
-echo "    $SCRIPTS_DIR/auto-restore.sh"
+# 5. TP_iTerm_Restore.app → /Applications 배포
+REPO_APP="$SCRIPT_DIR/TP_iTerm_Restore.app"
+APP_DEST="/Applications/TP_iTerm_Restore.app"
+if [ -d "$REPO_APP" ]; then
+    rm -rf "$APP_DEST" 2>/dev/null || true
+    cp -R "$REPO_APP" "$APP_DEST"
+    codesign --force --sign - --deep "$APP_DEST" 2>/dev/null || true
+    echo "  ✓ TP_iTerm_Restore.app → /Applications"
+else
+    echo "  ⚠️  TP_iTerm_Restore.app 없음 — build-and-deploy.sh 먼저 실행하세요"
+fi
 echo ""
 
 # 6. iTerm2 tmux integration 설정 (탭으로 열기 + 대시보드 방지)
@@ -94,13 +101,14 @@ echo "필수 확인사항:"
 echo "  1. iTerm2 설치 필요 (Terminal.app 미지원)"
 echo "  2. claude CLI 설치: npm install -g @anthropic-ai/claude-code"
 echo "  3. Notion 연동 시: ~/.zshrc에 NOTION_API_KEY 설정"
-echo "  4. auto-restore.sh의 PROJECTS 경로를 이 Mac에 맞게 수정"
+echo "  4. ~/.claude/activated-sessions.json에 복원할 프로젝트 경로 추가"
+echo "     (TP_iTerm_Restore.app → 세션탭 → 우클릭 활성화 또는 직접 편집)"
 echo "  ✓ iTerm2 tmux 탭 모드 자동 설정됨 (TmuxDashboardLimit=20)"
 echo ""
 echo "첫 실행 순서:"
 echo "  1. iTerm2 실행"
 echo "  2. bash $SCRIPTS_DIR/auto-restore.sh  (tmux claude-work 세션 생성)"
-echo "  3. TP_iTerm_Restore.app 실행 → 전체복원 버튼"
+echo "  3. TP_iTerm_Restore.app 메뉴바 → '지금 복원' 또는 설정창 → 세션복원"
 echo ""
 echo "헬스체크: bash $SCRIPTS_DIR/health-check.sh"
 echo "LaunchAgent 확인: launchctl list | grep com.claude"
