@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var monitor = SessionMonitor()
@@ -273,7 +274,10 @@ struct ContentView: View {
                                         .padding(.horizontal, 10)
                                         .background(selectedSession?.id == session.id
                                                     ? Color.accentColor.opacity(0.15) : Color.clear)
-                                        .onTapGesture { selectedSession = session }
+                                        .simultaneousGesture(TapGesture().onEnded {
+                                            selectedSession = session
+                                            if editingTabKey != nil { editingTabKey = nil }
+                                        })
                                     Divider().padding(.leading, 10)
                                 }
                             }
@@ -292,7 +296,9 @@ struct ContentView: View {
                                     .padding(.horizontal, 10)
                                     .background(selectedSession?.id == session.id
                                                 ? Color.accentColor.opacity(0.15) : Color.clear)
-                                    .onTapGesture { selectedSession = session }
+                                    .simultaneousGesture(TapGesture().onEnded {
+                                        selectedSession = session
+                                    })
                                 Divider().padding(.leading, 10)
                             }
                         }
@@ -453,23 +459,34 @@ struct ContentView: View {
         .padding(.vertical, 4)
         .background(dragHoverPaneId == pane.id ? Color.blue.opacity(0.15) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 4))
-        .dropDestination(for: String.self) { items, _ in
-            guard let payload = items.first else { return false }
-            let parts = payload.split(separator: "|", maxSplits: 1)
-            guard let profileName = parts.first.map(String.init) else { return false }
-            let srcIdStr = parts.count > 1 ? String(parts[1]) : ""
-            if let srcId = UUID(uuidString: srcIdStr), srcId == pane.id { return false }
-            monitor.windowGroupService.moveProfile(profileName, to: pane)
+        .onDrop(of: [UTType.utf8PlainText], isTargeted: Binding(
+            get: { dragHoverPaneId == pane.id },
+            set: { active in dragHoverPaneId = active ? pane.id : nil }
+        )) { providers in
+            guard let provider = providers.first else { return false }
+            _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
+                guard let payload = obj as? String else { return }
+                let parts = payload.split(separator: "|", maxSplits: 1)
+                guard let profileName = parts.first.map(String.init) else { return }
+                let srcIdStr = parts.count > 1 ? String(parts[1]) : ""
+                DispatchQueue.main.async {
+                    if let srcId = UUID(uuidString: srcIdStr), srcId == pane.id { return }
+                    self.monitor.windowGroupService.moveProfile(profileName, to: pane)
+                }
+            }
             return true
-        } isTargeted: { active in
-            dragHoverPaneId = active ? pane.id : nil
         }
     }
 
     @ViewBuilder
     private func sessionRow(_ session: ClaudeSession, order: Int?, pane: WindowPane?, total: Int) -> some View {
+        let payload = "\(session.projectName)|\(pane?.id.uuidString ?? "")"
+        let dotColor: Color = session.isRunning ? .green
+            : (!session.id.hasPrefix("profile-") && session.windowIndex != Int.max) ? .orange
+            : .secondary
+        let hoverKey = "\(pane?.id.uuidString ?? "")|\(session.projectName)"
         HStack(spacing: 6) {
-            // 탭 번호 (클릭 → 인라인 편집)
+            // ── 드래그 핸들 (탭 번호 or ≡) ──
             if let order, let pane {
                 let editKey = "\(pane.id)|\(session.projectName)"
                 if editingTabKey == editKey {
@@ -494,23 +511,20 @@ struct ContentView: View {
                         .padding(.vertical, 1)
                         .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 3))
                         .contentShape(Rectangle())
+                        .onDrag { NSItemProvider(object: payload as NSString) }
                         .onTapGesture {
                             tabNumberInput = "\(order)"
                             editingTabKey = editKey
                         }
-                        .help("탭 번호 클릭 → 직접 입력으로 순서 변경")
+                        .help("클릭: 탭 번호 입력 | 드래그: 창 이동")
                 }
             } else {
-                // 미배정 세션 — 탭 번호 없음
-                Image(systemName: "minus").font(.caption2).foregroundStyle(.secondary).frame(width: 26)
+                Image(systemName: "line.3.horizontal")
+                    .font(.caption2).foregroundStyle(.tertiary).frame(width: 26)
+                    .onDrag { NSItemProvider(object: payload as NSString) }
             }
 
-            // 상태 dot
-            let dotColor: Color = session.isRunning ? .green
-                : (!session.id.hasPrefix("profile-") && session.windowIndex != Int.max) ? .orange
-                : .secondary
             Circle().fill(dotColor).frame(width: 8, height: 8)
-
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.projectName).font(.callout).lineLimit(1)
                 Group {
@@ -522,27 +536,30 @@ struct ContentView: View {
             Spacer()
         }
         .padding(.vertical, 2)
-        .background(dragHoverKey == "\(pane?.id.uuidString ?? "")|\(session.projectName)"
-                    ? Color.accentColor.opacity(0.12) : Color.clear)
+        .background(dragHoverKey == hoverKey ? Color.accentColor.opacity(0.12) : Color.clear)
         .contentShape(Rectangle())
-        .onTapGesture { if editingTabKey != nil { editingTabKey = nil } }
-        .draggable("\(session.projectName)|\(pane?.id.uuidString ?? "")")
-        .dropDestination(for: String.self) { items, _ in
-            guard let payload = items.first, let targetPane = pane else { return false }
-            let parts = payload.split(separator: "|", maxSplits: 1)
-            guard let profileName = parts.first.map(String.init) else { return false }
-            let srcIdStr = parts.count > 1 ? String(parts[1]) : ""
-            let wgs = monitor.windowGroupService
-            if let srcId = UUID(uuidString: srcIdStr), srcId != targetPane.id {
-                wgs.moveProfile(profileName, to: targetPane)
-            }
-            if let gi = wgs.groups.firstIndex(where: { $0.id == targetPane.id }),
-               let destIdx = wgs.groups[gi].profileNames.firstIndex(of: session.projectName) {
-                wgs.moveProfileToIndex(profileName, groupId: targetPane.id, index: destIdx)
+        .onDrop(of: [UTType.utf8PlainText], isTargeted: Binding(
+            get: { dragHoverKey == hoverKey },
+            set: { active in dragHoverKey = active ? hoverKey : nil }
+        )) { providers in
+            guard let provider = providers.first, let targetPane = pane else { return false }
+            _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
+                guard let dropped = obj as? String else { return }
+                let parts = dropped.split(separator: "|", maxSplits: 1)
+                guard let profileName = parts.first.map(String.init) else { return }
+                let srcIdStr = parts.count > 1 ? String(parts[1]) : ""
+                DispatchQueue.main.async {
+                    let wgs = self.monitor.windowGroupService
+                    if let srcId = UUID(uuidString: srcIdStr), srcId != targetPane.id {
+                        wgs.moveProfile(profileName, to: targetPane)
+                    }
+                    if let gi = wgs.groups.firstIndex(where: { $0.id == targetPane.id }),
+                       let destIdx = wgs.groups[gi].profileNames.firstIndex(of: session.projectName) {
+                        wgs.moveProfileToIndex(profileName, groupId: targetPane.id, index: destIdx)
+                    }
+                }
             }
             return true
-        } isTargeted: { active in
-            dragHoverKey = active ? "\(pane?.id.uuidString ?? "")|\(session.projectName)" : nil
         }
         .contextMenu {
             if let pane {
