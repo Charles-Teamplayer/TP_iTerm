@@ -42,7 +42,7 @@ func startAutoRefresh() {
         for i in updated.indices {
             let label = updated[i].id
             // launchctl list: 등록(loaded)되어 있으면 표시됨 — 일회성 데몬도 정상 감지
-            let result = await ShellService.runAsync("launchctl list 2>/dev/null | grep -c '\(label)'")
+            let result = await ShellService.runAsync("launchctl list 2>/dev/null | grep -c \(shellq(label))")
             updated[i].isRunning = (Int(result.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) > 0
         }
         daemons = updated

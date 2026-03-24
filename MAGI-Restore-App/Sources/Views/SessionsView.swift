@@ -178,7 +178,11 @@ struct SessionDetailView: View {
         let tty = session.tty
         Task {
             let tmp = NSTemporaryDirectory() + "hide_\(UUID().uuidString).scpt"
-            let safeTty = tty.replacingOccurrences(of: "\"", with: "\\\"")
+            let safeTty = tty
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\n", with: "")
+                .replacingOccurrences(of: "\r", with: "")
             let script = "tell application \"iTerm2\"\nrepeat with w in windows\nrepeat with t in tabs of w\nrepeat with s in sessions of t\ntry\nif tty of s is \"\(safeTty)\" then set miniaturized of w to true\nend try\nend repeat\nend repeat\nend repeat\nend tell"
             try? script.write(toFile: tmp, atomically: true, encoding: .utf8)
             let escapedTmp = tmp.replacingOccurrences(of: "'", with: "'\\''")

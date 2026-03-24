@@ -1,8 +1,15 @@
 import SwiftUI
 import AppKit
 
+class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
+    }
+}
+
 @main
 struct TPiTermRestoreApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var menuBarState = MenuBarState()
 
     init() {
@@ -10,11 +17,11 @@ struct TPiTermRestoreApp: App {
     }
 
     var body: some Scene {
-        // 전체 UI는 Settings(Cmd+,)로 접근
-        Settings {
+        WindowGroup("TP iTerm Restore", id: "main") {
             ContentView()
                 .frame(minWidth: 700, minHeight: 450)
         }
+        .defaultSize(width: 900, height: 560)
 
         MenuBarExtra {
             MenuBarMenuView(state: menuBarState)
@@ -88,7 +95,11 @@ final class MenuBarState: ObservableObject {
 
     // iTerm2를 열고 tmux -CC attach 실행 (작업탭 표시)
     func openInITerm(sessionName: String = "claude-work") {
-        let safeSession = sessionName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let safeSession = sessionName
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
         let script = """
         tell application "iTerm2"
             activate
@@ -132,6 +143,7 @@ struct MenuBarIconView: View {
 // MARK: - MenuBar Menu
 struct MenuBarMenuView: View {
     @ObservedObject var state: MenuBarState
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         // 상태
@@ -175,15 +187,15 @@ struct MenuBarMenuView: View {
 
         Divider()
 
-        // 설정
-        Button("MAGI 설정 열기") {
-            NSApp.activate(ignoringOtherApps: true)
-            // macOS 14 이상에서는 showSettingsWindow:, 이전 버전은 showPreferencesWindow:
-            let selector = Selector(("showSettingsWindow:"))
-            if NSApp.responds(to: selector) {
-                NSApp.sendAction(selector, to: nil, from: nil)
-            } else {
-                NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        // 대시보드 열기
+        Button("대시보드 열기") {
+            openWindow(id: "main")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.windows
+                    .first { $0.canBecomeKey && $0.title.contains("TP") }?
+                    .makeKeyAndOrderFront(nil)
+                    ?? NSApp.windows.first { $0.canBecomeKey }?.makeKeyAndOrderFront(nil)
             }
         }
 

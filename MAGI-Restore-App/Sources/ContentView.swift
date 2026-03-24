@@ -61,7 +61,15 @@ struct ContentView: View {
             monitor.start()
             monitor.profileService.load()
             monitor.windowGroupService.load()
-            monitor.syncWindowGroupsWithProfiles()  // load() 이후 미배정 프로필 자동 배정
+            monitor.syncWindowGroupsWithProfiles()
+            // LSUIElement 앱에서 창이 뒤로 숨지 않도록: 활성 스페이스 이동 + 최전면
+            DispatchQueue.main.async {
+                if let window = NSApp.windows.first(where: { $0.canBecomeKey }) {
+                    window.collectionBehavior = [.managed, .participatesInCycle, .moveToActiveSpace]
+                    window.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
         }
         .onChange(of: monitor.sessions) { _, sessions in
             if let current = selectedSession {

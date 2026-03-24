@@ -110,7 +110,10 @@ final class ProfileService: ObservableObject {
                 ? "\"\(profile.name.replacingOccurrences(of: "\"", with: "\\\""))\""
                 : profile.name
             lines.append("  - name: \(safeName)")
-            let rootStr = profile.root.contains(" ") ? "\"\(profile.root)\"" : profile.root
+            let needsQuote = profile.root.contains(" ") || profile.root.contains("\"") ||
+                profile.root.contains("#") || profile.root.contains("{") || profile.root.contains("}")
+            let safeRoot = profile.root.replacingOccurrences(of: "\"", with: "\\\"")
+            let rootStr = needsQuote ? "\"\(safeRoot)\"" : profile.root
             lines.append("    root: \(rootStr)")
             lines.append("    commands:")
             let name = profile.name

@@ -40,6 +40,10 @@ final class SessionMonitor: ObservableObject {
         timer = nil
     }
 
+    deinit {
+        timer?.invalidate()
+    }
+
     func refresh() async {
         guard !isRefreshing else { return }
         isRefreshing = true
