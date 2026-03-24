@@ -53,6 +53,11 @@ final class ActivationService {
             "last_updated": ISO8601DateFormatter().string(from: Date())
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: obj, options: .prettyPrinted) else { return }
+        // 쓰기 전 .bak 백업 (SPOF 방어: 손상 시 복구 가능)
+        let bakPath = filePath + ".bak"
+        if FileManager.default.fileExists(atPath: filePath) {
+            try? FileManager.default.copyItem(atPath: filePath, toPath: bakPath)
+        }
         try? data.write(to: URL(fileURLWithPath: filePath), options: .atomic)
     }
 }
