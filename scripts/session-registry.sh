@@ -5,6 +5,8 @@
 REGISTRY="$HOME/.claude/active-sessions.json"
 ACTION="${1:-list}"
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+# 앱에서 두 번째 인자로 PROJECT_DIR을 전달하는 경우 우선 사용
+[ -n "$2" ] && PROJECT_DIR="$2"
 PROJECT_NAME=$(basename "$PROJECT_DIR")
 
 # 레지스트리 초기화
