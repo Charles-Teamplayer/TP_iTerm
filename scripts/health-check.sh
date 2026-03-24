@@ -39,12 +39,14 @@ done
 
 # 2. tmux 세션 상태 + 좀비 윈도우 감지
 echo -e "\n${BOLD}[2] tmux 세션 상태${NC}"
+# activated-sessions.json 기반 기대 창 수 동적 계산 (monitor 창 포함 +1)
+ACTIVATED_CNT=$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/activated-sessions.json'))); print(len(d.get('activated',[])) + 1)" 2>/dev/null || echo "15")
 if tmux has-session -t claude-work 2>/dev/null; then
     WIN_COUNT=$(tmux list-windows -t claude-work 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$WIN_COUNT" -ge 15 ]; then
+    if [ "$WIN_COUNT" -ge "$ACTIVATED_CNT" ]; then
         ok "claude-work 세션 활성 (윈도우 ${WIN_COUNT}개)"
     else
-        warn "claude-work 세션 활성 (윈도우 ${WIN_COUNT}개 — 기대: 15개)"
+        warn "claude-work 세션 활성 (윈도우 ${WIN_COUNT}개 — 기대: ${ACTIVATED_CNT}개)"
     fi
 
     # 좀비/orphan 윈도우 검사 (pane PID가 0이거나 프로세스 없는 경우)
@@ -87,10 +89,11 @@ fi
 # 3. Claude 프로세스 상태
 echo -e "\n${BOLD}[3] Claude Code 프로세스${NC}"
 CLAUDE_PROCS=$(ps aux | grep "[c]laude" | grep -v "Claude.app\|Helper\|ShipIt\|watchdog\|auto-restore\|tab-focus\|session-registry\|health-check\|MAGI" | grep -v "??" | wc -l | tr -d ' ')
-if [ "$CLAUDE_PROCS" -ge 10 ]; then
+ACTIVATED_PROCS=$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/activated-sessions.json'))); print(len(d.get('activated',[])))" 2>/dev/null || echo "14")
+if [ "$CLAUDE_PROCS" -ge "$ACTIVATED_PROCS" ]; then
     ok "Claude Code ${CLAUDE_PROCS}개 실행 중"
 elif [ "$CLAUDE_PROCS" -gt 0 ]; then
-    warn "Claude Code ${CLAUDE_PROCS}개 실행 중 (기대: 14개)"
+    warn "Claude Code ${CLAUDE_PROCS}개 실행 중 (기대: ${ACTIVATED_PROCS}개)"
 else
     fail "Claude Code 프로세스 없음"
 fi
@@ -115,7 +118,7 @@ fi
 echo -e "\n${BOLD}[6] 세션 레지스트리${NC}"
 if [ -f "$HOME/.claude/active-sessions.json" ]; then
     SESSION_CNT=$(python3 -c "import json; d=json.load(open('$HOME/.claude/active-sessions.json')); print(len(d['sessions']))" 2>/dev/null || echo "?")
-    EXPECTED_SESSIONS=14
+    EXPECTED_SESSIONS=$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/activated-sessions.json'))); print(len(d.get('activated',[])))" 2>/dev/null || echo "14")
     if [ "$SESSION_CNT" != "?" ] && [ "$SESSION_CNT" -ge "$EXPECTED_SESSIONS" ]; then
         ok "등록된 세션: ${SESSION_CNT}개"
     else
