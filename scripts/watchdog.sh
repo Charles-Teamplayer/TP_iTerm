@@ -223,8 +223,14 @@ for candidate in [path, path + '.bak']:
                 TAB_TYPE=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('type',''))" 2>/dev/null)
             fi
             [ -z "$LAST_TS_ISO" ] && continue
-            # active/working 상태는 aging 스킵 (사용자가 현재 보고 있는 탭)
-            [ "$TAB_TYPE" = "active" ] || [ "$TAB_TYPE" = "working" ] && continue
+            # active/working: PID가 살아있을 때만 aging 스킵 (죽은 세션은 aging 진행)
+            if [ "$TAB_TYPE" = "active" ] || [ "$TAB_TYPE" = "working" ]; then
+                TAB_PID=$(jq -r '.pid // "0"' "$STATE_FILE" 2>/dev/null || echo "0")
+                if [ "$TAB_PID" -gt 0 ] && kill -0 "$TAB_PID" 2>/dev/null; then
+                    continue  # PID 살아있음 → aging 스킵
+                fi
+                # PID 없거나 죽었음 → aging 진행
+            fi
 
             LAST_TS=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_TS_ISO" +%s 2>/dev/null || echo 0)
             [ "$LAST_TS" = "0" ] && continue
