@@ -194,6 +194,9 @@ struct SessionDetailView: View {
             let dir = session.directory.isEmpty ? session.projectName : session.directory
             await ShellService.intentionalStopAsync(projectDir: dir)
             await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
+            // 의도적 종료 → 활성화 해제
+            let root = session.profileRoot ?? session.directory
+            ActivationService.shared.deactivate(root: root)
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await monitor.refresh()
         }
@@ -203,6 +206,9 @@ struct SessionDetailView: View {
         Task {
             await ShellService.intentionalStopAsync(projectDir: session.projectName)
             await ShellService.killAsync(pid: session.pid)
+            // 강제종료 → 활성화 해제
+            let root = session.profileRoot ?? session.directory
+            ActivationService.shared.deactivate(root: root)
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             await monitor.refresh()
         }
@@ -211,6 +217,8 @@ struct SessionDetailView: View {
     private func doPurge(_ session: ClaudeSession) {
         Task {
             isPurging = true
+            let root = session.profileRoot ?? session.directory
+            ActivationService.shared.deactivate(root: root)
             await monitor.purgeSession(session)
             isPurging = false
         }

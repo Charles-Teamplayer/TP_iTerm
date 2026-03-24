@@ -112,12 +112,20 @@ final class SessionMonitor: ObservableObject {
         // 기존 세션 중 프로필과 이름 매칭되면 profileRoot 주입
         var profileMap: [String: SmugProfile] = [:]
         for p in profileService.profiles { profileMap[p.name] = p }
+        let activatedRoots = ActivationService.shared.loadActivated()
         result = result.map { session in
             var s = session
             if s.profileRoot == nil, let p = profileMap[s.projectName] ?? profileMap[s.windowName] {
                 s.profileRoot = p.root
                 s.profileDelay = p.delay
             }
+            // 활성화 플래그 주입
+            let root = s.profileRoot ?? s.directory
+            s.isActivated = activatedRoots.contains(
+                root.hasPrefix("~")
+                    ? root.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: root.range(of: "~"))
+                    : root
+            )
             return s
         }
 
@@ -145,10 +153,7 @@ final class SessionMonitor: ObservableObject {
 
     func restoreSelected() async {
         let toRestore = sessions.filter {
-            selectedForRestore.contains($0.id)
-            && !$0.isRunning
-            && !$0.id.hasPrefix("profile-")
-            && $0.windowIndex != Int.max
+            selectedForRestore.contains($0.id) && !$0.isRunning
         }
         guard !toRestore.isEmpty else { return }
 
@@ -165,6 +170,14 @@ final class SessionMonitor: ObservableObject {
         for (i, session) in toRestore.enumerated() {
             guard !cancelRestoreFlag else { break }
             let delay = session.profileDelay > 0 ? session.profileDelay : 0
+            // profile-only 세션(windowIndex=Int.max)은 launchProfile로 위임
+            if session.id.hasPrefix("profile-") || session.windowIndex == Int.max,
+               let root = session.profileRoot {
+                await launchProfile(name: session.projectName, root: root, delay: delay)
+                restoreProgress = (i + 1, toRestore.count)
+                continue
+            }
+
             let winName = shellEscape(session.windowName)
             let dir = session.directory.isEmpty ? "~/claude/\(session.windowName)" : session.directory
             let safeDir = dir.hasPrefix("~")
@@ -189,7 +202,6 @@ final class SessionMonitor: ObservableObject {
                 await ShellService.runAsync(
                     "tmux new-window -t claude-work -n '\(winName)' -c '\(escapedDir)'"
                 )
-                // 새 창은 이름으로 targeting (방금 만들었으므로 안전)
                 await ShellService.runAsync(
                     "tmux send-keys -t 'claude-work:\(winName)' '\(claudeEntry)' Enter 2>/dev/null"
                 )
@@ -379,6 +391,15 @@ final class SessionMonitor: ObservableObject {
             ? "claude --dangerously-skip-permissions --continue"
             : "claude --dangerously-skip-permissions"
 
+        // 이미 동일 이름 창 존재하면 중복 생성 방지
+        let existingNames = await ShellService.runAsync(
+            "tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null"
+        )
+        if existingNames.components(separatedBy: "\n").contains(name) {
+            await refresh()
+            return
+        }
+
         let escapedName = shellEscape(name)
         let escapedRoot = shellEscape(safeRoot)
         let mkdirPart = createDir ? "mkdir -p '\(escapedRoot)' && " : ""
@@ -390,6 +411,7 @@ final class SessionMonitor: ObservableObject {
         send-keys "\(mkdirPart)\(sleepPart)bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
         true
         """
+        ActivationService.shared.activate(root: safeRoot)
         await ShellService.runAsync(cmd)
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh()

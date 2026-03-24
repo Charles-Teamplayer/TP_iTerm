@@ -77,51 +77,54 @@ print('[auto-restore] Registry cleared (reboot recovery)')
     sleep 2
 fi
 
-# === Step 1: tmux 세션 생성 (per-window, intentional-stop 제외) ===
-log "tmux 세션 직접 생성 (per-window 방식)"
+# === Step 1: tmux 세션 생성 (activated-sessions.json 기반) ===
+log "tmux 세션 생성 (activated-sessions.json 기반)"
 tmux new-session -d -s claude-work -n monitor -c "$HOME/claude" 2>/dev/null
 
-PROJECTS=(
-    "imsms:$HOME/claude/TP_newIMSMS:0"
-    "imsms-agent:$HOME/claude/TP_newIMSMS_Agent:3"
-    "mdm:$HOME/claude/TP_MDM:6"
-    "tesla-lvds:$HOME/claude/TP_TESLA_LVDS:9"
-    "tesla-dashboard:$HOME/ralph-claude-code/TESLA_Status_Dashboard:12"
-    "mindmap:$HOME/claude/TP_MindMap_AutoCC:15"
-    "sj-mindmap:$HOME/SJ_MindMap:18"
-    "imessage:$HOME/claude/TP_A.iMessage_standalone_01067051080:21"
-    "btt:$HOME/claude/TP_BTT:24"
-    "infra:$HOME/claude/TP_Infra_reduce_Project:27"
-    "skills:$HOME/claude/TP_skills:30"
-    "appletv:$HOME/claude/AppleTV_ScreenSaver.app:33"
-    "imsms-web:$HOME/claude/imsms.im-website:36"
-    "auto-restart:$HOME/claude/TP_iTerm:39"
-)
+ACTIVATED_FILE="$HOME/.claude/activated-sessions.json"
+
+# activated-sessions.json에서 경로 목록 읽기
+ACTIVATED_ROOTS=$(python3 -c "
+import json, os
+path = os.path.expanduser('~/.claude/activated-sessions.json')
+try:
+    with open(path) as f:
+        data = json.load(f)
+    for r in data.get('activated', []):
+        print(r)
+except Exception:
+    pass
+" 2>/dev/null)
+
+if [ -z "$ACTIVATED_ROOTS" ]; then
+    log "activated-sessions.json 없음 또는 비어있음 — 복원 대상 없음"
+fi
 
 CREATED=0
 SKIPPED=0
-for proj in "${PROJECTS[@]}"; do
-    NAME=$(echo "$proj" | cut -d: -f1)
-    PROJ_PATH=$(echo "$proj" | cut -d: -f2)
-    DELAY=$(echo "$proj" | cut -d: -f3)
+DELAY=0
+while IFS= read -r PROJ_PATH; do
+    [ -z "$PROJ_PATH" ] && continue
+    [ ! -d "$PROJ_PATH" ] && { log "SKIP (디렉토리 없음): $PROJ_PATH"; continue; }
 
-    [ ! -d "$PROJ_PATH" ] && continue
+    NAME=$(basename "$PROJ_PATH")
 
-    # intentional-stop 제외 체크
-    if is_stopped "$NAME"; then
-        log "SKIP (intentional-stop): $NAME"
-        SKIPPED=$((SKIPPED + 1))
-        continue
+    # claude project 파일 있으면 --continue
+    if [ -d "$PROJ_PATH/.claude/projects" ] && ls "$PROJ_PATH/.claude/projects"/*.jsonl 2>/dev/null | head -1 | grep -q .; then
+        CLAUDE_CMD="claude --dangerously-skip-permissions --continue"
+    else
+        CLAUDE_CMD="claude --dangerously-skip-permissions"
     fi
 
     tmux new-window -t claude-work -n "$NAME" -c "$PROJ_PATH" 2>/dev/null
     tmux set-window-option -t "claude-work:$NAME" automatic-rename off 2>/dev/null
-    tmux send-keys -t "claude-work:$NAME" "sleep $DELAY && bash ~/.claude/scripts/tab-status.sh starting $NAME && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)" Enter
+    tmux send-keys -t "claude-work:$NAME" "sleep $DELAY && bash ~/.claude/scripts/tab-status.sh starting '$NAME' && unset CLAUDECODE && $CLAUDE_CMD" Enter
     CREATED=$((CREATED + 1))
-    log "tmux 윈도우 생성: $NAME (delay ${DELAY}s)"
-done
+    DELAY=$((DELAY + 3))
+    log "tmux 윈도우 생성: $NAME"
+done <<< "$ACTIVATED_ROOTS"
 
-log "tmux 생성 완료: ${CREATED}개 생성, ${SKIPPED}개 제외 (intentional-stop)"
+log "tmux 생성 완료: ${CREATED}개 생성, ${SKIPPED}개 제외"
 
 # 세션 수 확인 (헤드리스: iTerm2 attach 없이 tmux만 운영)
 sleep 3
