@@ -449,11 +449,12 @@ final class SessionMonitor: ObservableObject {
             "tmux list-clients -t '\(escapedSession)' 2>/dev/null | wc -l | tr -d ' '"
         )
         if (Int(clientCount) ?? 0) == 0 {
+            let asSession = sessionName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
             let script = """
             osascript -e 'tell application "iTerm2"
                 set newWindow to (create window with default profile)
                 tell current session of newWindow
-                    write text "tmux -CC attach -t \(sessionName)"
+                    write text "tmux -CC attach -t \(asSession)"
                 end tell
             end tell'
             """

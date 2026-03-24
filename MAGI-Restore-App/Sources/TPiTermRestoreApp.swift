@@ -42,6 +42,10 @@ final class MenuBarState: ObservableObject {
         }
     }
 
+    deinit {
+        timer?.invalidate()
+    }
+
     func refresh() async {
         let windowNames = await ShellService.runAsync("tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null")
         let windows = windowNames.components(separatedBy: "\n").filter { !$0.isEmpty }
@@ -84,12 +88,13 @@ final class MenuBarState: ObservableObject {
 
     // iTerm2를 열고 tmux -CC attach 실행 (작업탭 표시)
     func openInITerm(sessionName: String = "claude-work") {
+        let safeSession = sessionName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         let script = """
         tell application "iTerm2"
             activate
             set newWin to (create window with default profile)
             tell current session of newWin
-                write text "tmux -CC attach -t \(sessionName) 2>/dev/null || echo 'tmux 세션 없음: \(sessionName)'"
+                write text "tmux -CC attach -t \(safeSession) 2>/dev/null || echo 'tmux: \(safeSession)'"
             end tell
         end tell
         """
