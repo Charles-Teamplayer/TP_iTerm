@@ -21,6 +21,12 @@ for f in "$SCRIPT_DIR"/scripts/*.sh; do
     echo "  ✓ $(basename "$f")"
 done
 
+# 2b. tab-color/ 서브디렉토리 복사 (엔진 + 설정)
+if [ -d "$SCRIPT_DIR/scripts/tab-color" ]; then
+    cp -R "$SCRIPT_DIR/scripts/tab-color" "$SCRIPTS_DIR/"
+    echo "  ✓ tab-color/ (탭 색상 엔진)"
+fi
+
 # 3. LaunchAgent plist 복사 (경로를 현재 사용자로 치환)
 CURRENT_USER=$(whoami)
 CURRENT_HOME="$HOME"
