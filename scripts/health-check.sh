@@ -189,15 +189,16 @@ fi
 echo -e "\n${BOLD}[9] tmux 클라이언트 연결 상태 (%extended-output)${NC}"
 if tmux has-session -t claude-work 2>/dev/null; then
     CLIENT_COUNT=$(tmux list-clients -t claude-work 2>/dev/null | wc -l | tr -d ' ')
-    EXTENDED_CHK=$(tmux list-clients -t claude-work 2>/dev/null | grep "extended-output" | wc -l | tr -d ' ')
+    # control-mode = CC 클라이언트 연결 (tmux 3.x에서 extended-output 대신 control-mode 사용)
+    EXTENDED_CHK=$(tmux list-clients -t claude-work 2>/dev/null | grep -c "control-mode\|extended-output" || echo "0")
 
     if [ "$CLIENT_COUNT" -ge 1 ]; then
         ok "연결된 클라이언트: ${CLIENT_COUNT}개"
         tmux list-clients -t claude-work 2>/dev/null | awk '{print "    " $0}'
         if [ "$EXTENDED_CHK" -gt 0 ]; then
-            ok "%extended-output 감지됨 (iTerm CC 모드 정상)"
+            ok "iTerm CC 모드 연결됨 (control-mode 확인)"
         else
-            warn "%extended-output 미감지 — iTerm이 CC 모드로 연결되지 않았을 수 있음"
+            warn "CC 모드 미감지 — iTerm이 tmux -CC 모드로 연결되지 않았을 수 있음"
             info "필요 시: tmux -CC attach -t claude-work (iTerm2에서 실행)"
         fi
     else
