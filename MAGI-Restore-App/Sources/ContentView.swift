@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
+
 
 struct ContentView: View {
     @StateObject private var monitor = SessionMonitor()
@@ -23,9 +23,11 @@ struct ContentView: View {
     @State private var editingTabKey: String? = nil   // "paneId|profileName"
     @State private var tabNumberInput: String = ""
 
-    // 드래그 앤 드롭 상태
-    @State private var dragHoverPaneId: UUID? = nil
-    @State private var dragHoverKey: String? = nil     // "paneId|profileName"
+    // 드래그 앤 드롭 (DragGesture + GeometryReader 방식)
+    @State private var rowFrames: [String: CGRect] = [:]   // hoverKey → globalFrame
+    @State private var paneFrames: [UUID: CGRect] = [:]    // paneId → globalFrame
+    @State private var dragHighlightRow: String? = nil
+    @State private var dragHighlightPane: UUID? = nil
 
     enum Tab: String, CaseIterable {
         case sessions = "세션"
@@ -246,7 +248,8 @@ struct ContentView: View {
                 }.count + filteredUnassigned.count
 
                 ScrollView {
-                    LazyVStack(spacing: 0, pinnedViews: []) {
+                    VStack(spacing: 0) {
+
                         // 새 창 추가 버튼
                         Button { showAddPane = true } label: {
                             Label("새 창 추가", systemImage: "plus.rectangle")
@@ -263,21 +266,23 @@ struct ContentView: View {
                             let filtered = searchText.isEmpty ? paneSess
                                 : paneSess.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
                             if !filtered.isEmpty || searchText.isEmpty {
-                                // 섹션 헤더 (pane)
+                                // 섹션 헤더 (pane) — reportPaneFrame은 padding 바깥에 위치
                                 paneHeader(pane, sessions: paneSess)
                                     .padding(.horizontal, 10)
                                     .background(Color(nsColor: .controlBackgroundColor))
+                                    .reportPaneFrame(id: pane.id)
                                 Divider()
-                                // 섹션 행들
+                                // 섹션 행들 — reportRowFrame은 padding 바깥에 위치
                                 ForEach(Array(filtered.enumerated()), id: \.element.id) { idx, session in
-                                    sessionRow(session, order: idx + 1, pane: pane, total: filtered.count)
+                                    let rk = "\(pane.id)|\(session.projectName)"
+                                    sessionRow(session, order: idx + 1, pane: pane, total: filtered.count,
+                                               isSelected: selectedSession?.id == session.id,
+                                               onSelect: {
+                                                   selectedSession = session
+                                                   editingTabKey = nil
+                                               })
                                         .padding(.horizontal, 10)
-                                        .background(selectedSession?.id == session.id
-                                                    ? Color.accentColor.opacity(0.15) : Color.clear)
-                                        .simultaneousGesture(TapGesture().onEnded {
-                                            selectedSession = session
-                                            if editingTabKey != nil { editingTabKey = nil }
-                                        })
+                                        .reportRowFrame(key: rk)
                                     Divider().padding(.leading, 10)
                                 }
                             }
@@ -292,13 +297,10 @@ struct ContentView: View {
                                 .background(Color(nsColor: .controlBackgroundColor))
                             Divider()
                             ForEach(filteredUnassigned) { session in
-                                sessionRow(session, order: nil, pane: nil, total: 0)
+                                sessionRow(session, order: nil, pane: nil, total: 0,
+                                           isSelected: selectedSession?.id == session.id,
+                                           onSelect: { selectedSession = session })
                                     .padding(.horizontal, 10)
-                                    .background(selectedSession?.id == session.id
-                                                ? Color.accentColor.opacity(0.15) : Color.clear)
-                                    .simultaneousGesture(TapGesture().onEnded {
-                                        selectedSession = session
-                                    })
                                 Divider().padding(.leading, 10)
                             }
                         }
@@ -312,6 +314,8 @@ struct ContentView: View {
                         }
                     }
                 }
+                .onPreferenceChange(RowFrameKey.self) { rowFrames = $0 }
+                .onPreferenceChange(PaneFrameKey.self) { paneFrames = $0 }
             }
 
             Divider()
@@ -417,6 +421,40 @@ struct ContentView: View {
         pane.profileNames.compactMap { name in all.first { $0.projectName == name } }
     }
 
+    // payload = "profileName|srcPaneId", location = global coords
+    private func handleDrop(payload: String, at location: CGPoint) {
+        let parts = payload.split(separator: "|", maxSplits: 1)
+        guard let profileName = parts.first.map(String.init) else { return }
+        let srcPaneIdStr = parts.count > 1 ? String(parts[1]) : ""
+        let wgs = monitor.windowGroupService
+
+        // 창 헤더로 드롭 → 해당 창으로 이동
+        if let (paneId, _) = paneFrames.first(where: { $0.value.contains(location) }),
+           let pane = wgs.groups.first(where: { $0.id == paneId }) {
+            if paneId.uuidString != srcPaneIdStr {
+                wgs.moveProfile(profileName, to: pane)
+            }
+            return
+        }
+
+        // 행으로 드롭 → 해당 창 + 해당 위치로 이동
+        // rowKey = "paneId|profileName"
+        if let (rowKey, _) = rowFrames.first(where: { $0.value.contains(location) }) {
+            let rp = rowKey.split(separator: "|", maxSplits: 1)
+            guard rp.count == 2,
+                  let tPaneId = UUID(uuidString: String(rp[0])),
+                  let pane = wgs.groups.first(where: { $0.id == tPaneId }) else { return }
+            let tProfileName = String(rp[1])
+            if tPaneId.uuidString != srcPaneIdStr {
+                wgs.moveProfile(profileName, to: pane)
+            }
+            if let gi = wgs.groups.firstIndex(where: { $0.id == tPaneId }),
+               let destIdx = wgs.groups[gi].profileNames.firstIndex(of: tProfileName) {
+                wgs.moveProfileToIndex(profileName, groupId: tPaneId, index: destIdx)
+            }
+        }
+    }
+
     @ViewBuilder
     private func paneHeader(_ pane: WindowPane, sessions: [ClaudeSession]) -> some View {
         HStack(spacing: 6) {
@@ -457,36 +495,20 @@ struct ContentView: View {
             .help("창 삭제 (세션은 첫 번째 창으로 이동)")
         }
         .padding(.vertical, 4)
-        .background(dragHoverPaneId == pane.id ? Color.blue.opacity(0.15) : Color.clear)
+        .background(dragHighlightPane == pane.id ? Color.blue.opacity(0.15) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 4))
-        .onDrop(of: [UTType.utf8PlainText], isTargeted: Binding(
-            get: { dragHoverPaneId == pane.id },
-            set: { active in dragHoverPaneId = active ? pane.id : nil }
-        )) { providers in
-            guard let provider = providers.first else { return false }
-            _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
-                guard let payload = obj as? String else { return }
-                let parts = payload.split(separator: "|", maxSplits: 1)
-                guard let profileName = parts.first.map(String.init) else { return }
-                let srcIdStr = parts.count > 1 ? String(parts[1]) : ""
-                DispatchQueue.main.async {
-                    if let srcId = UUID(uuidString: srcIdStr), srcId == pane.id { return }
-                    self.monitor.windowGroupService.moveProfile(profileName, to: pane)
-                }
-            }
-            return true
-        }
     }
 
     @ViewBuilder
-    private func sessionRow(_ session: ClaudeSession, order: Int?, pane: WindowPane?, total: Int) -> some View {
+    private func sessionRow(_ session: ClaudeSession, order: Int?, pane: WindowPane?, total: Int,
+                            isSelected: Bool = false, onSelect: @escaping () -> Void = {}) -> some View {
         let payload = "\(session.projectName)|\(pane?.id.uuidString ?? "")"
         let dotColor: Color = session.isRunning ? .green
             : (!session.id.hasPrefix("profile-") && session.windowIndex != Int.max) ? .orange
             : .secondary
         let hoverKey = "\(pane?.id.uuidString ?? "")|\(session.projectName)"
         HStack(spacing: 6) {
-            // ── 드래그 핸들 (탭 번호 or ≡) ──
+            // ── 드래그 핸들 (DragGesture + GeometryReader 방식) ──
             if let order, let pane {
                 let editKey = "\(pane.id)|\(session.projectName)"
                 if editingTabKey == editKey {
@@ -504,63 +526,73 @@ struct ContentView: View {
                         }
                         .onExitCommand { editingTabKey = nil }
                 } else {
-                    Text("\(order)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.blue.opacity(0.8))
-                        .frame(width: 26, alignment: .center)
-                        .padding(.vertical, 1)
-                        .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 3))
-                        .contentShape(Rectangle())
-                        .onDrag { NSItemProvider(object: payload as NSString) }
-                        .onTapGesture {
+                    DragBadgeView(
+                        label: "\(order)",
+                        isTabNumber: true,
+                        onTap: {
                             tabNumberInput = "\(order)"
                             editingTabKey = editKey
+                        },
+                        onDragChanged: { loc in
+                            dragHighlightPane = paneFrames.first { $0.value.contains(loc) }?.key
+                            dragHighlightRow = rowFrames.first { $0.value.contains(loc) }?.key
+                        },
+                        onDragEnded: { loc in
+                            handleDrop(payload: payload, at: loc)
+                            dragHighlightRow = nil
+                            dragHighlightPane = nil
+                        },
+                        onDragCancelled: {
+                            dragHighlightRow = nil
+                            dragHighlightPane = nil
                         }
-                        .help("클릭: 탭 번호 입력 | 드래그: 창 이동")
+                    )
+                    .frame(width: 26, height: 18)
                 }
             } else {
-                Image(systemName: "line.3.horizontal")
-                    .font(.caption2).foregroundStyle(.tertiary).frame(width: 26)
-                    .onDrag { NSItemProvider(object: payload as NSString) }
+                DragBadgeView(
+                    label: "≡",
+                    isTabNumber: false,
+                    onTap: {},
+                    onDragChanged: { loc in
+                        dragHighlightPane = paneFrames.first { $0.value.contains(loc) }?.key
+                        dragHighlightRow = rowFrames.first { $0.value.contains(loc) }?.key
+                    },
+                    onDragEnded: { loc in
+                        handleDrop(payload: payload, at: loc)
+                        dragHighlightRow = nil
+                        dragHighlightPane = nil
+                    },
+                    onDragCancelled: {
+                        dragHighlightRow = nil
+                        dragHighlightPane = nil
+                    }
+                )
+                .frame(width: 26, height: 18)
             }
 
-            Circle().fill(dotColor).frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(session.projectName).font(.callout).lineLimit(1)
-                Group {
-                    if session.isRunning { Text("PID: \(session.pid)") }
-                    else if session.id.hasPrefix("profile-") || session.windowIndex == Int.max { Text("시작 가능") }
-                    else { Text("복원 가능") }
-                }.font(.caption).foregroundStyle(.secondary)
+            // row body: Button으로 선택 처리
+            Button(action: onSelect) {
+                HStack(spacing: 6) {
+                    Circle().fill(dotColor).frame(width: 8, height: 8)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(session.projectName).font(.callout).lineLimit(1)
+                        Group {
+                            if session.isRunning { Text("PID: \(session.pid)") }
+                            else if session.id.hasPrefix("profile-") || session.windowIndex == Int.max { Text("시작 가능") }
+                            else { Text("복원 가능") }
+                        }.font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .contentShape(Rectangle())
             }
-            Spacer()
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 2)
-        .background(dragHoverKey == hoverKey ? Color.accentColor.opacity(0.12) : Color.clear)
+        .background(isSelected ? Color.accentColor.opacity(0.15) :
+                    dragHighlightRow == hoverKey ? Color.accentColor.opacity(0.2) : Color.clear)
         .contentShape(Rectangle())
-        .onDrop(of: [UTType.utf8PlainText], isTargeted: Binding(
-            get: { dragHoverKey == hoverKey },
-            set: { active in dragHoverKey = active ? hoverKey : nil }
-        )) { providers in
-            guard let provider = providers.first, let targetPane = pane else { return false }
-            _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
-                guard let dropped = obj as? String else { return }
-                let parts = dropped.split(separator: "|", maxSplits: 1)
-                guard let profileName = parts.first.map(String.init) else { return }
-                let srcIdStr = parts.count > 1 ? String(parts[1]) : ""
-                DispatchQueue.main.async {
-                    let wgs = self.monitor.windowGroupService
-                    if let srcId = UUID(uuidString: srcIdStr), srcId != targetPane.id {
-                        wgs.moveProfile(profileName, to: targetPane)
-                    }
-                    if let gi = wgs.groups.firstIndex(where: { $0.id == targetPane.id }),
-                       let destIdx = wgs.groups[gi].profileNames.firstIndex(of: session.projectName) {
-                        wgs.moveProfileToIndex(profileName, groupId: targetPane.id, index: destIdx)
-                    }
-                }
-            }
-            return true
-        }
         .contextMenu {
             if let pane {
                 let others = monitor.windowGroupService.groups.filter { $0.id != pane.id }
