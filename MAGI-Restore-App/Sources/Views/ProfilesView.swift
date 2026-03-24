@@ -121,7 +121,7 @@ struct ProfilesView: View {
                         if !removed.isEmpty { parts.append("제거 \(removed.count)개") }
                         syncResult = "동기화 완료: " + parts.joined(separator: ", ")
                     }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { syncResult = nil }
+                    Task { try? await Task.sleep(nanoseconds: 3_000_000_000); syncResult = nil }
                 } label: {
                     Image(systemName: "arrow.triangle.2.circlepath"); Text("디렉토리 동기화")
                 }
