@@ -23,6 +23,11 @@ final class SystemViewModel: ObservableObject {
 
     private var refreshTimer: Timer?
 
+    // single-quote shell escape: wraps value in '...' with internal ' escaped as '\''
+    private func shellq(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
     func startAutoRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
@@ -51,11 +56,11 @@ final class SystemViewModel: ObservableObject {
         var count = 0
         for win in windows {
             let paneInfo = await ShellService.runAsync(
-                "tmux display-message -t 'claude-work:\(win)' -p '#{pane_tty}' 2>/dev/null"
+                "tmux display-message -t \(shellq("claude-work:\(win)")) -p '#{pane_tty}' 2>/dev/null"
             ).trimmingCharacters(in: .whitespacesAndNewlines)
             let ttyBase = paneInfo.replacingOccurrences(of: "/dev/", with: "")
             guard !ttyBase.isEmpty else { continue }
-            let procs = await ShellService.runAsync("ps -o command -t '\(ttyBase)' 2>/dev/null | grep '[c]laude' | head -1")
+            let procs = await ShellService.runAsync("ps -o command -t \(shellq(ttyBase)) 2>/dev/null | grep '[c]laude' | head -1")
             if !procs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 count += 1
             }
@@ -183,14 +188,16 @@ final class SystemViewModel: ObservableObject {
         var restored = 0
         var alreadyRunning = 0
         for proj in projects {
-            let expandedPath = proj.path.replacingOccurrences(of: "~", with: NSHomeDirectory())
-            let dirExists = await ShellService.runAsync("[ -d '\(expandedPath)' ] && echo YES || echo NO")
+            let expandedPath = proj.path.hasPrefix("~")
+                ? NSHomeDirectory() + proj.path.dropFirst()
+                : proj.path
+            let dirExists = await ShellService.runAsync("[ -d \(shellq(expandedPath)) ] && echo YES || echo NO")
             guard dirExists.contains("YES") else { continue }
 
             if windowSet.contains(proj.name) {
                 // 창은 있지만 claude가 실행 중인지 확인 (TTY 기반 + pgrep fallback)
                 let paneInfo = await ShellService.runAsync(
-                    "tmux display-message -t 'claude-work:\(proj.name)' -p '#{pane_tty}|#{pane_pid}' 2>/dev/null"
+                    "tmux display-message -t \(shellq("claude-work:\(proj.name)")) -p '#{pane_tty}|#{pane_pid}' 2>/dev/null"
                 ).trimmingCharacters(in: .whitespacesAndNewlines)
                 let infoParts = paneInfo.components(separatedBy: "|")
                 let paneTty = infoParts.count > 0 ? infoParts[0] : ""
@@ -199,7 +206,7 @@ final class SystemViewModel: ObservableObject {
                 // 방법1: TTY 기반 (손자 프로세스도 탐지)
                 let ttyBase = paneTty.replacingOccurrences(of: "/dev/", with: "")
                 var claudeRunning = ttyBase.isEmpty ? "" : await ShellService.runAsync(
-                    "ps -o pid,command -t '\(ttyBase)' 2>/dev/null | grep '[c]laude' | head -1"
+                    "ps -o pid,command -t \(shellq(ttyBase)) 2>/dev/null | grep '[c]laude' | head -1"
                 ).trimmingCharacters(in: .whitespacesAndNewlines)
 
                 // 방법2: pgrep fallback (TTY 실패 시)
@@ -215,16 +222,18 @@ final class SystemViewModel: ObservableObject {
                 }
 
                 // claude 죽어있음 → 재시작 명령 전송
+                let cmd = "bash ~/.claude/scripts/tab-status.sh starting \(shellq(proj.name)) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)"
                 await ShellService.runAsync(
-                    "tmux send-keys -t 'claude-work:\(proj.name)' 'bash ~/.claude/scripts/tab-status.sh starting \(proj.name) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)' Enter"
+                    "tmux send-keys -t \(shellq("claude-work:\(proj.name)")) \(shellq(cmd)) Enter"
                 )
                 restored += 1
             } else {
                 // 창 없음 → 새로 생성
-                await ShellService.runAsync("tmux new-window -t claude-work -n '\(proj.name)' -c '\(expandedPath)'")
-                await ShellService.runAsync("tmux set-window-option -t 'claude-work:\(proj.name)' automatic-rename off 2>/dev/null")
+                await ShellService.runAsync("tmux new-window -t claude-work -n \(shellq(proj.name)) -c \(shellq(expandedPath))")
+                await ShellService.runAsync("tmux set-window-option -t \(shellq("claude-work:\(proj.name)")) automatic-rename off 2>/dev/null")
+                let cmd = "bash ~/.claude/scripts/tab-status.sh starting \(shellq(proj.name)) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)"
                 await ShellService.runAsync(
-                    "tmux send-keys -t 'claude-work:\(proj.name)' 'bash ~/.claude/scripts/tab-status.sh starting \(proj.name) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)' Enter"
+                    "tmux send-keys -t \(shellq("claude-work:\(proj.name)")) \(shellq(cmd)) Enter"
                 )
                 restored += 1
             }
