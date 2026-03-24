@@ -225,10 +225,10 @@ struct ContentView: View {
         let profileSessions = monitor.sessions.filter { $0.profileRoot != nil }
         let allRunning = profileSessions.filter(\.isRunning).count
         let allRestorable = profileSessions.filter {
-            !$0.isRunning && !$0.id.hasPrefix("profile-") && $0.windowIndex != Int.max
+            !$0.isRunning && $0.isAssigned && !$0.id.hasPrefix("profile-") && $0.windowIndex != Int.max
         }.count
         let allLaunchable = profileSessions.filter {
-            !$0.isRunning && ($0.id.hasPrefix("profile-") || $0.windowIndex == Int.max)
+            !$0.isRunning && $0.isAssigned && ($0.id.hasPrefix("profile-") || $0.windowIndex == Int.max)
         }.count
         let wgs = monitor.windowGroupService
 

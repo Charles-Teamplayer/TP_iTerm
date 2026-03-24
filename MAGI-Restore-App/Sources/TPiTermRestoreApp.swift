@@ -17,7 +17,7 @@ struct TPiTermRestoreApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("TP iTerm Restore", id: "main") {
+        Window("TP iTerm Restore", id: "main") {
             ContentView()
                 .frame(minWidth: 700, minHeight: 450)
         }

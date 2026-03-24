@@ -23,16 +23,9 @@ final class SessionMonitor: ObservableObject {
         }
     }
 
-    // 프로필 목록과 window-groups 동기화 (미배정 프로필 → 첫 번째 창 자동 배정)
+    // 미배정 프로필 목록 반환 (자동 배정 없음 — 배정은 사용자가 직접 드래그)
     func syncWindowGroupsWithProfiles() {
-        guard !windowGroupService.groups.isEmpty else { return }
-        let allAssigned = Set(windowGroupService.groups.flatMap { $0.profileNames })
-        let unassigned = profileService.profiles.filter { !allAssigned.contains($0.name) }
-        guard !unassigned.isEmpty else { return }
-        let first = windowGroupService.groups[0]
-        for profile in unassigned {
-            windowGroupService.moveProfile(profile.name, to: first)
-        }
+        // 더 이상 자동 배정하지 않음 — 윈도우에 추가하지 않은 세션은 프로세스 미실행
     }
 
     func stop() {
@@ -108,10 +101,12 @@ final class SessionMonitor: ObservableObject {
 
         // 프로필 병합 — 세션 목록에 없는 프로필은 가상 정지 세션으로 추가
         profileService.load()
+        let assignedProfileNames = Set(windowGroupService.groups.flatMap { $0.profileNames })
         let existingNames = Set(result.map { $0.projectName } + result.map { $0.windowName })
         for profile in profileService.profiles {
             guard !existingNames.contains(profile.name) else { continue }
             let rootPath = profile.root.isEmpty ? "~/claude/\(profile.name)" : profile.root
+            let assigned = assignedProfileNames.contains(profile.name)
             result.append(ClaudeSession(
                 id: "profile-\(profile.id)",
                 pid: 0,
@@ -123,7 +118,8 @@ final class SessionMonitor: ObservableObject {
                 windowIndex: Int.max,
                 isRunning: false,
                 profileRoot: rootPath,
-                profileDelay: profile.delay
+                profileDelay: profile.delay,
+                isAssigned: assigned
             ))
         }
 
@@ -142,6 +138,10 @@ final class SessionMonitor: ObservableObject {
             s.isActivated = activatedRoots.contains(
                 root.hasPrefix("~") ? NSHomeDirectory() + root.dropFirst() : root
             )
+            // 실행 중인 세션(tmux 창 존재)은 배정 여부와 무관하게 isAssigned = true
+            if !s.id.hasPrefix("profile-") {
+                s.isAssigned = true
+            }
             return s
         }
 
@@ -169,7 +169,7 @@ final class SessionMonitor: ObservableObject {
 
     func restoreSelected() async {
         let toRestore = sessions.filter {
-            selectedForRestore.contains($0.id) && !$0.isRunning
+            selectedForRestore.contains($0.id) && !$0.isRunning && $0.isAssigned
         }
         guard !toRestore.isEmpty else { return }
 
@@ -382,6 +382,7 @@ final class SessionMonitor: ObservableObject {
     func selectAllStopped() {
         selectedForRestore.removeAll()
         for session in sessions where !session.isRunning
+            && session.isAssigned
             && !session.id.hasPrefix("profile-")
             && session.windowIndex != Int.max {
             selectedForRestore.insert(session.id)
@@ -391,6 +392,7 @@ final class SessionMonitor: ObservableObject {
     func selectAllLaunchable() {
         selectedForRestore.removeAll()
         for session in sessions where !session.isRunning
+            && session.isAssigned
             && (session.id.hasPrefix("profile-") || session.windowIndex == Int.max) {
             selectedForRestore.insert(session.id)
         }

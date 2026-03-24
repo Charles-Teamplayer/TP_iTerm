@@ -96,6 +96,12 @@ struct SessionDetailView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(session.profileRoot != nil ? "시작" : "복원")
                                     .font(.caption).foregroundStyle(.secondary)
+                                if !session.isAssigned {
+                                    Label("창에 배정 후 시작 가능 — 드래그로 창에 추가하세요", systemImage: "tray.and.arrow.down")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .padding(.vertical, 4)
+                                }
                                 HStack(spacing: 10) {
                                     if let root = session.profileRoot {
                                         // 프로필 기반 세션 → 디렉토리 존재 여부로 생성/시작 분기
@@ -122,7 +128,7 @@ struct SessionDetailView: View {
                                             }
                                         }
                                         .buttonStyle(.borderedProminent)
-                                        .disabled(isRestoring)
+                                        .disabled(isRestoring || !session.isAssigned)
                                     } else {
                                         // 일반 중단 세션 → 복원
                                         Button {
