@@ -238,6 +238,24 @@ struct ContentView: View {
                 .listStyle(.plain)
                 .focusable(false)
                 .focusEffectDisabled()
+                .overlay {
+                    if !searchText.isEmpty {
+                        let totalVisible = wgs.groups.flatMap { pane in
+                            paneSessions(pane, all: profileSessions)
+                                .filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
+                        }.count
+                        let unassignedVisible = profileSessions.filter {
+                            !Set(wgs.groups.flatMap { $0.profileNames }).contains($0.projectName)
+                            && $0.projectName.localizedCaseInsensitiveContains(searchText)
+                        }.count
+                        if totalVisible + unassignedVisible == 0 {
+                            VStack(spacing: 8) {
+                                Image(systemName: "magnifyingglass").font(.system(size: 24)).foregroundStyle(.secondary)
+                                Text("'\(searchText)' 결과 없음").font(.callout).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
             }
 
             Divider()

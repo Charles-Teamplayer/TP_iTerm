@@ -169,7 +169,13 @@ struct MenuBarMenuView: View {
         // 설정
         Button("MAGI 설정 열기") {
             NSApp.activate(ignoringOtherApps: true)
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            // macOS 14 이상에서는 showSettingsWindow:, 이전 버전은 showPreferencesWindow:
+            let selector = Selector(("showSettingsWindow:"))
+            if NSApp.responds(to: selector) {
+                NSApp.sendAction(selector, to: nil, from: nil)
+            } else {
+                NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+            }
         }
 
         Divider()

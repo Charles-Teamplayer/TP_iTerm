@@ -17,9 +17,24 @@ final class SessionMonitor: ObservableObject {
     let windowGroupService = WindowGroupService()
 
     func start() {
-        Task { await refresh() }
+        Task {
+            await refresh()
+            syncWindowGroupsWithProfiles()  // 미배정 프로필 자동으로 첫 번째 창에 배정
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
+        }
+    }
+
+    // 프로필 목록과 window-groups 동기화 (미배정 프로필 → 첫 번째 창 자동 배정)
+    func syncWindowGroupsWithProfiles() {
+        guard !windowGroupService.groups.isEmpty else { return }
+        let allAssigned = Set(windowGroupService.groups.flatMap { $0.profileNames })
+        let unassigned = profileService.profiles.filter { !allAssigned.contains($0.name) }
+        guard !unassigned.isEmpty else { return }
+        let first = windowGroupService.groups[0]
+        for profile in unassigned {
+            windowGroupService.moveProfile(profile.name, to: first)
         }
     }
 
