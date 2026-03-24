@@ -2,6 +2,7 @@ import Foundation
 
 /// ~/.claude/activated-sessions.json 관리
 /// 활성화된 세션 목록을 경로(root) 기준으로 저장
+@MainActor
 final class ActivationService {
     static let shared = ActivationService()
     private let filePath = NSHomeDirectory() + "/.claude/activated-sessions.json"

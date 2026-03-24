@@ -165,9 +165,11 @@ final class SystemViewModel: ObservableObject {
             .components(separatedBy: "\n")
             .filter { $0.contains("|") }
             .compactMap { line in
-                let parts = line.components(separatedBy: "|")
-                guard parts.count == 2 else { return nil }
-                return (name: parts[0], path: parts[1])
+                guard let pipeIdx = line.firstIndex(of: "|") else { return nil }
+                let name = String(line[line.startIndex..<pipeIdx])
+                let path = String(line[line.index(after: pipeIdx)...])
+                guard !name.isEmpty, !path.isEmpty else { return nil }
+                return (name: name, path: path)
             }
 
         let existingWindows = await ShellService.runAsync("tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null")

@@ -65,7 +65,7 @@ final class ProfileService: ObservableObject {
                     result.append(SmugProfile(
                         id: stableID(for: name),
                         name: name,
-                        root: (currentRoot?.isEmpty == false) ? currentRoot! : "~/claude/\(name)",
+                        root: (currentRoot?.isEmpty == false) ? (currentRoot ?? "~/claude/\(name)") : "~/claude/\(name)",
                         delay: currentDelay,
                         enabled: true
                     ))
@@ -106,13 +106,17 @@ final class ProfileService: ObservableObject {
     private func generateYml(_ profiles: [SmugProfile]) -> String {
         var lines = ["session: claude-work", "windows:"]
         for profile in profiles {
-            lines.append("  - name: \(profile.name)")
+            let safeName = profile.name.contains(":") || profile.name.contains("\"") || profile.name.contains("'")
+                ? "\"\(profile.name.replacingOccurrences(of: "\"", with: "\\\""))\""
+                : profile.name
+            lines.append("  - name: \(safeName)")
             let rootStr = profile.root.contains(" ") ? "\"\(profile.root)\"" : profile.root
             lines.append("    root: \(rootStr)")
             lines.append("    commands:")
             let name = profile.name
+            let shellName = name.contains(" ") ? "'\(name)'" : name
             let delay = profile.delay
-            let statusCmd = "bash ~/.claude/scripts/tab-status.sh starting \(name) && "
+            let statusCmd = "bash ~/.claude/scripts/tab-status.sh starting \(shellName) && "
             let cmd = "sleep \(delay) && \(statusCmd)unset CLAUDECODE && claude --dangerously-skip-permissions --continue"
             lines.append("      - \(cmd)")
         }
