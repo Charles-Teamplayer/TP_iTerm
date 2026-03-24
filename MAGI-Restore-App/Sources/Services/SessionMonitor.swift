@@ -344,6 +344,14 @@ final class SessionMonitor: ObservableObject {
         }
     }
 
+    func selectAllLaunchable() {
+        selectedForRestore.removeAll()
+        for session in sessions where !session.isRunning
+            && (session.id.hasPrefix("profile-") || session.windowIndex == Int.max) {
+            selectedForRestore.insert(session.id)
+        }
+    }
+
     func deselectAll() {
         selectedForRestore.removeAll()
     }
@@ -353,6 +361,14 @@ final class SessionMonitor: ObservableObject {
     }
 
     func launchProfile(name: String, root: String, delay: Int, createDir: Bool = false) async {
+        // claude-work 세션 없으면 자동 생성
+        let sessionExists = await ShellService.runAsync(
+            "tmux has-session -t claude-work 2>/dev/null && echo yes || echo no"
+        )
+        if sessionExists == "no" {
+            await ShellService.runAsync("tmux new-session -s claude-work -d 2>/dev/null; true")
+        }
+
         let safeRoot = root.hasPrefix("~")
             ? root.replacingOccurrences(of: "~", with: NSHomeDirectory(), range: root.range(of: "~"))
             : root

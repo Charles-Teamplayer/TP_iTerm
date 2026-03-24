@@ -237,8 +237,22 @@ struct ContentView: View {
 
             Divider()
             VStack(spacing: 4) {
-                if restorableCount > 0 || runningCount > 0 || restorableCount > 0 {
+                if restorableCount > 0 || runningCount > 0 || launchableCount > 0 {
                     HStack(spacing: 6) {
+                        if launchableCount > 0 {
+                            Button {
+                                Task {
+                                    monitor.selectAllLaunchable()
+                                    await monitor.restoreSelected()
+                                }
+                            } label: {
+                                Label("전체 시작 (\(launchableCount))", systemImage: "play.circle.fill")
+                                    .font(.caption)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.blue)
+                        }
                         if restorableCount > 0 {
                             Button {
                                 Task {
