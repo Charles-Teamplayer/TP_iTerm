@@ -141,10 +141,6 @@ fi
 mkdir -p "$STATE_DIR"
 _save_state "$TTY_NAME" "$PROJECT" "$R" "$G" "$B"
 
-# 하위호환: pipe-delimited 상태 저장 (watchdog/tab-focus-monitor용)
-COMPAT_STATE_DIR="$HOME/.claude/tab-states"
-mkdir -p "$COMPAT_STATE_DIR"
-echo "${STATE}|${PROJECT}|$(date +%s)" > "$COMPAT_STATE_DIR/$TTY_NAME"
 
 # flash 처리
 FLASH=$(jq -r ".states[\"$STATE\"].flash // false" "$CONFIG" 2>/dev/null || echo "false")
