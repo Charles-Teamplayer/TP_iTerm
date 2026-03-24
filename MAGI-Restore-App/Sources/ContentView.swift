@@ -53,6 +53,7 @@ struct ContentView: View {
             NotificationService.shared.requestPermission()
             monitor.start()
             monitor.profileService.load()
+            monitor.windowGroupService.load()
             let msg = "APP_V8_LAUNCHED \(Date())\n"
             FileManager.default.createFile(atPath: "/tmp/restore_debug.log",
                                            contents: msg.data(using: .utf8))
@@ -147,88 +148,68 @@ struct ContentView: View {
     // MARK: - Session List Panel
 
     private var sessionListPanel: some View {
-        // 1:1 — 프로필 기반 세션만 표시
         let profileSessions = monitor.sessions.filter { $0.profileRoot != nil }
-        let filtered = searchText.isEmpty
-            ? profileSessions
-            : profileSessions.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
-        let runningCount = profileSessions.filter(\.isRunning).count
-        // 복원 대상 = 실제 tmux window가 있었던 중단 세션 (프로필 가상 세션 제외)
-        let restorableCount = profileSessions.filter {
+        let allRunning = profileSessions.filter(\.isRunning).count
+        let allRestorable = profileSessions.filter {
             !$0.isRunning && !$0.id.hasPrefix("profile-") && $0.windowIndex != Int.max
         }.count
-        let launchableCount = profileSessions.filter {
+        let allLaunchable = profileSessions.filter {
             !$0.isRunning && ($0.id.hasPrefix("profile-") || $0.windowIndex == Int.max)
         }.count
+        let wgs = monitor.windowGroupService
 
         return VStack(spacing: 0) {
             // 검색바
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.caption)
                 TextField("검색...", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.caption)
-                    .focused($searchFocused)
+                    .textFieldStyle(.plain).font(.caption).focused($searchFocused)
                 if !searchText.isEmpty {
                     Button { searchText = "" } label: {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.caption)
-                    }
-                    .buttonStyle(.plain)
+                    }.buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10).padding(.vertical, 6)
             .background(Color(nsColor: .controlBackgroundColor))
 
             Divider()
 
-            if monitor.sessions.isEmpty {
+            if profileSessions.isEmpty {
                 Spacer()
-                Image(systemName: "terminal")
-                    .font(.system(size: 32)).foregroundStyle(.secondary)
-                Text("tmux 세션 없음").foregroundStyle(.secondary)
-                Spacer()
-            } else if profileSessions.isEmpty {
-                Spacer()
-                Image(systemName: "rectangle.3.group")
-                    .font(.system(size: 32)).foregroundStyle(.secondary)
+                Image(systemName: "rectangle.3.group").font(.system(size: 32)).foregroundStyle(.secondary)
                 Text("프로필 설정 없음").foregroundStyle(.secondary).font(.callout)
-                Text("프로필 탭에서 세션을 추가하세요").foregroundStyle(.tertiary).font(.caption)
-                Spacer()
-            } else if filtered.isEmpty {
-                Spacer()
-                Text("검색 결과 없음").foregroundStyle(.secondary).font(.caption)
                 Spacer()
             } else {
-                List(filtered, selection: $selectedSession) { session in
-                    HStack(spacing: 8) {
-                        // 상태별 색상: 실행중=초록, 복원가능(tmux)=주황, 가상프로필=회색
-                        let dotColor: Color = session.isRunning ? .green
-                            : (!session.id.hasPrefix("profile-") && session.windowIndex != Int.max) ? .orange
-                            : .secondary
-                        Circle()
-                            .fill(dotColor)
-                            .frame(width: 8, height: 8)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(session.projectName)
-                                .font(.headline)
-                                .lineLimit(1)
-                            Group {
-                                if session.isRunning {
-                                    Text("PID: \(session.pid)")
-                                } else if session.id.hasPrefix("profile-") || session.windowIndex == Int.max {
-                                    Text("시작 가능")
-                                } else {
-                                    Text("복원 가능")
+                // 창(WindowPane)별 섹션
+                List(selection: $selectedSession) {
+                    ForEach(wgs.groups) { pane in
+                        let paneSessions = paneSessions(pane, all: profileSessions)
+                        let filtered = searchText.isEmpty ? paneSessions
+                            : paneSessions.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
+                        if !filtered.isEmpty || searchText.isEmpty {
+                            Section {
+                                ForEach(Array(filtered.enumerated()), id: \.element.id) { idx, session in
+                                    sessionRow(session, order: idx + 1, pane: pane, total: filtered.count)
+                                        .tag(session)
                                 }
+                            } header: {
+                                paneHeader(pane, sessions: paneSessions)
                             }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                         }
-                        Spacer()
                     }
-                    .padding(.vertical, 2)
-                    .tag(session)
+                    // 어떤 창에도 없는 세션
+                    let assigned = Set(wgs.groups.flatMap { $0.profileNames })
+                    let unassigned = profileSessions.filter { !assigned.contains($0.projectName) }
+                    let filteredUnassigned = searchText.isEmpty ? unassigned
+                        : unassigned.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
+                    if !filteredUnassigned.isEmpty {
+                        Section("미배정") {
+                            ForEach(filteredUnassigned) { session in
+                                sessionRow(session, order: nil, pane: nil, total: 0).tag(session)
+                            }
+                        }
+                    }
                 }
                 .listStyle(.plain)
                 .focusable(false)
@@ -237,60 +218,42 @@ struct ContentView: View {
 
             Divider()
             VStack(spacing: 4) {
-                if restorableCount > 0 || runningCount > 0 || launchableCount > 0 {
+                if allRestorable > 0 || allRunning > 0 || allLaunchable > 0 {
                     HStack(spacing: 6) {
-                        if launchableCount > 0 {
+                        if allLaunchable > 0 {
                             Button {
-                                Task {
-                                    monitor.selectAllLaunchable()
-                                    await monitor.restoreSelected()
-                                }
+                                Task { monitor.selectAllLaunchable(); await monitor.restoreSelected() }
                             } label: {
-                                Label("전체 시작 (\(launchableCount))", systemImage: "play.circle.fill")
-                                    .font(.caption)
-                                    .frame(maxWidth: .infinity)
+                                Label("전체 시작 (\(allLaunchable))", systemImage: "play.circle.fill")
+                                    .font(.caption).frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.blue)
+                            .buttonStyle(.borderedProminent).tint(.blue)
                         }
-                        if restorableCount > 0 {
+                        if allRestorable > 0 {
                             Button {
-                                Task {
-                                    monitor.selectAllStopped()
-                                    await monitor.restoreSelected()
-                                }
+                                Task { monitor.selectAllStopped(); await monitor.restoreSelected() }
                             } label: {
-                                Label("전체 복원 (\(restorableCount))", systemImage: "arrow.clockwise.circle.fill")
-                                    .font(.caption)
-                                    .frame(maxWidth: .infinity)
+                                Label("전체 복원 (\(allRestorable))", systemImage: "arrow.clockwise.circle.fill")
+                                    .font(.caption).frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
                         }
-                        if runningCount > 0 {
-                            Button {
-                                Task { await monitor.stopAllRunning() }
-                            } label: {
-                                Label("중지 (\(runningCount))", systemImage: "stop.circle.fill")
-                                    .font(.caption)
-                                    .frame(maxWidth: .infinity)
+                        if allRunning > 0 {
+                            Button { Task { await monitor.stopAllRunning() } } label: {
+                                Label("중지 (\(allRunning))", systemImage: "stop.circle.fill")
+                                    .font(.caption).frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.bordered)
-                            .tint(.orange)
+                            .buttonStyle(.bordered).tint(.orange)
                         }
-                        if restorableCount > 0 {
-                            Button {
-                                Task { await monitor.purgeIdleZshWindows() }
-                            } label: {
-                                Label("zsh 정리 (\(restorableCount))", systemImage: "xmark.circle.fill")
-                                    .font(.caption)
-                                    .frame(maxWidth: .infinity)
+                        if allRestorable > 0 {
+                            Button { Task { await monitor.purgeIdleZshWindows() } } label: {
+                                Label("zsh 정리 (\(allRestorable))", systemImage: "xmark.circle.fill")
+                                    .font(.caption).frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.bordered)
-                            .tint(.red)
+                            .buttonStyle(.bordered).tint(.red)
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.top, 6)
+                    .padding(.horizontal, 10).padding(.top, 6)
                 }
 
                 if monitor.isBatchRestoring, let progress = monitor.restoreProgress {
@@ -314,14 +277,14 @@ struct ContentView: View {
 
                 HStack(spacing: 6) {
                     Circle().fill(Color.green).frame(width: 6, height: 6)
-                    Text("실행 \(runningCount)").font(.caption).foregroundStyle(.secondary)
-                    if restorableCount > 0 {
+                    Text("실행 \(allRunning)").font(.caption).foregroundStyle(.secondary)
+                    if allRestorable > 0 {
                         Circle().fill(Color.orange).frame(width: 6, height: 6)
-                        Text("복원 \(restorableCount)").font(.caption).foregroundStyle(.secondary)
+                        Text("복원 \(allRestorable)").font(.caption).foregroundStyle(.secondary)
                     }
-                    if launchableCount > 0 {
+                    if allLaunchable > 0 {
                         Circle().fill(Color.secondary).frame(width: 6, height: 6)
-                        Text("대기 \(launchableCount)").font(.caption).foregroundStyle(.secondary)
+                        Text("대기 \(allLaunchable)").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button { showNewSession = true } label: {
@@ -348,6 +311,65 @@ struct ContentView: View {
             }
             .background(.bar)
         }
+    }
+
+    // MARK: - Session List Helpers
+
+    private func paneSessions(_ pane: WindowPane, all: [ClaudeSession]) -> [ClaudeSession] {
+        pane.profileNames.compactMap { name in all.first { $0.projectName == name } }
+    }
+
+    @ViewBuilder
+    private func paneHeader(_ pane: WindowPane, sessions: [ClaudeSession]) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "macwindow").font(.caption2).foregroundStyle(.secondary)
+            Text(pane.name).font(.caption.bold())
+            Text("· \(pane.sessionName)").font(.caption2).foregroundStyle(.secondary)
+            Spacer()
+            Button {
+                Task { await monitor.startGroup(pane) }
+            } label: {
+                Label("창 시작", systemImage: "play.rectangle.fill").font(.caption2)
+            }
+            .buttonStyle(.borderedProminent).tint(.blue)
+            .disabled(sessions.isEmpty)
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func sessionRow(_ session: ClaudeSession, order: Int?, pane: WindowPane?, total: Int) -> some View {
+        HStack(spacing: 6) {
+            // 실행순서 + 이동 버튼
+            if let order, let pane {
+                HStack(spacing: 2) {
+                    Text("\(order)").font(.caption2.monospacedDigit()).foregroundStyle(.tertiary).frame(width: 16, alignment: .trailing)
+                    VStack(spacing: 0) {
+                        Button { monitor.windowGroupService.moveProfileInGroup(session.projectName, groupId: pane.id, up: true) } label: {
+                            Image(systemName: "chevron.up").font(.system(size: 7))
+                        }.buttonStyle(.plain).disabled(order == 1)
+                        Button { monitor.windowGroupService.moveProfileInGroup(session.projectName, groupId: pane.id, up: false) } label: {
+                            Image(systemName: "chevron.down").font(.system(size: 7))
+                        }.buttonStyle(.plain).disabled(order == total)
+                    }
+                }
+            }
+            // 상태 dot
+            let dotColor: Color = session.isRunning ? .green
+                : (!session.id.hasPrefix("profile-") && session.windowIndex != Int.max) ? .orange
+                : .secondary
+            Circle().fill(dotColor).frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.projectName).font(.callout).lineLimit(1)
+                Group {
+                    if session.isRunning { Text("PID: \(session.pid)") }
+                    else if session.id.hasPrefix("profile-") || session.windowIndex == Int.max { Text("시작 가능") }
+                    else { Text("복원 가능") }
+                }.font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 2)
     }
 
     // MARK: - Session Detail Panel
