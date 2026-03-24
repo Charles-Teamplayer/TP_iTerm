@@ -131,14 +131,15 @@ while true; do
 import json, os, sys
 name = sys.argv[1]
 path = os.path.expanduser('~/.claude/activated-sessions.json')
-try:
-    data = json.load(open(path))
-    for p in data.get('activated', []):
-        if os.path.basename(p) == name:
-            print(p)
-            break
-except Exception:
-    pass
+for candidate in [path, path + '.bak']:
+    try:
+        data = json.load(open(candidate))
+        for p in data.get('activated', []):
+            if os.path.basename(p) == name:
+                print(p)
+                sys.exit(0)
+    except Exception:
+        continue
 " "$RESTART_PROJECT" 2>/dev/null)
                 WINDOW_NAME="$RESTART_PROJECT"
 

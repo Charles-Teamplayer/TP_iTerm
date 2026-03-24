@@ -86,15 +86,16 @@ ACTIVATED_FILE="$HOME/.claude/activated-sessions.json"
 
 # activated-sessions.json에서 경로 목록 읽기
 ACTIVATED_ROOTS=$(python3 -c "
-import json, os
+import json, os, sys
 path = os.path.expanduser('~/.claude/activated-sessions.json')
-try:
-    with open(path) as f:
-        data = json.load(f)
-    for r in data.get('activated', []):
-        print(r)
-except Exception:
-    pass
+for candidate in [path, path + '.bak']:
+    try:
+        data = json.load(open(candidate))
+        for r in data.get('activated', []):
+            print(r)
+        sys.exit(0)
+    except Exception:
+        continue
 " 2>/dev/null)
 
 if [ -z "$ACTIVATED_ROOTS" ]; then
