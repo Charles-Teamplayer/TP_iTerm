@@ -1,77 +1,194 @@
 session: claude-work
-
 windows:
-  - name: imsms
-    root: ~/claude/TP_newIMSMS
+  - name: AppleTV_ScreenSaver.app
+    root: /Users/teample.casper/claude/AppleTV_ScreenSaver.app
     commands:
-      - bash ~/.claude/scripts/tab-status.sh starting imsms && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: imsms-agent
-    root: ~/claude/TP_newIMSMS_Agent
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting AppleTV_ScreenSaver.app && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: ClaudeChat
+    root: /Users/teample.casper/claude/ClaudeChat
     commands:
-      - sleep 5 && bash ~/.claude/scripts/tab-status.sh starting imsms-agent && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: mdm
-    root: ~/claude/TP_MDM
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting ClaudeChat && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: Claude_Code_TPWriter
+    root: /Users/teample.casper/claude/Claude_Code_TPWriter
     commands:
-      - sleep 10 && bash ~/.claude/scripts/tab-status.sh starting mdm && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: tesla-lvds
-    root: ~/claude/TP_TESLA_LVDS
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting Claude_Code_TPWriter && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: IMS_AutoContact_New
+    root: /Users/teample.casper/claude/IMS_AutoContact_New
     commands:
-      - sleep 15 && bash ~/.claude/scripts/tab-status.sh starting tesla-lvds && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: tesla-dashboard
-    root: ~/ralph-claude-code/TESLA_Status_Dashboard
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting IMS_AutoContact_New && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: IMS_publishManager
+    root: /Users/teample.casper/claude/IMS_publishManager
     commands:
-      - sleep 20 && bash ~/.claude/scripts/tab-status.sh starting tesla-dashboard && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: mindmap
-    root: ~/claude/TP_MindMap_AutoCC
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting IMS_publishManager && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: IPinside.app
+    root: /Users/teample.casper/claude/IPinside.app
     commands:
-      - sleep 25 && bash ~/.claude/scripts/tab-status.sh starting mindmap && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: sj-mindmap
-    root: ~/SJ_MindMap
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting IPinside.app && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: NewSilentCamera
+    root: /Users/teample.casper/claude/NewSilentCamera
     commands:
-      - sleep 30 && bash ~/.claude/scripts/tab-status.sh starting sj-mindmap && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: imessage
-    root: ~/claude/TP_A.iMessage_standalone_01067051080
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting NewSilentCamera && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: NextLevelSilentCamera
+    root: /Users/teample.casper/claude/NextLevelSilentCamera
     commands:
-      - sleep 35 && bash ~/.claude/scripts/tab-status.sh starting imessage && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: btt
-    root: ~/claude/TP_BTT
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting NextLevelSilentCamera && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: SilentCameraApp_v0.5_backup
+    root: /Users/teample.casper/claude/SilentCameraApp_v0.5_backup
     commands:
-      - sleep 40 && bash ~/.claude/scripts/tab-status.sh starting btt && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: infra
-    root: ~/claude/TP_Infra_reduce_Project
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting SilentCameraApp_v0.5_backup && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP-BP_Knowledgebase
+    root: /Users/teample.casper/claude/TP-BP_Knowledgebase
     commands:
-      - sleep 45 && bash ~/.claude/scripts/tab-status.sh starting infra && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: skills
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP-BP_Knowledgebase && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP-Firewall
+    root: /Users/teample.casper/claude/TP-Firewall
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP-Firewall && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_A.iMessage_standalone_01067051080
+    root: /Users/teample.casper/claude/TP_A.iMessage_standalone_01067051080
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_A.iMessage_standalone_01067051080 && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_BTT
+    root: /Users/teample.casper/claude/TP_BTT
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_BTT && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_GIT_Publisher
+    root: /Users/teample.casper/claude/TP_GIT_Publisher
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_GIT_Publisher && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_MDM
+    root: /Users/teample.casper/claude/TP_MDM
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_MDM && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_MailSystem
+    root: /Users/teample.casper/claude/TP_MailSystem
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_MailSystem && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_Markdown_Mermaid_Editor
+    root: /Users/teample.casper/claude/TP_Markdown_Mermaid_Editor
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_Markdown_Mermaid_Editor && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_MindMap_AutoCC
+    root: /Users/teample.casper/claude/TP_MindMap_AutoCC
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_MindMap_AutoCC && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_Status
+    root: /Users/teample.casper/claude/TP_Status
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_Status && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_StatusDash
+    root: /Users/teample.casper/claude/TP_StatusDash
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_StatusDash && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_TESLA_LVDS
+    root: /Users/teample.casper/claude/TP_TESLA_LVDS
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_TESLA_LVDS && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_Worker+QA_Project-singleProject
+    root: /Users/teample.casper/claude/TP_Worker+QA_Project-singleProject
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_Worker+QA_Project-singleProject && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_autoSwitch_Macmini
+    root: /Users/teample.casper/claude/TP_autoSwitch_Macmini
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_autoSwitch_Macmini && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_distAPP
+    root: /Users/teample.casper/claude/TP_distAPP
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_distAPP && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_newIMSMS
+    root: /Users/teample.casper/claude/TP_newIMSMS
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_newIMSMS && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_newIMSMS_Agent
+    root: /Users/teample.casper/claude/TP_newIMSMS_Agent
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_newIMSMS_Agent && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: a.imessage
+    root: /Users/teample.casper/claude/a.imessage
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting a.imessage && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: ai-chatbot-solution
+    root: /Users/teample.casper/claude/ai-chatbot-solution
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting ai-chatbot-solution && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: blender-mcp
+    root: /Users/teample.casper/claude/blender-mcp
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting blender-mcp && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: brandtalk-test
+    root: /Users/teample.casper/claude/brandtalk-test
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting brandtalk-test && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: demo.imsms.im
+    root: /Users/teample.casper/claude/demo.imsms.im
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting demo.imsms.im && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: genesys-voip-app
+    root: /Users/teample.casper/claude/genesys-voip-app
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting genesys-voip-app && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: imbot-chat
+    root: /Users/teample.casper/claude/imbot-chat
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting imbot-chat && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: imessage-ids-lookup
+    root: /Users/teample.casper/claude/imessage-ids-lookup
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting imessage-ids-lookup && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: imsms-console-system
+    root: /Users/teample.casper/claude/imsms-console-system
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting imsms-console-system && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: imsms.im-website
+    root: /Users/teample.casper/claude/imsms.im-website
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting imsms.im-website && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: iros-registry-extractor
+    root: /Users/teample.casper/claude/iros-registry-extractor
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting iros-registry-extractor && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: link-preview-test
+    root: /Users/teample.casper/claude/link-preview-test
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting link-preview-test && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: seanJ-FIFA26
+    root: /Users/teample.casper/claude/seanJ-FIFA26
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting seanJ-FIFA26 && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: teamplayer-actual-site
+    root: /Users/teample.casper/claude/teamplayer-actual-site
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting teamplayer-actual-site && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: teamplayer-demo
+    root: /Users/teample.casper/claude/teamplayer-demo
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting teamplayer-demo && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: teamplayer-website-backup-real
+    root: /Users/teample.casper/claude/teamplayer-website-backup-real
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting teamplayer-website-backup-real && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: teamplean-website
+    root: /Users/teample.casper/claude/teamplean-website
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting teamplean-website && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: terminal-mirror
+    root: /Users/teample.casper/claude/terminal-mirror
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting terminal-mirror && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: universalMAC_Converter_gensys_calude
+    root: /Users/teample.casper/claude/universalMAC_Converter_gensys_calude
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting universalMAC_Converter_gensys_calude && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_history
+    root: ~/claude/TP_history
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_history && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_skills
     root: ~/claude/TP_skills
     commands:
-      - sleep 50 && bash ~/.claude/scripts/tab-status.sh starting skills && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: appletv
-    root: ~/claude/AppleTV_ScreenSaver.app
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting TP_skills && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: ims_Auto_Contact_APP
+    root: "/Users/teample.casper/claude/ims_Auto_Contact APP"
     commands:
-      - sleep 55 && bash ~/.claude/scripts/tab-status.sh starting appletv && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: imsms-web
-    root: ~/claude/imsms.im-website
-    commands:
-      - sleep 60 && bash ~/.claude/scripts/tab-status.sh starting imsms-web && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: auto-restart
-    root: ~/claude/TP_iTerm
-    commands:
-      - sleep 65 && bash ~/.claude/scripts/tab-status.sh starting auto-restart && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
-
-  - name: monitor
-    root: ~/claude
-    commands:
-      - echo "=== Claude Work Monitor ===" && tmux ls && echo "" && bash ~/.claude/scripts/session-registry.sh list
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting ims_Auto_Contact_APP && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
