@@ -1,11 +1,11 @@
 # Session State (Auto-saved at compact)
-> Generated: 2026-03-24 11:29:56
+> Generated: 2026-03-24 14:26:39
 > Project: MAGI-Restore-App
 
 ## Note
 이 파일은 컨텍스트 압축 직전에 자동 생성되었습니다.
 Claude는 압축 후 이 파일을 읽어서 맥락을 복구하세요.
-압축 전 대화 원본: /Users/teample.casper/claude/TP_history/_global/compact_backups/MAGI-Restore-App_20260324_112956.jsonl
+압축 전 대화 원본: /Users/teample.casper/claude/TP_history/_global/compact_backups/MAGI-Restore-App_20260324_142639.jsonl
 
 ## Recovery
 압축 후 맥락이 부족하면:

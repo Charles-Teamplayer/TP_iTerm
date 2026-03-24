@@ -11,7 +11,15 @@ struct ShellService {
         // GUI 앱은 PATH 상속 안 함 → homebrew/tmux/claude/nvm 경로 명시
         var env = ProcessInfo.processInfo.environment
         let home = env["HOME"] ?? NSHomeDirectory()
-        let nvmNodeBin = "\(home)/.nvm/versions/node/v22.18.0/bin"
+        // nvm 최신 버전 동적 탐색 (하드코딩 제거)
+        let nvmVersionsDir = "\(home)/.nvm/versions/node"
+        let nvmNodeBin: String
+        if let versions = try? FileManager.default.contentsOfDirectory(atPath: nvmVersionsDir),
+           let latest = versions.filter({ $0.hasPrefix("v") }).sorted(by: { $0.compare($1, options: .numeric) == .orderedAscending }).last {
+            nvmNodeBin = "\(nvmVersionsDir)/\(latest)/bin"
+        } else {
+            nvmNodeBin = "\(home)/.nvm/versions/node/v22.18.0/bin"  // fallback
+        }
         let extraPaths = "\(nvmNodeBin):/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin"
         env["PATH"] = extraPaths + ":" + (env["PATH"] ?? "/usr/bin:/bin")
         process.environment = env

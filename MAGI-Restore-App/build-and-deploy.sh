@@ -22,6 +22,9 @@ if [ -d "$APP_BUNDLE" ]; then
 
     cp "$BINARY" "$MACOS_DIR/$TARGET_NAME" && echo "✅ /Applications updated"
 
+    # Info.plist 동기화 (CFBundleExecutable 불일치 방지)
+    cp "$SCRIPT_DIR/../TP_iTerm_Restore.app/Contents/Info.plist" "$APP_BUNDLE/Contents/Info.plist" 2>/dev/null && echo "✅ Info.plist synced"
+
     # 깨진 코드서명 잔여물 제거 후 ad-hoc 재서명
     rm -rf "$APP_BUNDLE/Contents/_CodeSignature" 2>/dev/null || true
     codesign --force --sign - --deep "$APP_BUNDLE" 2>&1 && echo "✅ codesign applied"

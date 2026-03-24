@@ -7,7 +7,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "TPiTermRestore",
-            path: "Sources"
+            path: "Sources",
+            exclude: ["Info.plist"]
         )
     ]
 )
