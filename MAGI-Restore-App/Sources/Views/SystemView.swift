@@ -148,22 +148,27 @@ final class SystemViewModel: ObservableObject {
     }
 
     private func repairDeadWindows() async -> String {
-        let projects: [(name: String, path: String)] = [
-            ("imsms", "~/claude/TP_newIMSMS"),
-            ("imsms-agent", "~/claude/TP_newIMSMS_Agent"),
-            ("mdm", "~/claude/TP_MDM"),
-            ("tesla-lvds", "~/claude/TP_TESLA_LVDS"),
-            ("tesla-dashboard", "~/ralph-claude-code/TESLA_Status_Dashboard"),
-            ("mindmap", "~/claude/TP_MindMap_AutoCC"),
-            ("sj-mindmap", "~/SJ_MindMap"),
-            ("imessage", "~/claude/TP_A.iMessage_standalone_01067051080"),
-            ("btt", "~/claude/TP_BTT"),
-            ("infra", "~/claude/TP_Infra_reduce_Project"),
-            ("skills", "~/claude/TP_skills"),
-            ("appletv", "~/claude/AppleTV_ScreenSaver.app"),
-            ("imsms-web", "~/claude/imsms.im-website"),
-            ("auto-restart", "~/claude/TP_iTerm"),
-        ]
+        // activated-sessions.json 기반으로 프로젝트 목록 동적 로드 (하드코딩 제거)
+        let raw = await ShellService.runAsync("""
+            python3 -c "
+            import json, os
+            path = os.path.expanduser('~/.claude/activated-sessions.json')
+            try:
+                data = json.load(open(path))
+                for p in data.get('activated', []):
+                    name = os.path.basename(p)
+                    print(name + '|' + p)
+            except: pass
+            " 2>/dev/null
+            """)
+        let projects: [(name: String, path: String)] = raw
+            .components(separatedBy: "\n")
+            .filter { $0.contains("|") }
+            .compactMap { line in
+                let parts = line.components(separatedBy: "|")
+                guard parts.count == 2 else { return nil }
+                return (name: parts[0], path: parts[1])
+            }
 
         let existingWindows = await ShellService.runAsync("tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null")
         let windowSet = Set(existingWindows.components(separatedBy: "\n").filter { !$0.isEmpty })
