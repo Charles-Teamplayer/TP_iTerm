@@ -12,12 +12,13 @@ final class ActivationService {
     // MARK: - Read
 
     func loadActivated() -> Set<String> {
-        guard let data = FileManager.default.contents(atPath: filePath),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let list = obj["activated"] as? [String] else {
-            return []
+        for path in [filePath, filePath + ".bak"] {
+            guard let data = FileManager.default.contents(atPath: path),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let list = obj["activated"] as? [String] else { continue }
+            return Set(list)
         }
-        return Set(list)
+        return []
     }
 
     func isActivated(root: String) -> Bool {
@@ -56,6 +57,7 @@ final class ActivationService {
         // 쓰기 전 .bak 백업 (SPOF 방어: 손상 시 복구 가능)
         let bakPath = filePath + ".bak"
         if FileManager.default.fileExists(atPath: filePath) {
+            try? FileManager.default.removeItem(atPath: bakPath)
             try? FileManager.default.copyItem(atPath: filePath, toPath: bakPath)
         }
         try? data.write(to: URL(fileURLWithPath: filePath), options: .atomic)
