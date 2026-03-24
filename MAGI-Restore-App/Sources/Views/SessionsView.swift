@@ -99,10 +99,7 @@ struct SessionDetailView: View {
                                 HStack(spacing: 10) {
                                     if let root = session.profileRoot {
                                         // 프로필 기반 세션 → 디렉토리 존재 여부로 생성/시작 분기
-                                        let safeRoot = root.hasPrefix("~")
-                                            ? root.replacingOccurrences(of: "~", with: NSHomeDirectory(),
-                                                range: root.range(of: "~"))
-                                            : root
+                                        let safeRoot = root.hasPrefix("~") ? NSHomeDirectory() + root.dropFirst() : root
                                         let dirExists = FileManager.default.fileExists(atPath: safeRoot)
                                         Button {
                                             Task {

@@ -28,7 +28,7 @@ final class BackupService: ObservableObject {
         isRunning = true
         defer { isRunning = false }
 
-        let expandedPath = config.path.replacingOccurrences(of: "~", with: NSHomeDirectory())
+        let expandedPath = config.path.hasPrefix("~") ? NSHomeDirectory() + config.path.dropFirst() : config.path
         let sourceDir = NSHomeDirectory() + "/.claude"
         let result = await ShellService.runAsync(
             "mkdir -p '\(expandedPath)' && rsync -av --exclude='logs/' --exclude='*.tmp' --exclude='backups/' '\(sourceDir)/' '\(expandedPath)/' && echo '__RSYNC_OK__'"
