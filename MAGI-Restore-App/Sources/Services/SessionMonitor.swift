@@ -17,10 +17,7 @@ final class SessionMonitor: ObservableObject {
     let windowGroupService = WindowGroupService()
 
     func start() {
-        Task {
-            await refresh()
-            syncWindowGroupsWithProfiles()  // 미배정 프로필 자동으로 첫 번째 창에 배정
-        }
+        Task { await refresh() }
         timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
         }

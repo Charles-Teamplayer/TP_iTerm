@@ -107,7 +107,8 @@ final class ProfileService: ObservableObject {
         var lines = ["session: claude-work", "windows:"]
         for profile in profiles {
             lines.append("  - name: \(profile.name)")
-            lines.append("    root: \(profile.root)")
+            let rootStr = profile.root.contains(" ") ? "\"\(profile.root)\"" : profile.root
+            lines.append("    root: \(rootStr)")
             lines.append("    commands:")
             let name = profile.name
             let delay = profile.delay
