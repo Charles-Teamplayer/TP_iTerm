@@ -40,6 +40,8 @@
 	<string>13.0</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>TP_iTerm_Restore가 iTerm2를 제어하여 tmux 세션을 복원합니다.</string>
+	<key>LSUIElement</key>
+	<true/>
 	<key>NSAppleScriptEnabled</key>
 	<true/>
 	<key>NSPrincipalClass</key>
