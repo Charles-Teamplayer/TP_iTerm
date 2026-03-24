@@ -22,6 +22,10 @@ struct ContentView: View {
     @State private var editingTabKey: String? = nil   // "paneId|profileName"
     @State private var tabNumberInput: String = ""
 
+    // 드래그 앤 드롭 상태
+    @State private var dragHoverPaneId: UUID? = nil
+    @State private var dragHoverKey: String? = nil     // "paneId|profileName"
+
     enum Tab: String, CaseIterable {
         case sessions = "세션"
         case profiles = "프로필"
@@ -66,6 +70,8 @@ struct ContentView: View {
             monitor.profileService.load()
             monitor.windowGroupService.load()
             monitor.syncWindowGroupsWithProfiles()
+            // 대시보드 열릴 때 Cmd+Tab + Dock에 나타나도록 정책 전환
+            NSApp.setActivationPolicy(.regular)
             DispatchQueue.main.async {
                 if let window = NSApp.windows.first(where: { $0.canBecomeKey }) {
                     window.hidesOnDeactivate = false
@@ -80,7 +86,11 @@ struct ContentView: View {
                 selectedSession = sessions.first { $0.id == current.id }
             }
         }
-        .onDisappear { monitor.stop() }
+        .onDisappear {
+            monitor.stop()
+            // 대시보드 닫히면 메뉴바 전용으로 복귀 (Dock/Cmd+Tab에서 숨김)
+            NSApp.setActivationPolicy(.accessory)
+        }
         .sheet(isPresented: $showAddPane) {
             AddPaneSheet { name in monitor.windowGroupService.addGroup(name: name) }
         }
@@ -223,67 +233,76 @@ struct ContentView: View {
                 .padding(.top, 8)
                 Spacer()
             } else {
-                // 창(WindowPane)별 섹션
-                List(selection: $selectedSession) {
-                    // 창 추가 버튼 (리스트 최상단)
-                    Section {
-                        Button {
-                            showAddPane = true
-                        } label: {
+                // 창(WindowPane)별 섹션 — ScrollView 기반 (List는 macOS에서 drag 이벤트 차단)
+                let assigned = Set(wgs.groups.flatMap { $0.profileNames })
+                let unassigned = profileSessions.filter { !assigned.contains($0.projectName) }
+                let filteredUnassigned = searchText.isEmpty ? unassigned
+                    : unassigned.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
+
+                let totalVisible = wgs.groups.flatMap { pane in
+                    paneSessions(pane, all: profileSessions)
+                        .filter { searchText.isEmpty || $0.projectName.localizedCaseInsensitiveContains(searchText) }
+                }.count + filteredUnassigned.count
+
+                ScrollView {
+                    LazyVStack(spacing: 0, pinnedViews: []) {
+                        // 새 창 추가 버튼
+                        Button { showAddPane = true } label: {
                             Label("새 창 추가", systemImage: "plus.rectangle")
                                 .font(.caption)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 10).padding(.vertical, 6)
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.blue)
-                        .padding(.vertical, 2)
-                    }
-                    ForEach(wgs.groups) { pane in
-                        let paneSessions = paneSessions(pane, all: profileSessions)
-                        let filtered = searchText.isEmpty ? paneSessions
-                            : paneSessions.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
-                        if !filtered.isEmpty || searchText.isEmpty {
-                            Section {
+                        Divider()
+
+                        ForEach(wgs.groups) { pane in
+                            let paneSess = paneSessions(pane, all: profileSessions)
+                            let filtered = searchText.isEmpty ? paneSess
+                                : paneSess.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
+                            if !filtered.isEmpty || searchText.isEmpty {
+                                // 섹션 헤더 (pane)
+                                paneHeader(pane, sessions: paneSess)
+                                    .padding(.horizontal, 10)
+                                    .background(Color(nsColor: .controlBackgroundColor))
+                                Divider()
+                                // 섹션 행들
                                 ForEach(Array(filtered.enumerated()), id: \.element.id) { idx, session in
                                     sessionRow(session, order: idx + 1, pane: pane, total: filtered.count)
-                                        .tag(session)
+                                        .padding(.horizontal, 10)
+                                        .background(selectedSession?.id == session.id
+                                                    ? Color.accentColor.opacity(0.15) : Color.clear)
+                                        .onTapGesture { selectedSession = session }
+                                    Divider().padding(.leading, 10)
                                 }
-                            } header: {
-                                paneHeader(pane, sessions: paneSessions)
                             }
                         }
-                    }
-                    // 어떤 창에도 없는 세션
-                    let assigned = Set(wgs.groups.flatMap { $0.profileNames })
-                    let unassigned = profileSessions.filter { !assigned.contains($0.projectName) }
-                    let filteredUnassigned = searchText.isEmpty ? unassigned
-                        : unassigned.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
-                    if !filteredUnassigned.isEmpty {
-                        Section("미배정") {
+
+                        if !filteredUnassigned.isEmpty {
+                            Text("미배정")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(Color(nsColor: .controlBackgroundColor))
+                            Divider()
                             ForEach(filteredUnassigned) { session in
-                                sessionRow(session, order: nil, pane: nil, total: 0).tag(session)
+                                sessionRow(session, order: nil, pane: nil, total: 0)
+                                    .padding(.horizontal, 10)
+                                    .background(selectedSession?.id == session.id
+                                                ? Color.accentColor.opacity(0.15) : Color.clear)
+                                    .onTapGesture { selectedSession = session }
+                                Divider().padding(.leading, 10)
                             }
                         }
                     }
                 }
-                .listStyle(.plain)
-                .focusable(false)
-                .focusEffectDisabled()
                 .overlay {
-                    if !searchText.isEmpty {
-                        let totalVisible = wgs.groups.flatMap { pane in
-                            paneSessions(pane, all: profileSessions)
-                                .filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
-                        }.count
-                        let unassignedVisible = profileSessions.filter {
-                            !Set(wgs.groups.flatMap { $0.profileNames }).contains($0.projectName)
-                            && $0.projectName.localizedCaseInsensitiveContains(searchText)
-                        }.count
-                        if totalVisible + unassignedVisible == 0 {
-                            VStack(spacing: 8) {
-                                Image(systemName: "magnifyingglass").font(.system(size: 24)).foregroundStyle(.secondary)
-                                Text("'\(searchText)' 결과 없음").font(.callout).foregroundStyle(.secondary)
-                            }
+                    if !searchText.isEmpty && totalVisible == 0 {
+                        VStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass").font(.system(size: 24)).foregroundStyle(.secondary)
+                            Text("'\(searchText)' 결과 없음").font(.callout).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -432,6 +451,19 @@ struct ContentView: View {
             .help("창 삭제 (세션은 첫 번째 창으로 이동)")
         }
         .padding(.vertical, 4)
+        .background(dragHoverPaneId == pane.id ? Color.blue.opacity(0.15) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .dropDestination(for: String.self) { items, _ in
+            guard let payload = items.first else { return false }
+            let parts = payload.split(separator: "|", maxSplits: 1)
+            guard let profileName = parts.first.map(String.init) else { return false }
+            let srcIdStr = parts.count > 1 ? String(parts[1]) : ""
+            if let srcId = UUID(uuidString: srcIdStr), srcId == pane.id { return false }
+            monitor.windowGroupService.moveProfile(profileName, to: pane)
+            return true
+        } isTargeted: { active in
+            dragHoverPaneId = active ? pane.id : nil
+        }
     }
 
     @ViewBuilder
@@ -490,8 +522,28 @@ struct ContentView: View {
             Spacer()
         }
         .padding(.vertical, 2)
+        .background(dragHoverKey == "\(pane?.id.uuidString ?? "")|\(session.projectName)"
+                    ? Color.accentColor.opacity(0.12) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { if editingTabKey != nil { editingTabKey = nil } }
+        .draggable("\(session.projectName)|\(pane?.id.uuidString ?? "")")
+        .dropDestination(for: String.self) { items, _ in
+            guard let payload = items.first, let targetPane = pane else { return false }
+            let parts = payload.split(separator: "|", maxSplits: 1)
+            guard let profileName = parts.first.map(String.init) else { return false }
+            let srcIdStr = parts.count > 1 ? String(parts[1]) : ""
+            let wgs = monitor.windowGroupService
+            if let srcId = UUID(uuidString: srcIdStr), srcId != targetPane.id {
+                wgs.moveProfile(profileName, to: targetPane)
+            }
+            if let gi = wgs.groups.firstIndex(where: { $0.id == targetPane.id }),
+               let destIdx = wgs.groups[gi].profileNames.firstIndex(of: session.projectName) {
+                wgs.moveProfileToIndex(profileName, groupId: targetPane.id, index: destIdx)
+            }
+            return true
+        } isTargeted: { active in
+            dragHoverKey = active ? "\(pane?.id.uuidString ?? "")|\(session.projectName)" : nil
+        }
         .contextMenu {
             if let pane {
                 let others = monitor.windowGroupService.groups.filter { $0.id != pane.id }

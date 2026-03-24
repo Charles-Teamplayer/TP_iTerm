@@ -24,5 +24,18 @@
     <true/>
     <key>LSUIElement</key>
     <true/>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.teample.tp-iterm.session-drag</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeDescription</key>
+            <string>TP iTerm Session Drag Item</string>
+        </dict>
+    </array>
 </dict>
 </plist>
