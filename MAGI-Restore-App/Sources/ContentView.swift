@@ -11,6 +11,13 @@ struct ContentView: View {
     @FocusState private var searchFocused: Bool
     @FocusState private var profileSearchFocused: Bool
 
+    // 창 관리
+    @State private var showAddPane = false
+    @State private var renamingPane: WindowPane? = nil
+    @State private var importingToPane: WindowPane? = nil
+    @State private var paneToDelete: WindowPane? = nil
+    @State private var showDeletePaneConfirm = false
+
     enum Tab: String, CaseIterable {
         case sessions = "세션"
         case profiles = "프로필"
@@ -64,6 +71,26 @@ struct ContentView: View {
             }
         }
         .onDisappear { monitor.stop() }
+        .sheet(isPresented: $showAddPane) {
+            AddPaneSheet { name in monitor.windowGroupService.addGroup(name: name) }
+        }
+        .sheet(item: $renamingPane) { pane in
+            RenamePaneSheet(pane: pane) { newName in
+                monitor.windowGroupService.updateGroup(pane, name: newName)
+            }
+        }
+        .sheet(item: $importingToPane) { pane in
+            ImportToPaneSheet(pane: pane, monitor: monitor)
+        }
+        .confirmationDialog(
+            "'\(paneToDelete?.name ?? "")' 창을 삭제하시겠습니까?\n세션은 첫 번째 창으로 이동합니다.",
+            isPresented: $showDeletePaneConfirm, titleVisibility: .visible
+        ) {
+            Button("삭제", role: .destructive) {
+                if let p = paneToDelete { monitor.windowGroupService.deleteGroup(p) }
+            }
+            Button("취소", role: .cancel) {}
+        }
         .background {
             Group {
                 Button("") {
@@ -287,6 +314,11 @@ struct ContentView: View {
                         Text("대기 \(allLaunchable)").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    Button { showAddPane = true } label: {
+                        Image(systemName: "plus.rectangle").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .help("새 창 추가")
                     Button { showNewSession = true } label: {
                         Image(systemName: "plus").font(.caption)
                     }
@@ -321,20 +353,44 @@ struct ContentView: View {
 
     @ViewBuilder
     private func paneHeader(_ pane: WindowPane, sessions: [ClaudeSession]) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             Image(systemName: "macwindow").font(.caption2).foregroundStyle(.secondary)
             Text(pane.name).font(.caption.bold())
             Text("· \(pane.sessionName)").font(.caption2).foregroundStyle(.secondary)
             Spacer()
-            Button {
-                Task { await monitor.startGroup(pane) }
-            } label: {
-                Label("창 시작", systemImage: "play.rectangle.fill").font(.caption2)
+            // 임포트
+            Button { importingToPane = pane } label: {
+                Image(systemName: "arrow.down.doc").font(.caption2)
             }
-            .buttonStyle(.borderedProminent).tint(.blue)
+            .buttonStyle(.plain).help("세션 가져오기")
+            // 창 시작
+            Button { Task { await monitor.startGroup(pane) } } label: {
+                Image(systemName: "play.rectangle.fill").font(.caption2)
+            }
+            .buttonStyle(.plain).foregroundStyle(.blue).help("이 창 시작")
             .disabled(sessions.isEmpty)
+            // 더보기 메뉴
+            Menu {
+                Button { renamingPane = pane } label: {
+                    Label("이름 변경", systemImage: "pencil")
+                }
+                Button { importingToPane = pane } label: {
+                    Label("세션 가져오기", systemImage: "arrow.down.doc")
+                }
+                Divider()
+                Button(role: .destructive) {
+                    paneToDelete = pane
+                    showDeletePaneConfirm = true
+                } label: {
+                    Label("창 삭제", systemImage: "trash")
+                }
+                .disabled(monitor.windowGroupService.groups.count <= 1)
+            } label: {
+                Image(systemName: "ellipsis").font(.caption2).foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain).menuStyle(.borderlessButton).fixedSize()
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
     }
 
     @ViewBuilder
@@ -370,6 +426,28 @@ struct ContentView: View {
             Spacer()
         }
         .padding(.vertical, 2)
+        .contextMenu {
+            if let pane {
+                let others = monitor.windowGroupService.groups.filter { $0.id != pane.id }
+                if !others.isEmpty {
+                    Menu("다른 창으로 이동") {
+                        ForEach(others) { target in
+                            Button(target.name) {
+                                monitor.windowGroupService.moveProfile(session.projectName, to: target)
+                            }
+                        }
+                    }
+                }
+            } else {
+                Menu("창에 추가") {
+                    ForEach(monitor.windowGroupService.groups) { target in
+                        Button(target.name) {
+                            monitor.windowGroupService.moveProfile(session.projectName, to: target)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Session Detail Panel
@@ -401,6 +479,150 @@ struct EmptyStateView: View {
             Text(title).font(.title3).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - New Session Sheet
+
+// MARK: - Pane Management Sheets
+
+struct AddPaneSheet: View {
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("새 창 추가").font(.headline).padding()
+            Divider()
+            Form { TextField("창 이름 (예: IMSMS, Tesla)", text: $name) }.padding()
+            Divider()
+            HStack {
+                Button("취소") { dismiss() }
+                Spacer()
+                Button("추가") { onSave(name); dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }.padding()
+        }
+        .frame(width: 320)
+    }
+}
+
+struct RenamePaneSheet: View {
+    let pane: WindowPane
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+
+    init(pane: WindowPane, onSave: @escaping (String) -> Void) {
+        self.pane = pane
+        self.onSave = onSave
+        _name = State(initialValue: pane.name)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("창 이름 변경").font(.headline).padding()
+            Divider()
+            Form { TextField("창 이름", text: $name) }.padding()
+            Divider()
+            HStack {
+                Button("취소") { dismiss() }
+                Spacer()
+                Button("저장") { onSave(name); dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }.padding()
+        }
+        .frame(width: 320)
+    }
+}
+
+struct ImportToPaneSheet: View {
+    let pane: WindowPane
+    @ObservedObject var monitor: SessionMonitor
+    @Environment(\.dismiss) private var dismiss
+    @State private var selected: Set<UUID> = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("'\(pane.name)' 창에 세션 가져오기").font(.headline).padding()
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    importRows
+                }
+            }
+            .frame(minHeight: 150)
+            Divider()
+            HStack {
+                Text("\(selected.count)개 선택됨").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("취소") { dismiss() }
+                Button("가져오기") {
+                    for id in selected {
+                        if let profile = monitor.profileService.profiles.first(where: { $0.id == id }) {
+                            monitor.windowGroupService.moveProfile(profile.name, to: pane)
+                        }
+                    }
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(selected.isEmpty)
+            }.padding()
+        }
+        .frame(width: 420, height: 360)
+    }
+
+    @ViewBuilder
+    private var importRows: some View {
+        let profiles = monitor.profileService.profiles
+        let groups = monitor.windowGroupService.groups
+        ForEach(profiles, id: \.id) { profile in
+            ImportProfileRow(
+                profile: profile,
+                targetPane: pane,
+                groups: groups,
+                selected: $selected
+            )
+            Divider()
+        }
+    }
+}
+
+private struct ImportProfileRow: View {
+    let profile: SmugProfile
+    let targetPane: WindowPane
+    let groups: [WindowPane]
+    @Binding var selected: Set<UUID>
+
+    var currentPane: WindowPane {
+        groups.first { $0.profileNames.contains(profile.name) } ?? groups[0]
+    }
+    var isCurrentPane: Bool { currentPane.id == targetPane.id }
+
+    var body: some View {
+        HStack {
+            Toggle(isOn: Binding(
+                get: { selected.contains(profile.id) || isCurrentPane },
+                set: { on in
+                    guard !isCurrentPane else { return }
+                    if on { selected.insert(profile.id) } else { selected.remove(profile.id) }
+                }
+            )) { EmptyView() }
+            .toggleStyle(.checkbox)
+            .disabled(isCurrentPane)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(profile.name).font(.callout)
+                Text(profile.root).font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(isCurrentPane ? "현재" : currentPane.name)
+                .font(.caption)
+                .foregroundStyle(isCurrentPane ? Color.secondary : Color.blue)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
     }
 }
 

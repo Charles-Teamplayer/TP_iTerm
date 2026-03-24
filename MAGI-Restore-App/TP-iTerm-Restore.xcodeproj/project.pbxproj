@@ -1,0 +1,375 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0134BFFF004D82CF7981F06F /* TPiTermRestoreApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA9B2587FF68CBB505C0BF25 /* TPiTermRestoreApp.swift */; };
+		1F6D563A3664034AD05DA811 /* SessionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEBD40BFF204EF0867586A63 /* SessionMonitor.swift */; };
+		38378E9BE16C5DCBF4799337 /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B639CBFA50C7B05D08DD52 /* BackupService.swift */; };
+		6FF3D7CCB25149459D18A04F /* BackupConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD978A2A166A0C15F4569EAF /* BackupConfig.swift */; };
+		7853BECD7CE1DE8E3A7132DC /* ActivationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB6F9757182DB0B8195A1DA9 /* ActivationService.swift */; };
+		A49A3E7CF558B047DA964AED /* ProfilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14201DE558EFE1A7F1421942 /* ProfilesView.swift */; };
+		AFADFDC2A15586ED4C47CED0 /* SystemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A5B8EB2C6EB1472F968464 /* SystemView.swift */; };
+		BD6648BB47D04B68D4044722 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF57694881F609C23674CF0 /* ContentView.swift */; };
+		C056CDA3E9C1B8C2785819EC /* ProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AEE93569832A63032FCD434 /* ProfileService.swift */; };
+		C24966CF67702C724788DC08 /* WindowGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A24FD3D4960A9ED56E3FCF8 /* WindowGroup.swift */; };
+		C88F1AB0B3693D4DCE90083D /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8174F0E767191638307216 /* NotificationService.swift */; };
+		D2529C2788791CC0474D1347 /* SessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F636E663B5B9212BD339941 /* SessionsView.swift */; };
+		D2EB1755059F6279ABE65959 /* WindowGroupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE341DE4D585DB5620DD2019 /* WindowGroupService.swift */; };
+		D5963CF2DC924A57B2041257 /* SmugProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A0122D26C65168C8806ED4B /* SmugProfile.swift */; };
+		DF624D2D4FED5BE231819764 /* ShellService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F218EEF3CA14E2C115B5944B /* ShellService.swift */; };
+		E8287F2D143A530FD290FDA6 /* BackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E10AE645575D8A65C423E1A /* BackupView.swift */; };
+		FD9A35186A94F8211FB13F2E /* ClaudeSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61366C1753028504CA2E8AAD /* ClaudeSession.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0A24FD3D4960A9ED56E3FCF8 /* WindowGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowGroup.swift; sourceTree = "<group>"; };
+		14201DE558EFE1A7F1421942 /* ProfilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilesView.swift; sourceTree = "<group>"; };
+		17A5B8EB2C6EB1472F968464 /* SystemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemView.swift; sourceTree = "<group>"; };
+		31B639CBFA50C7B05D08DD52 /* BackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupService.swift; sourceTree = "<group>"; };
+		3AEE93569832A63032FCD434 /* ProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileService.swift; sourceTree = "<group>"; };
+		3F8174F0E767191638307216 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		61366C1753028504CA2E8AAD /* ClaudeSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeSession.swift; sourceTree = "<group>"; };
+		6DF57694881F609C23674CF0 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		6E10AE645575D8A65C423E1A /* BackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupView.swift; sourceTree = "<group>"; };
+		790BDE3BD8BFC0CA3FE15B36 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		7A0122D26C65168C8806ED4B /* SmugProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmugProfile.swift; sourceTree = "<group>"; };
+		8F636E663B5B9212BD339941 /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
+		AB6F9757182DB0B8195A1DA9 /* ActivationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivationService.swift; sourceTree = "<group>"; };
+		BA9B2587FF68CBB505C0BF25 /* TPiTermRestoreApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPiTermRestoreApp.swift; sourceTree = "<group>"; };
+		C81A8F1E1BAA7C38CDC8606E /* TP-iTerm-Restore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TP-iTerm-Restore.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		DE341DE4D585DB5620DD2019 /* WindowGroupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowGroupService.swift; sourceTree = "<group>"; };
+		F218EEF3CA14E2C115B5944B /* ShellService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellService.swift; sourceTree = "<group>"; };
+		FD978A2A166A0C15F4569EAF /* BackupConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupConfig.swift; sourceTree = "<group>"; };
+		FEBD40BFF204EF0867586A63 /* SessionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitor.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		7E3F3036326E500A460986B4 = {
+			isa = PBXGroup;
+			children = (
+				890F15DE3FBC096A975D10C4 /* Sources */,
+				C6FA5714B00CE38121BF430F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		890F15DE3FBC096A975D10C4 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				6DF57694881F609C23674CF0 /* ContentView.swift */,
+				790BDE3BD8BFC0CA3FE15B36 /* Info.plist */,
+				BA9B2587FF68CBB505C0BF25 /* TPiTermRestoreApp.swift */,
+				D5CC818CAA3CE4BF32AF794E /* Models */,
+				BC8D73946C82215D4D5C2775 /* Services */,
+				E6FC877838E4494CFDCA464D /* Views */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		BC8D73946C82215D4D5C2775 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				AB6F9757182DB0B8195A1DA9 /* ActivationService.swift */,
+				31B639CBFA50C7B05D08DD52 /* BackupService.swift */,
+				3F8174F0E767191638307216 /* NotificationService.swift */,
+				3AEE93569832A63032FCD434 /* ProfileService.swift */,
+				FEBD40BFF204EF0867586A63 /* SessionMonitor.swift */,
+				F218EEF3CA14E2C115B5944B /* ShellService.swift */,
+				DE341DE4D585DB5620DD2019 /* WindowGroupService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		C6FA5714B00CE38121BF430F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C81A8F1E1BAA7C38CDC8606E /* TP-iTerm-Restore.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D5CC818CAA3CE4BF32AF794E /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				FD978A2A166A0C15F4569EAF /* BackupConfig.swift */,
+				61366C1753028504CA2E8AAD /* ClaudeSession.swift */,
+				7A0122D26C65168C8806ED4B /* SmugProfile.swift */,
+				0A24FD3D4960A9ED56E3FCF8 /* WindowGroup.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		E6FC877838E4494CFDCA464D /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				6E10AE645575D8A65C423E1A /* BackupView.swift */,
+				14201DE558EFE1A7F1421942 /* ProfilesView.swift */,
+				8F636E663B5B9212BD339941 /* SessionsView.swift */,
+				17A5B8EB2C6EB1472F968464 /* SystemView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		FF275424AFB36AE9BEB6226D /* TP-iTerm-Restore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BA9BA60CB62B7C4C23394B55 /* Build configuration list for PBXNativeTarget "TP-iTerm-Restore" */;
+			buildPhases = (
+				E3FA86E4C1028DD349DA91EA /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "TP-iTerm-Restore";
+			packageProductDependencies = (
+			);
+			productName = "TP-iTerm-Restore";
+			productReference = C81A8F1E1BAA7C38CDC8606E /* TP-iTerm-Restore.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		52643673C1F99B62DB5E386B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = 54EC68176ED9980E62785D6E /* Build configuration list for PBXProject "TP-iTerm-Restore" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 7E3F3036326E500A460986B4;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				FF275424AFB36AE9BEB6226D /* TP-iTerm-Restore */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E3FA86E4C1028DD349DA91EA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7853BECD7CE1DE8E3A7132DC /* ActivationService.swift in Sources */,
+				6FF3D7CCB25149459D18A04F /* BackupConfig.swift in Sources */,
+				38378E9BE16C5DCBF4799337 /* BackupService.swift in Sources */,
+				E8287F2D143A530FD290FDA6 /* BackupView.swift in Sources */,
+				FD9A35186A94F8211FB13F2E /* ClaudeSession.swift in Sources */,
+				BD6648BB47D04B68D4044722 /* ContentView.swift in Sources */,
+				C88F1AB0B3693D4DCE90083D /* NotificationService.swift in Sources */,
+				C056CDA3E9C1B8C2785819EC /* ProfileService.swift in Sources */,
+				A49A3E7CF558B047DA964AED /* ProfilesView.swift in Sources */,
+				1F6D563A3664034AD05DA811 /* SessionMonitor.swift in Sources */,
+				D2529C2788791CC0474D1347 /* SessionsView.swift in Sources */,
+				DF624D2D4FED5BE231819764 /* ShellService.swift in Sources */,
+				D5963CF2DC924A57B2041257 /* SmugProfile.swift in Sources */,
+				AFADFDC2A15586ED4C47CED0 /* SystemView.swift in Sources */,
+				0134BFFF004D82CF7981F06F /* TPiTermRestoreApp.swift in Sources */,
+				C24966CF67702C724788DC08 /* WindowGroup.swift in Sources */,
+				D2EB1755059F6279ABE65959 /* WindowGroupService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		032D4909DEEA34BCB363E5EC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Sources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		5BB4752C192D14FDECC4AE31 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_FILE = Sources/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.teample.TP-iTerm-Restore";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		5BB62AD40C5BCE15529AFE71 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Sources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		E558A9B172606C66D3E20721 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_FILE = Sources/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.teample.TP-iTerm-Restore";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		54EC68176ED9980E62785D6E /* Build configuration list for PBXProject "TP-iTerm-Restore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E558A9B172606C66D3E20721 /* Debug */,
+				5BB4752C192D14FDECC4AE31 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BA9BA60CB62B7C4C23394B55 /* Build configuration list for PBXNativeTarget "TP-iTerm-Restore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				032D4909DEEA34BCB363E5EC /* Debug */,
+				5BB62AD40C5BCE15529AFE71 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 52643673C1F99B62DB5E386B /* Project object */;
+}
