@@ -554,6 +554,7 @@ struct ContentView: View {
                             .foregroundStyle(sessions.isEmpty ? Color.secondary : color)
                     }
                     .buttonStyle(.plain).help("이 창 전체 시작").disabled(sessions.isEmpty)
+                    .accessibilityIdentifier("startGroup_\(pane.sessionName)")
 
                     Button { Task { await monitor.stopGroup(pane) } } label: {
                         Image(systemName: "stop.circle.fill")
