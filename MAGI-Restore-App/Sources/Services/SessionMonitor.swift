@@ -693,36 +693,67 @@ final class SessionMonitor: ObservableObject {
             )
         }
 
-        // iTerm2 새 창으로 attach (아직 연결 안 된 경우)
-        let clientCount = await ShellService.runAsync(
-            "tmux list-clients -t '\(escapedSession)' 2>/dev/null | wc -l | tr -d ' '"
-        )
-        if (Int(clientCount) ?? 0) == 0 {
-            let asSession = sessionName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            let script = """
-            osascript -e 'tell application "iTerm2"
-                set newWindow to (create window with default profile)
-                tell current session of newWindow
-                    write text "tmux -CC attach -t \(asSession)"
-                end tell
-            end tell'
-            """
-            await ShellService.runAsync(script)
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-        }
-
         // 꺼진 세션만 기동 (실행 중이면 유지)
         let allProfiles = profileService.profiles
         let runningSessions = Set(sessions.filter { $0.isRunning }.map { $0.projectName })
         for (i, profileName) in group.profileNames.enumerated() {
             guard let profile = allProfiles.first(where: { $0.name == profileName }) else { continue }
             if runningSessions.contains(profileName) { continue }  // 실행 중이면 skip
-            await launchProfile(name: profile.name, root: profile.root, delay: i * 3, sessionName: sessionName)
+            await launchProfile(name: profile.name, root: profile.root, delay: i * 2, sessionName: sessionName)
         }
 
-        // 탭 순서를 profileNames 순서대로 재배치
-        await reorderTabs(for: group)
+        // iTerm2 새 창 + 각 tmux 창마다 탭 생성 (CC 모드 대신 개별 attach)
+        try? await Task.sleep(nanoseconds: 2_000_000_000)  // 창 생성 대기
+        await openITermTabs(for: group)
+
         await refresh(showBanner: true)
+    }
+
+    // iTerm2 새 창 + tmux 창마다 탭 생성 (CC 모드 대신 개별 attach)
+    func openITermTabs(for group: WindowPane) async {
+        guard !group.isWaitingList else { return }
+        let sname = group.sessionName
+
+        // 현재 tmux windows 목록 조회 (index|name 형식)
+        let rawWins = await ShellService.runAsync(
+            "tmux list-windows -t '\(shellEscape(sname))' -F '#{window_index}|#{window_name}' 2>/dev/null"
+        )
+        var winPairs: [(Int, String)] = []
+        for line in rawWins.components(separatedBy: "\n") where !line.isEmpty {
+            let parts = line.components(separatedBy: "|")
+            if parts.count == 2, let idx = Int(parts[0]) {
+                winPairs.append((idx, parts[1]))
+            }
+        }
+        guard !winPairs.isEmpty else { return }
+
+        // AppleScript 생성: 첫 탭(monitor) + 나머지 탭들 (인덱스 기반 — 특수문자 회피)
+        let monitorIdx = winPairs.first(where: { $0.1 == "monitor" })?.0 ?? 0
+        var lines: [String] = [
+            "tell application \"iTerm2\"",
+            "    activate",
+            "    set newWin to (create window with default profile)",
+            "    delay 1",
+            "    tell current session of current tab of newWin",
+            "        write text \"tmux attach-session -t '\(sname):\(monitorIdx)'\"",
+            "    end tell",
+        ]
+        for (tabIdx, (winIdx, _)) in winPairs.enumerated() where winPairs[tabIdx].1 != "monitor" {
+            let tabVar = "tab\(tabIdx)"
+            lines.append("    delay 0.5")
+            lines.append("    tell newWin")
+            lines.append("        set \(tabVar) to (create tab with default profile)")
+            lines.append("    end tell")
+            lines.append("    delay 0.8")
+            lines.append("    tell current session of \(tabVar)")
+            lines.append("        write text \"tmux attach-session -t '\(sname):\(winIdx)'\"")
+            lines.append("    end tell")
+        }
+        lines.append("end tell")
+
+        let appleScript = lines.joined(separator: "\n")
+        let script = "osascript << '__APPLES__'\n\(appleScript)\n__APPLES__"
+        await ShellService.runAsync(script)
     }
 
     // profileNames 순서대로 tmux 탭 재배치 (1부터 시작, monitor는 0 유지)
