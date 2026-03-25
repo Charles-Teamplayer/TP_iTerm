@@ -249,6 +249,18 @@ struct ContentView: View {
             .padding(.horizontal, 10).padding(.vertical, 6)
             .background(Color(nsColor: .controlBackgroundColor))
 
+            // 동기화 배너 (사용자 액션 시만 표시)
+            if monitor.isSyncing {
+                HStack(spacing: 6) {
+                    ProgressView().progressViewStyle(.circular).scaleEffect(0.55)
+                    Text("동기화 중...").font(.caption2).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+                .background(Color.accentColor.opacity(0.08))
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             Divider()
 
             if profileSessions.isEmpty {
@@ -445,13 +457,13 @@ struct ContentView: View {
                     Button {
                         selectedSession = nil
                         monitor.deselectAll()
-                        Task { await monitor.refresh() }
+                        Task { await monitor.refresh(showBanner: true) }
                     } label: {
                         Image(systemName: "xmark.circle").font(.caption)
                     }
                     .buttonStyle(.plain)
                     .help("선택 초기화")
-                    Button { Task { await monitor.refresh() } } label: {
+                    Button { Task { await monitor.refresh(showBanner: true) } } label: {
                         Image(systemName: "arrow.clockwise").font(.caption)
                     }
                     .buttonStyle(.plain)
@@ -461,6 +473,7 @@ struct ContentView: View {
             }
             .background(.bar)
         }
+        .animation(.easeInOut(duration: 0.2), value: monitor.isSyncing)
     }
 
     // MARK: - Session List Helpers
@@ -516,7 +529,18 @@ struct ContentView: View {
             // 우측: 버튼 그룹 (각 버튼이 독립 탭 처리)
             HStack(spacing: 4) {
                 if pane.isWaitingList {
-                    // 대기 목록: 이름 변경만 허용 (시작/삭제 불가)
+                    // 대기 목록: zsh 창 전체 닫기 + 이름 변경
+                    let hasWindows = paneSessions(pane, all: monitor.sessions.filter { $0.profileRoot != nil })
+                        .contains { !$0.id.hasPrefix("profile-") && $0.windowIndex >= 0 && $0.windowIndex != Int.max }
+                    Button { Task { await monitor.killWaitingListWindows() } } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(hasWindows ? Color.red.opacity(0.8) : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!hasWindows)
+                    .help("대기 목록의 열린 tmux 창 전체 닫기")
+
                     Button { renamingPane = pane } label: {
                         Image(systemName: "pencil.circle.fill")
                             .font(.system(size: 16))
@@ -568,9 +592,6 @@ struct ContentView: View {
                             paneColor: Color = .blue,
                             isSelected: Bool = false, onSelect: @escaping () -> Void = {}) -> some View {
         let payload = "\(session.projectName)|\(pane?.id.uuidString ?? "")"
-        let statusColor: Color = session.isRunning ? .green
-            : (!session.id.hasPrefix("profile-") && session.windowIndex != Int.max) ? .orange
-            : .secondary
         let dirName: String = {
             let d = session.directory
             if d.isEmpty { return "" }
@@ -614,29 +635,39 @@ struct ContentView: View {
                         .foregroundStyle(Color.secondary.opacity(0.5))
                 }
 
-                // 상태 도트 + 이름 + 서브텍스트
-                Circle().fill(statusColor).frame(width: 7, height: 7)
-                    .shadow(color: statusColor.opacity(session.isRunning ? 0.5 : 0), radius: 3)
+                // ── 상태 인디케이터 (7단계) ──
+                SessionStatusIndicator(session: session)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.projectName)
                         .font(.system(size: 12, weight: .medium))
                         .lineLimit(1)
+                        .foregroundStyle(session.didCrash ? Color.red.opacity(0.85) : Color.primary)
                     HStack(spacing: 4) {
-                        if !dirName.isEmpty {
+                        // 우선순위: 특수상태 → 실행상태 → 디렉토리 → 기본
+                        if session.didCrash {
+                            Text("충돌 감지").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.red)
+                        } else if session.isRunning && session.claudeStatus == .working {
+                            Text("작업 중").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.blue)
+                        } else if session.isRunning && session.claudeStatus == .blocked {
+                            Text("확인 필요!").font(.system(size: 10, weight: .bold)).foregroundStyle(Color.orange)
+                        } else if session.isRunning && session.claudeStatus == .starting {
+                            Text("시작 중").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.yellow.opacity(0.9))
+                        } else if session.isRunning && session.claudeStatus == .waiting {
+                            Text("대기").font(.system(size: 10)).foregroundStyle(Color.blue.opacity(0.7))
+                        } else if session.isRunning {
+                            // idle/unknown: 디렉토리 + 실행 중
+                            if !dirName.isEmpty {
+                                Image(systemName: "folder").font(.system(size: 9)).foregroundStyle(.tertiary)
+                                Text(dirName).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                            } else {
+                                Text("실행 중").font(.system(size: 10)).foregroundStyle(Color.green.opacity(0.8))
+                            }
+                        } else if !dirName.isEmpty {
                             Image(systemName: "folder").font(.system(size: 9)).foregroundStyle(.tertiary)
                             Text(dirName).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
-                            if session.isRunning {
-                                Text("· PID \(session.pid)").font(.system(size: 10)).foregroundStyle(.tertiary)
-                            }
-                        } else {
-                            if session.isRunning {
-                                Text("PID \(session.pid)").font(.system(size: 10)).foregroundStyle(.tertiary)
-                            } else if session.id.hasPrefix("profile-") || session.windowIndex == Int.max {
-                                Text("시작 가능").font(.system(size: 10)).foregroundStyle(.secondary)
-                            } else {
-                                Text("복원 가능").font(.system(size: 10)).foregroundStyle(.orange.opacity(0.8))
-                            }
+                        } else if !session.isRunning && session.windowIndex != Int.max && session.windowIndex >= 0 {
+                            Text("복원 가능").font(.system(size: 10)).foregroundStyle(Color.secondary)
                         }
                     }
                 }
@@ -692,6 +723,77 @@ struct ContentView: View {
         case .system:   SystemView()
         default:        EmptyStateView(title: "항목을 선택하세요", systemImage: "sidebar.left")
         }
+    }
+}
+
+// MARK: - Session Status Indicator
+
+struct SessionStatusIndicator: View {
+    let session: ClaudeSession
+    @State private var pulse = false
+
+    var body: some View {
+        Group {
+            if session.didCrash {
+                // 🔴 Crash: 빨강 도트 + pulse
+                ZStack {
+                    Circle().fill(Color.red.opacity(pulse ? 0.25 : 0))
+                        .frame(width: 14, height: 14)
+                    Circle().fill(Color.red)
+                        .frame(width: 8, height: 8)
+                        .shadow(color: .red.opacity(0.6), radius: 3)
+                }
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                        pulse = true
+                    }
+                }
+            } else if session.isRunning && session.claudeStatus == .working {
+                // 🔵 작업 중: 파랑 스피너
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .scaleEffect(0.5)
+            } else if session.isRunning && session.claudeStatus == .blocked {
+                // 🟠 확인 필요: 주황 ! (badge)
+                ZStack {
+                    Circle().fill(Color.orange.opacity(0.15))
+                        .frame(width: 14, height: 14)
+                    Image(systemName: "exclamationmark")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(Color.orange)
+                }
+            } else if session.isRunning && session.claudeStatus == .starting {
+                // 🟡 시작 중: 노랑 도트 + pulse
+                Circle().fill(Color.yellow)
+                    .frame(width: 8, height: 8)
+                    .opacity(pulse ? 0.5 : 1.0)
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                            pulse = true
+                        }
+                    }
+            } else if session.isRunning && session.claudeStatus == .waiting {
+                // 🔵 대기(waiting): 파랑-회색 도트 (idle과 구분)
+                Circle().fill(Color.blue.opacity(0.5))
+                    .frame(width: 8, height: 8)
+            } else if session.isRunning {
+                // 🟢 정상(idle/unknown): 초록 도트
+                Circle().fill(Color.green)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: .green.opacity(0.5), radius: 3)
+            } else if !session.id.hasPrefix("profile-") && session.windowIndex >= 0 && session.windowIndex != Int.max {
+                // ⚫ zsh 대기: 회색 도트 (tmux 창 있지만 claude 없음)
+                Circle().fill(Color.secondary.opacity(0.4))
+                    .frame(width: 8, height: 8)
+            } else {
+                // ▬ 꺼짐: 흐린 대시 (프로필만 있음, tmux 창 없음)
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.25))
+                    .frame(width: 10, height: 2)
+                    .cornerRadius(1)
+            }
+        }
+        .frame(width: 14, height: 14)
     }
 }
 

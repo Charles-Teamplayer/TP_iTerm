@@ -11,15 +11,64 @@ final class SessionMonitor: ObservableObject {
     private var cancelRestoreFlag = false
 
     private var timer: Timer?
-    private var isRefreshing = false
+    @Published var isRefreshing = false   // 내부 dedup 전용
+    @Published var isSyncing = false      // UI 배너 표시 전용 (사용자 액션 시만)
     private let activeSessionsPath = NSHomeDirectory() + "/.claude/active-sessions.json"
+    private let statesDir = NSHomeDirectory() + "/.claude/tab-color/states"
     let profileService = ProfileService()
     let windowGroupService = WindowGroupService()
+
+    // FSEvent 감시: tab-color/states 디렉토리 변경 → 즉시 refresh
+    private var statesDirSource: DispatchSourceFileSystemObject?
+    private var debounceTask: Task<Void, Never>?
 
     func start() {
         Task { await refresh() }
         timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
+        }
+        setupStateWatcher()
+    }
+
+    private func setupStateWatcher() {
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: statesDir) {
+            try? fm.createDirectory(atPath: statesDir, withIntermediateDirectories: true)
+        }
+        let fd = open(statesDir, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd, eventMask: .write, queue: .global(qos: .utility))
+        source.setEventHandler { [weak self] in
+            self?.scheduleRefresh()
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        statesDirSource = source
+    }
+
+    // 디바운스: 연속 변경 시 0.3초 후 경량 상태 업데이트 (ps 없이 states 파일만)
+    private func scheduleRefresh() {
+        debounceTask?.cancel()
+        debounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            self?.refreshStatusOnly()
+        }
+    }
+
+    // 경량 refresh: states 파일만 읽어 claudeStatus 즉시 업데이트 (< 50ms)
+    func refreshStatusOnly() {
+        let ttyStatusMap = loadTtyStatusMap()
+        sessions = sessions.map { session in
+            var s = session
+            if s.isRunning {
+                let ttyBase = (s.tty as NSString).lastPathComponent
+                if let statusType = ttyStatusMap[ttyBase] {
+                    s.claudeStatus = ClaudeStatus(rawValue: statusType) ?? .unknown
+                }
+            }
+            return s
         }
     }
 
@@ -38,16 +87,26 @@ final class SessionMonitor: ObservableObject {
     func stop() {
         timer?.invalidate()
         timer = nil
+        statesDirSource?.cancel()
+        statesDirSource = nil
+        debounceTask?.cancel()
     }
 
     deinit {
         timer?.invalidate()
     }
 
-    func refresh() async {
+    func refresh(showBanner: Bool = false) async {
         guard !isRefreshing else { return }
         isRefreshing = true
-        defer { isRefreshing = false }
+        if showBanner {
+            isSyncing = true
+            await Task.yield()  // SwiftUI 렌더링 틱 양보 (배너 먼저 표시)
+        }
+        defer {
+            isRefreshing = false
+            if showBanner { isSyncing = false }
+        }
 
         let tmuxWindows = await loadTmuxWindows()
         let activeSessions = await loadActiveSessions()
@@ -132,6 +191,9 @@ final class SessionMonitor: ObservableObject {
             ))
         }
 
+        // tab-color/states 디렉토리에서 TTY별 상태 읽기
+        let ttyStatusMap = loadTtyStatusMap()
+
         // 기존 세션 중 프로필과 이름 매칭되면 profileRoot 주입
         var profileMap: [String: SmugProfile] = [:]
         for p in profileService.profiles { profileMap[p.name] = p }
@@ -151,25 +213,44 @@ final class SessionMonitor: ObservableObject {
             if !s.id.hasPrefix("profile-") {
                 s.isAssigned = true
             }
+            // TTY 기반 실시간 상태 주입 (tab-color/states)
+            if s.isRunning {
+                let ttyBase = (s.tty as NSString).lastPathComponent
+                if let statusType = ttyStatusMap[ttyBase] {
+                    s.claudeStatus = ClaudeStatus(rawValue: statusType) ?? .unknown
+                }
+            }
             return s
         }
 
-        let newSessions = result.sorted {
+        var newSessions = result.sorted {
             if $0.windowIndex == $1.windowIndex { return $0.projectName < $1.projectName }
             return $0.windowIndex < $1.windowIndex
         }
-        detectChanges(old: sessions, new: newSessions)
+        detectChanges(old: sessions, new: &newSessions)
         sessions = newSessions
     }
 
-    private func detectChanges(old: [ClaudeSession], new: [ClaudeSession]) {
+    // crash 감지 + didCrash 플래그 반영 — 반환값으로 crashedIds 전달
+    private func detectChanges(old: [ClaudeSession], new: inout [ClaudeSession]) {
         guard !old.isEmpty else { return }
-        var oldMap: [String: Bool] = [:]
-        for session in old { oldMap[session.id] = session.isRunning }
-        for session in new {
-            guard let wasRunning = oldMap[session.id] else { continue }
-            if wasRunning && !session.isRunning {
-                NotificationService.shared.notifySessionCrashed(name: session.projectName)
+        // 이전 상태 맵: id → (wasRunning, didCrash)
+        var oldMap: [String: (running: Bool, crashed: Bool)] = [:]
+        for s in old { oldMap[s.id] = (s.isRunning, s.didCrash) }
+
+        for i in new.indices {
+            let id = new[i].id
+            guard let prev = oldMap[id] else { continue }
+            if prev.running && !new[i].isRunning {
+                // 의도치 않은 종료 → crash
+                new[i].didCrash = true
+                NotificationService.shared.notifySessionCrashed(name: new[i].projectName)
+            } else if new[i].isRunning {
+                // 다시 실행 중 → crash 해제
+                new[i].didCrash = false
+            } else {
+                // 여전히 중지 → 이전 crash 상태 유지
+                new[i].didCrash = prev.crashed
             }
         }
     }
@@ -249,7 +330,7 @@ final class SessionMonitor: ObservableObject {
         NotificationService.shared.notifyRestoreComplete(count: restoredCount)
         selectedForRestore.removeAll()
         try? await Task.sleep(nanoseconds: 2_000_000_000)
-        await refresh()
+        await refresh(showBanner: true)
     }
 
     func purgeSession(_ session: ClaudeSession) async {
@@ -261,7 +342,7 @@ final class SessionMonitor: ObservableObject {
             projectDir: projectDir
         )
         try? await Task.sleep(nanoseconds: 1_500_000_000)
-        await refresh()
+        await refresh(showBanner: true)
     }
 
     func toggleSelection(_ id: String) {
@@ -270,6 +351,30 @@ final class SessionMonitor: ObservableObject {
         } else {
             selectedForRestore.insert(id)
         }
+    }
+
+    // 대기 목록의 모든 tmux 창 닫기 (zsh 포함 전체)
+    func killWaitingListWindows() async {
+        let waitingNames = Set(windowGroupService.waitingList.profileNames)
+        let toKill = sessions.filter {
+            !$0.id.hasPrefix("profile-") && $0.windowIndex >= 0 && $0.windowIndex != Int.max
+            && waitingNames.contains($0.projectName)
+        }
+        for session in toKill {
+            let dir = session.directory.isEmpty ? session.projectName : session.directory
+            await ShellService.intentionalStopAsync(projectDir: dir)
+            if session.pid > 0 {
+                await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
+            }
+            // loadTmuxWindows()는 claude-work만 쿼리하므로 고정
+            await ShellService.runAsync(
+                "tmux kill-window -t 'claude-work:\(session.windowIndex)' 2>/dev/null; true"
+            )
+        }
+        if !toKill.isEmpty {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+        }
+        await refresh(showBanner: true)
     }
 
     // claude 실행 중 세션 중지 + tmux 창 닫기
@@ -289,7 +394,7 @@ final class SessionMonitor: ObservableObject {
             }
         }
         try? await Task.sleep(nanoseconds: 2_000_000_000)
-        await refresh()
+        await refresh(showBanner: true)
     }
 
     func stopAllRunning() async {
@@ -308,7 +413,7 @@ final class SessionMonitor: ObservableObject {
             }
         }
         try? await Task.sleep(nanoseconds: 2_000_000_000)
-        await refresh()
+        await refresh(showBanner: true)
     }
 
     // zsh만 있는 유휴 창 전체 닫기 (복원 실패 후 남은 zsh 정리용)
@@ -333,7 +438,7 @@ final class SessionMonitor: ObservableObject {
             )
         }
         try? await Task.sleep(nanoseconds: 1_500_000_000)
-        await refresh()
+        await refresh(showBanner: true)
     }
 
     /// ~/claude/ 디렉토리 기준 smug YAML 동기화
@@ -438,7 +543,7 @@ final class SessionMonitor: ObservableObject {
             "tmux list-windows -t '\(safeSession)' -F '#{window_name}' 2>/dev/null"
         )
         if existingNames.components(separatedBy: "\n").contains(name) {
-            await refresh()
+            await refresh(showBanner: true)
             return
         }
 
@@ -457,7 +562,7 @@ final class SessionMonitor: ObservableObject {
         ActivationService.shared.activate(root: safeRoot)
         await ShellService.runAsync(cmd)
         try? await Task.sleep(nanoseconds: 2_000_000_000)
-        await refresh()
+        await refresh(showBanner: true)
     }
 
     // 즉시 적용: 배정된 pane의 중단된 세션 모두 시작
@@ -526,7 +631,7 @@ final class SessionMonitor: ObservableObject {
         """
         await ShellService.runAsync(cmd)
         try? await Task.sleep(nanoseconds: 2_000_000_000)
-        await refresh()
+        await refresh(showBanner: true)
     }
 
     // inner escape only (caller wraps in '...')
@@ -629,5 +734,21 @@ final class SessionMonitor: ObservableObject {
     private func isProcessAlive(pid: Int) async -> Bool {
         let result = await ShellService.runAsync("kill -0 \(pid) 2>/dev/null && echo alive")
         return result == "alive"
+    }
+
+    // tab-color/states/*.json → [ttyBase: type] 맵 (동기, 가벼운 파일 읽기)
+    private func loadTtyStatusMap() -> [String: String] {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(atPath: statesDir) else { return [:] }
+        var map: [String: String] = [:]
+        for file in files where file.hasSuffix(".json") {
+            let path = statesDir + "/" + file
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let type_ = json["type"] as? String else { continue }
+            let ttyBase = file.replacingOccurrences(of: ".json", with: "")  // "ttys007"
+            map[ttyBase] = type_
+        }
+        return map
     }
 }
