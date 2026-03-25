@@ -731,14 +731,15 @@ final class SessionMonitor: ObservableObject {
 
         // AppleScript: command 파라미터 방식 (write text 타이밍 문제 회피)
         // exec /bin/zsh -l: Close Sessions On End=true 대비 tmux 종료 후에도 탭 유지
-        let firstCmd = "/bin/bash -lc 'tmux attach-session -t \\'\(sname):\(realPairs[0].0)\\'; exec /bin/zsh -l'"
+        // 주의: AppleScript command 문자열은 "로 감싸므로 내부 '는 이스케이프 불필요
+        let firstCmd = "/bin/bash -lc 'tmux attach-session -t \(sname):\(realPairs[0].0); exec /bin/zsh -l'"
         var lines: [String] = [
             "tell application \"iTerm2\"",
             "    activate",
             "    set newWin to (create window with default profile command \"\(firstCmd)\")",
         ]
         for (winIdx, _) in realPairs.dropFirst() {
-            let cmd = "/bin/bash -lc 'tmux attach-session -t \\'\(sname):\(winIdx)\\'; exec /bin/zsh -l'"
+            let cmd = "/bin/bash -lc 'tmux attach-session -t \(sname):\(winIdx); exec /bin/zsh -l'"
             lines.append("    delay 0.5")
             lines.append("    tell newWin")
             lines.append("        create tab with default profile command \"\(cmd)\"")
