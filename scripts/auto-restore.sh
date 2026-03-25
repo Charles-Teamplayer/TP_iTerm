@@ -22,11 +22,16 @@ fi
 unset CLAUDECODE
 
 # 이미 claude CLI 프로세스가 다수 실행 중이면 스킵 (--force 옵션으로 우회)
-# ps -A -o comm= 으로 프로세스 이름만 추출 후 정확히 "claude"인 것만 카운트
-# (tmux attach-session -t claude-work:0 같은 프로세스는 제외됨)
+# 단, 부팅 직후(uptime 300초 이내)는 Login Items로 인해 claude 프로세스가 이미 떠있을 수 있으므로
+# EXISTING 체크를 건너뜀 — pkill -x claude 로 어차피 정리됨
 FORCE_MODE="${1:-}"
+BOOT_TS=$(sysctl -n kern.boottime 2>/dev/null | awk '{print $4}' | tr -d ',')
+NOW_TS=$(date +%s)
+UPTIME_SEC=$(( NOW_TS - ${BOOT_TS:-0} ))
 EXISTING=$(ps -A -o comm= 2>/dev/null | grep -c "^claude$" | tr -d ' ')
-if [ "$EXISTING" -gt 5 ] && [ "$FORCE_MODE" != "--force" ]; then
+if [ "$UPTIME_SEC" -lt 300 ]; then
+    log "부팅 직후 감지 (uptime=${UPTIME_SEC}s) — EXISTING 체크 스킵 (현재 claude ${EXISTING}개)"
+elif [ "$EXISTING" -gt 30 ] && [ "$FORCE_MODE" != "--force" ]; then
     log "이미 claude CLI 프로세스 ${EXISTING}개 실행 중, 스킵 (강제 실행: bash auto-restore.sh --force)"
     exit 0
 fi
