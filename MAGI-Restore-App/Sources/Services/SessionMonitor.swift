@@ -680,16 +680,13 @@ final class SessionMonitor: ObservableObject {
         let sessionName = group.sessionName
         let escapedSession = shellEscape(sessionName)
 
-        // tmux 세션 없으면 생성 (monitor 창 포함)
+        // tmux 세션 없으면 _init_ 임시 창으로 생성 (profile → monitor 순서로 맨 뒤 배치)
         let exists = await ShellService.runAsync(
             "tmux has-session -t '\(escapedSession)' 2>/dev/null && echo yes || echo no"
         )
         if exists.trimmingCharacters(in: .whitespacesAndNewlines) == "no" {
             await ShellService.runAsync(
-                "tmux new-session -d -s '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' '/bin/bash -c \"while true; do sleep 86400; done\"' 2>/dev/null; true"
-            )
-            await ShellService.runAsync(
-                "tmux set-window-option -t '\(escapedSession):monitor' automatic-rename off 2>/dev/null; true"
+                "tmux new-session -d -s '\(escapedSession)' -n _init_ -c '\(NSHomeDirectory())/claude' 2>/dev/null; true"
             )
         }
 
@@ -701,6 +698,11 @@ final class SessionMonitor: ObservableObject {
             if runningSessions.contains(profileName) { continue }  // 실행 중이면 skip
             await launchProfile(name: profile.name, root: profile.root, delay: i * 2, sessionName: sessionName)
         }
+
+        // monitor를 맨 마지막에 추가 + _init_ 제거
+        await ShellService.runAsync(
+            "tmux new-window -t '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' '/bin/bash -c \"while true; do sleep 86400; done\"' 2>/dev/null; tmux set-window-option -t '\(escapedSession):monitor' automatic-rename off 2>/dev/null; tmux kill-window -t '\(escapedSession):_init_' 2>/dev/null; true"
+        )
 
         // iTerm2 새 창 + 각 tmux 창마다 탭 생성 (CC 모드 대신 개별 attach)
         try? await Task.sleep(nanoseconds: 2_000_000_000)  // 창 생성 대기

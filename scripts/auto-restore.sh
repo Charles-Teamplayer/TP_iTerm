@@ -119,10 +119,9 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
         sleep 1
     fi
 
-    # monitor 창으로 세션 생성 (while loop으로 창 유지 — macOS sleep infinity 미지원)
-    tmux new-session -d -s "$SESSION_NAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" 2>/dev/null
-    tmux set-window-option -t "$SESSION_NAME:monitor" automatic-rename off 2>/dev/null
-    log "$SESSION_NAME 세션 생성 (monitor 창)"
+    # _init_ 임시 창으로 세션 생성 (profile 창들을 먼저 만들고 monitor를 맨 뒤에 배치)
+    tmux new-session -d -s "$SESSION_NAME" -n _init_ -c "$HOME/claude" 2>/dev/null
+    log "$SESSION_NAME 세션 생성"
 
     # 각 profileName으로 창 생성
     IFS='|' read -ra PROFILES <<< "$PROFILES_STR"
@@ -159,6 +158,12 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
         log "창 생성: $SESSION_NAME/$PROFILE_NAME (delay ${DELAY}s)"
     done
 
+    # monitor 창을 맨 마지막에 추가 + _init_ 임시 창 제거
+    tmux new-window -t "$SESSION_NAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" 2>/dev/null
+    tmux set-window-option -t "$SESSION_NAME:monitor" automatic-rename off 2>/dev/null
+    tmux kill-window -t "$SESSION_NAME:_init_" 2>/dev/null || true
+    log "$SESSION_NAME monitor 창 맨 뒤 배치 완료"
+
 done <<< "$GROUPS_JSON"
 
 # active-sessions.json 초기화 (이전 PID로 인한 watchdog 오탐 방지)
@@ -182,11 +187,11 @@ sleep 3
 for SNAME in $(tmux list-sessions -F '#{session_name}' 2>/dev/null); do
     log "DEDUP 전 $SNAME 창 목록: $(tmux list-windows -t "$SNAME" -F '#{window_id}:#{window_name}' 2>/dev/null | tr '\n' ' ')"
 
-    # monitor 창 복구: 없으면 인덱스 0 앞에 재생성
+    # monitor 창 복구: 없으면 맨 뒤에 재생성
     if ! tmux list-windows -t "$SNAME" -F '#{window_name}' 2>/dev/null | grep -qxF "monitor"; then
-        tmux new-window -t "$SNAME:0" -b -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" 2>/dev/null
+        tmux new-window -t "$SNAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" 2>/dev/null
         tmux set-window-option -t "$SNAME:monitor" automatic-rename off 2>/dev/null
-        log "$SNAME monitor 창 복구 (재생성)"
+        log "$SNAME monitor 창 복구 (맨 뒤 재생성)"
     fi
     SEEN_NAMES=""
     while IFS='|' read -r win_id name; do
