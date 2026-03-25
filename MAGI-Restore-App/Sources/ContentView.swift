@@ -672,6 +672,32 @@ struct ContentView: View {
                     }
                 }
                 Spacer()
+
+                // 재시작 / 강제복구 버튼 (crash 상태일 때만)
+                if session.didCrash {
+                    HStack(spacing: 4) {
+                        Button {
+                            Task { await monitor.restartSession(session) }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Color.orange)
+                        }
+                        .buttonStyle(.plain)
+                        .help("재시작 (기존 창 유지)")
+
+                        Button {
+                            Task { await monitor.forceResetSession(session) }
+                        } label: {
+                            Image(systemName: "bolt.circle.fill")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color.red)
+                        }
+                        .buttonStyle(.plain)
+                        .help("강제 복구 (창 재생성 후 재실행)")
+                    }
+                    .padding(.trailing, 2)
+                }
             }
             .padding(.vertical, 4)
             .background(isSelected ? paneColor.opacity(0.12) : Color.clear)
@@ -683,6 +709,19 @@ struct ContentView: View {
                                isEditing: editingTabKey == editKey && !editKey.isEmpty)
         }
         .contextMenu {
+            if session.didCrash {
+                Button {
+                    Task { await monitor.restartSession(session) }
+                } label: {
+                    Label("재시작", systemImage: "arrow.clockwise")
+                }
+                Button(role: .destructive) {
+                    Task { await monitor.forceResetSession(session) }
+                } label: {
+                    Label("강제 복구 (창 재생성)", systemImage: "bolt.circle.fill")
+                }
+                Divider()
+            }
             if let pane {
                 let others = monitor.windowGroupService.groups.filter { $0.id != pane.id }
                 if !others.isEmpty {
@@ -720,7 +759,7 @@ struct ContentView: View {
         switch selectedTab {
         case .profiles: ProfilesView(monitor: monitor, searchFocused: $profileSearchFocused, selection: $profileSelection)
         case .backup:   BackupView()
-        case .system:   SystemView()
+        case .system:   SystemView(monitor: monitor)
         default:        EmptyStateView(title: "항목을 선택하세요", systemImage: "sidebar.left")
         }
     }

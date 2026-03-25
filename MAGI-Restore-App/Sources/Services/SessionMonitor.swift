@@ -22,10 +22,19 @@ final class SessionMonitor: ObservableObject {
     private var statesDirSource: DispatchSourceFileSystemObject?
     private var debounceTask: Task<Void, Never>?
 
+    // 자동 재시작 설정 + 상태 추적
+    @Published var restoreSettings = RestoreSettings.load()
+    private var crashTimestamps: [String: Date] = [:]        // id → crash 발생 시각
+    private var restoreAttemptCounts: [String: Int] = [:]    // id → 재시작 시도 횟수
+    private var intentionallyStoppedIds: Set<String> = []    // 의도적 중지 추적
+
     func start() {
         Task { await refresh() }
         timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.refresh() }
+            Task { @MainActor in
+                await self?.refresh()
+                await self?.checkAutoRestore()
+            }
         }
         setupStateWatcher()
     }
@@ -231,10 +240,9 @@ final class SessionMonitor: ObservableObject {
         sessions = newSessions
     }
 
-    // crash 감지 + didCrash 플래그 반영 — 반환값으로 crashedIds 전달
+    // crash 감지 + didCrash 플래그 반영 (의도적 중지는 crash로 처리하지 않음)
     private func detectChanges(old: [ClaudeSession], new: inout [ClaudeSession]) {
         guard !old.isEmpty else { return }
-        // 이전 상태 맵: id → (wasRunning, didCrash)
         var oldMap: [String: (running: Bool, crashed: Bool)] = [:]
         for s in old { oldMap[s.id] = (s.isRunning, s.didCrash) }
 
@@ -242,17 +250,105 @@ final class SessionMonitor: ObservableObject {
             let id = new[i].id
             guard let prev = oldMap[id] else { continue }
             if prev.running && !new[i].isRunning {
-                // 의도치 않은 종료 → crash
-                new[i].didCrash = true
-                NotificationService.shared.notifySessionCrashed(name: new[i].projectName)
+                if intentionallyStoppedIds.contains(id) {
+                    // 의도적 중지 → crash 아님
+                    new[i].didCrash = false
+                } else {
+                    // 비정상 종료 → crash
+                    new[i].didCrash = true
+                    if crashTimestamps[id] == nil { crashTimestamps[id] = Date() }
+                    NotificationService.shared.notifySessionCrashed(name: new[i].projectName)
+                }
             } else if new[i].isRunning {
-                // 다시 실행 중 → crash 해제
+                // 재실행 → crash 해제
                 new[i].didCrash = false
+                intentionallyStoppedIds.remove(id)
+                crashTimestamps.removeValue(forKey: id)
+                restoreAttemptCounts.removeValue(forKey: id)
             } else {
-                // 여전히 중지 → 이전 crash 상태 유지
                 new[i].didCrash = prev.crashed
             }
         }
+    }
+
+    // MARK: - Auto Restore
+
+    func checkAutoRestore() async {
+        guard restoreSettings.autoRestore else { return }
+        let now = Date()
+        let crashed = sessions.filter { $0.didCrash && !intentionallyStoppedIds.contains($0.id) }
+        for session in crashed {
+            guard let crashTime = crashTimestamps[session.id] else { continue }
+            guard now.timeIntervalSince(crashTime) >= Double(restoreSettings.delaySeconds) else { continue }
+            let attempts = restoreAttemptCounts[session.id] ?? 0
+            guard attempts < restoreSettings.maxAttempts else { continue }
+            restoreAttemptCounts[session.id] = attempts + 1
+            await restartSession(session)
+        }
+    }
+
+    // 수동/자동 재시작: 기존 창에 claude 재실행 (창이 없으면 새로 생성)
+    func restartSession(_ session: ClaudeSession) async {
+        // crash 플래그 즉시 해제 (UI 반응)
+        if let idx = sessions.firstIndex(where: { $0.id == session.id }) {
+            sessions[idx].didCrash = false
+        }
+        intentionallyStoppedIds.remove(session.id)
+        crashTimestamps.removeValue(forKey: session.id)
+
+        let dir = session.directory.isEmpty ? "~/claude/\(session.windowName)" : session.directory
+        let safeDir = dir.hasPrefix("~") ? NSHomeDirectory() + dir.dropFirst() : dir
+        let claudeCmd = hasClaudeProject(at: safeDir)
+            ? "claude --dangerously-skip-permissions --continue"
+            : "claude --dangerously-skip-permissions"
+        let winNameForStatus = session.windowName
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "'", with: "'\\''")
+        let claudeEntry = "bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' && unset CLAUDECODE && \(claudeCmd)"
+
+        if session.windowIndex >= 0 && session.windowIndex != Int.max {
+            // 창 존재 여부 확인
+            let paneCmd = await ShellService.runAsync(
+                "tmux list-panes -t 'claude-work:\(session.windowIndex)' -F '#{pane_current_command}' 2>/dev/null | head -1"
+            )
+            if paneCmd.isEmpty {
+                // 창이 없어진 경우 → 새로 생성
+                let escapedName = shellEscape(session.windowName)
+                let escapedDir  = shellEscape(safeDir)
+                await ShellService.runAsync("tmux new-window -t claude-work -n '\(escapedName)' -c '\(escapedDir)'")
+                await ShellService.runAsync("tmux send-keys -t 'claude-work:\(escapedName)' '\(claudeEntry)' Enter 2>/dev/null")
+            } else {
+                await ShellService.runAsync("tmux send-keys -t 'claude-work:\(session.windowIndex)' '\(claudeEntry)' Enter 2>/dev/null")
+            }
+        } else if let root = session.profileRoot {
+            let group = windowGroupService.group(for: session.projectName)
+            await launchProfile(name: session.projectName, root: root, delay: 0, sessionName: group.sessionName)
+            return
+        }
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        await refresh(showBanner: true)
+    }
+
+    // 강제 복구: 기존 창 완전 kill → 새 창 생성 → claude 실행 (어떤 상태에서도 무조건 새 창)
+    func forceResetSession(_ session: ClaudeSession) async {
+        // 기존 창 kill
+        if session.windowIndex >= 0 && session.windowIndex != Int.max {
+            await ShellService.runAsync("tmux kill-window -t 'claude-work:\(session.windowIndex)' 2>/dev/null; true")
+        }
+        // crash 상태 초기화
+        if let idx = sessions.firstIndex(where: { $0.id == session.id }) {
+            sessions[idx].didCrash = false
+        }
+        intentionallyStoppedIds.remove(session.id)
+        crashTimestamps.removeValue(forKey: session.id)
+        restoreAttemptCounts.removeValue(forKey: session.id)
+
+        // 새 창으로 런치
+        let root = session.profileRoot ?? session.directory
+        let safeRoot = root.hasPrefix("~") ? NSHomeDirectory() + root.dropFirst() : root
+        let group = windowGroupService.group(for: session.projectName)
+        ActivationService.shared.activate(root: safeRoot)
+        await launchProfile(name: session.projectName, root: root, delay: 0, sessionName: group.sessionName)
     }
 
     // MARK: - Restore
@@ -334,6 +430,7 @@ final class SessionMonitor: ObservableObject {
     }
 
     func purgeSession(_ session: ClaudeSession) async {
+        intentionallyStoppedIds.insert(session.id)
         let projectDir = session.directory.isEmpty ? session.projectName : session.directory
         await ShellService.purgeSessionAsync(
             pid: session.pid,
@@ -360,6 +457,7 @@ final class SessionMonitor: ObservableObject {
             !$0.id.hasPrefix("profile-") && $0.windowIndex >= 0 && $0.windowIndex != Int.max
             && waitingNames.contains($0.projectName)
         }
+        for session in toKill { intentionallyStoppedIds.insert(session.id) }
         for session in toKill {
             let dir = session.directory.isEmpty ? session.projectName : session.directory
             await ShellService.intentionalStopAsync(projectDir: dir)
@@ -381,6 +479,7 @@ final class SessionMonitor: ObservableObject {
     func stopGroup(_ group: WindowPane) async {
         let profileNames = Set(group.profileNames)
         let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") && profileNames.contains($0.projectName) }
+        for session in toStop { intentionallyStoppedIds.insert(session.id) }
         for session in toStop {
             let dir = session.directory.isEmpty ? session.projectName : session.directory
             await ShellService.intentionalStopAsync(projectDir: dir)
@@ -399,6 +498,7 @@ final class SessionMonitor: ObservableObject {
 
     func stopAllRunning() async {
         let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") }
+        for session in toStop { intentionallyStoppedIds.insert(session.id) }
         for session in toStop {
             let dir = session.directory.isEmpty ? session.projectName : session.directory
             await ShellService.intentionalStopAsync(projectDir: dir)
@@ -419,10 +519,9 @@ final class SessionMonitor: ObservableObject {
     // zsh만 있는 유휴 창 전체 닫기 (복원 실패 후 남은 zsh 정리용)
     func purgeIdleZshWindows() async {
         let idleZsh = sessions.filter {
-            !$0.isRunning
-            && !$0.id.hasPrefix("profile-")
-            && $0.windowIndex != Int.max
+            !$0.isRunning && !$0.id.hasPrefix("profile-") && $0.windowIndex != Int.max
         }
+        for session in idleZsh { intentionallyStoppedIds.insert(session.id) }
         for session in idleZsh {
             let winIdx = session.windowIndex
             let paneCmd = await ShellService.runAsync(

@@ -1,0 +1,35 @@
+import Foundation
+
+struct RestoreSettings {
+    var autoRestore: Bool = false
+    var delaySeconds: Int = 60    // 크래시 후 자동 재시작까지 대기 시간
+    var maxAttempts: Int = 3      // 최대 재시작 시도 횟수
+
+    static let delayPresets: [(label: String, seconds: Int)] = [
+        ("30초", 30), ("1분", 60), ("3분", 180), ("5분", 300)
+    ]
+    static let attemptPresets: [(label: String, count: Int)] = [
+        ("1회", 1), ("3회", 3), ("5회", 5), ("10회", 10)
+    ]
+
+    private enum Keys {
+        static let autoRestore  = "restore.autoRestore"
+        static let delaySeconds = "restore.delaySeconds"
+        static let maxAttempts  = "restore.maxAttempts"
+    }
+
+    static func load() -> RestoreSettings {
+        var s = RestoreSettings()
+        let ud = UserDefaults.standard
+        if ud.object(forKey: Keys.autoRestore)  != nil { s.autoRestore  = ud.bool(forKey: Keys.autoRestore) }
+        if ud.object(forKey: Keys.delaySeconds) != nil { s.delaySeconds = ud.integer(forKey: Keys.delaySeconds) }
+        if ud.object(forKey: Keys.maxAttempts)  != nil { s.maxAttempts  = ud.integer(forKey: Keys.maxAttempts) }
+        return s
+    }
+
+    func save() {
+        UserDefaults.standard.set(autoRestore,  forKey: Keys.autoRestore)
+        UserDefaults.standard.set(delaySeconds, forKey: Keys.delaySeconds)
+        UserDefaults.standard.set(maxAttempts,  forKey: Keys.maxAttempts)
+    }
+}

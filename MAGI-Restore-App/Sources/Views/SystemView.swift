@@ -255,11 +255,92 @@ func startAutoRefresh() {
 }
 
 struct SystemView: View {
+    @ObservedObject var monitor: SessionMonitor
     @StateObject private var vm = SystemViewModel()
     @State private var showInstallLog = false
     @State private var showRestoreLog = false
+    // 직접 입력 토글
+    @State private var useCustomDelay = false
+    @State private var useCustomAttempts = false
+    @State private var customDelayInput = ""
+    @State private var customAttemptsInput = ""
+
     var body: some View {
         Form {
+            // ── 자동 재시작 설정 ──
+            Section("자동 재시작 설정") {
+                Toggle("크래시 감지 시 자동 재시작", isOn: $monitor.restoreSettings.autoRestore)
+                    .onChange(of: monitor.restoreSettings.autoRestore) { _, _ in monitor.restoreSettings.save() }
+
+                if monitor.restoreSettings.autoRestore {
+                    // 대기 시간
+                    HStack {
+                        Text("재시작까지 대기").foregroundStyle(.secondary)
+                        Spacer()
+                        if !useCustomDelay {
+                            Picker("", selection: $monitor.restoreSettings.delaySeconds) {
+                                ForEach(RestoreSettings.delayPresets, id: \.seconds) { p in
+                                    Text(p.label).tag(p.seconds)
+                                }
+                            }
+                            .pickerStyle(.menu).labelsHidden().frame(width: 80)
+                            .onChange(of: monitor.restoreSettings.delaySeconds) { _, _ in monitor.restoreSettings.save() }
+                        } else {
+                            HStack(spacing: 4) {
+                                TextField("초", text: $customDelayInput)
+                                    .frame(width: 60).textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
+                                    .onSubmit {
+                                        if let v = Int(customDelayInput), v > 0 {
+                                            monitor.restoreSettings.delaySeconds = v
+                                            monitor.restoreSettings.save()
+                                        }
+                                    }
+                                Text("초").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        Button(useCustomDelay ? "프리셋" : "직접 입력") {
+                            useCustomDelay.toggle()
+                            if useCustomDelay { customDelayInput = "\(monitor.restoreSettings.delaySeconds)" }
+                        }
+                        .buttonStyle(.link).font(.caption)
+                    }
+
+                    // 최대 시도 횟수
+                    HStack {
+                        Text("최대 재시작 시도").foregroundStyle(.secondary)
+                        Spacer()
+                        if !useCustomAttempts {
+                            Picker("", selection: $monitor.restoreSettings.maxAttempts) {
+                                ForEach(RestoreSettings.attemptPresets, id: \.count) { p in
+                                    Text(p.label).tag(p.count)
+                                }
+                            }
+                            .pickerStyle(.menu).labelsHidden().frame(width: 80)
+                            .onChange(of: monitor.restoreSettings.maxAttempts) { _, _ in monitor.restoreSettings.save() }
+                        } else {
+                            HStack(spacing: 4) {
+                                TextField("횟수", text: $customAttemptsInput)
+                                    .frame(width: 60).textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
+                                    .onSubmit {
+                                        if let v = Int(customAttemptsInput), v > 0 {
+                                            monitor.restoreSettings.maxAttempts = v
+                                            monitor.restoreSettings.save()
+                                        }
+                                    }
+                                Text("회").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        Button(useCustomAttempts ? "프리셋" : "직접 입력") {
+                            useCustomAttempts.toggle()
+                            if useCustomAttempts { customAttemptsInput = "\(monitor.restoreSettings.maxAttempts)" }
+                        }
+                        .buttonStyle(.link).font(.caption)
+                    }
+
+                    Text("최대 \(monitor.restoreSettings.maxAttempts)회 연속 실패 시 자동 재시작 중단")
+                        .font(.caption).foregroundStyle(.tertiary)
+                }
+            }
             Section("Claude 세션") {
                 HStack {
                     Text("실행 중인 세션")

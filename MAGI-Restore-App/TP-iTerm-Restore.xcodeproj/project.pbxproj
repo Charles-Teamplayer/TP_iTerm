@@ -23,8 +23,9 @@
 		D5963CF2DC924A57B2041257 /* SmugProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A0122D26C65168C8806ED4B /* SmugProfile.swift */; };
 		DF624D2D4FED5BE231819764 /* ShellService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F218EEF3CA14E2C115B5944B /* ShellService.swift */; };
 		E8287F2D143A530FD290FDA6 /* BackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E10AE645575D8A65C423E1A /* BackupView.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E1F2 /* RestoreSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F2A3 /* RestoreSettings.swift */; };
+		C3D4E5F6A7B8C9D0E1F2A3B4 /* DragDropSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E5F6A7B8C9D0E1F2A3B4C5 /* DragDropSupport.swift */; };
 		FD9A35186A94F8211FB13F2E /* ClaudeSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61366C1753028504CA2E8AAD /* ClaudeSession.swift */; };
-		AA11BB22CC33DD44EE55FF66 /* DragDropSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF67 /* DragDropSupport.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +36,8 @@
 		3AEE93569832A63032FCD434 /* ProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileService.swift; sourceTree = "<group>"; };
 		3F8174F0E767191638307216 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		61366C1753028504CA2E8AAD /* ClaudeSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeSession.swift; sourceTree = "<group>"; };
+		B2C3D4E5F6A7B8C9D0E1F2A3 /* RestoreSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreSettings.swift; sourceTree = "<group>"; };
+		D4E5F6A7B8C9D0E1F2A3B4C5 /* DragDropSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DragDropSupport.swift; sourceTree = "<group>"; };
 		6DF57694881F609C23674CF0 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		6E10AE645575D8A65C423E1A /* BackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupView.swift; sourceTree = "<group>"; };
 		790BDE3BD8BFC0CA3FE15B36 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -47,7 +50,6 @@
 		F218EEF3CA14E2C115B5944B /* ShellService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellService.swift; sourceTree = "<group>"; };
 		FD978A2A166A0C15F4569EAF /* BackupConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupConfig.swift; sourceTree = "<group>"; };
 		FEBD40BFF204EF0867586A63 /* SessionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitor.swift; sourceTree = "<group>"; };
-		AA11BB22CC33DD44EE55FF67 /* DragDropSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DragDropSupport.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -99,6 +101,7 @@
 			children = (
 				FD978A2A166A0C15F4569EAF /* BackupConfig.swift */,
 				61366C1753028504CA2E8AAD /* ClaudeSession.swift */,
+				B2C3D4E5F6A7B8C9D0E1F2A3 /* RestoreSettings.swift */,
 				7A0122D26C65168C8806ED4B /* SmugProfile.swift */,
 				0A24FD3D4960A9ED56E3FCF8 /* WindowGroup.swift */,
 			);
@@ -109,7 +112,7 @@
 			isa = PBXGroup;
 			children = (
 				6E10AE645575D8A65C423E1A /* BackupView.swift */,
-				AA11BB22CC33DD44EE55FF67 /* DragDropSupport.swift */,
+				D4E5F6A7B8C9D0E1F2A3B4C5 /* DragDropSupport.swift */,
 				14201DE558EFE1A7F1421942 /* ProfilesView.swift */,
 				8F636E663B5B9212BD339941 /* SessionsView.swift */,
 				17A5B8EB2C6EB1472F968464 /* SystemView.swift */,
@@ -174,8 +177,9 @@
 				6FF3D7CCB25149459D18A04F /* BackupConfig.swift in Sources */,
 				38378E9BE16C5DCBF4799337 /* BackupService.swift in Sources */,
 				E8287F2D143A530FD290FDA6 /* BackupView.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E1F2 /* RestoreSettings.swift in Sources */,
+				C3D4E5F6A7B8C9D0E1F2A3B4 /* DragDropSupport.swift in Sources */,
 				FD9A35186A94F8211FB13F2E /* ClaudeSession.swift in Sources */,
-				AA11BB22CC33DD44EE55FF66 /* DragDropSupport.swift in Sources */,
 				BD6648BB47D04B68D4044722 /* ContentView.swift in Sources */,
 				C88F1AB0B3693D4DCE90083D /* NotificationService.swift in Sources */,
 				C056CDA3E9C1B8C2785819EC /* ProfileService.swift in Sources */,
