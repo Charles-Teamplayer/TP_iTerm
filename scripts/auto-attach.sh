@@ -8,24 +8,37 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [auto-attach] $1" >> "$LOG"; }
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
-# 부팅 직후(5분 이내)가 아니면 스킵
-UP_ELAPSED=$(python3 -c "
-import subprocess, re, time
-try:
-    out = subprocess.check_output(['sysctl','-n','kern.boottime'], text=True)
-    m = re.search(r'sec = (\d+)', out)
-    if m:
-        print(int(time.time()) - int(m.group(1)))
-except:
-    pass
-" 2>/dev/null)
-if [ -n "$UP_ELAPSED" ] && [ "$UP_ELAPSED" -gt 300 ]; then
-    log "부팅 후 ${UP_ELAPSED}초 경과 — 부팅 직후가 아니므로 스킵"
+FLAG_FILE="$HOME/.claude/logs/.auto-restore-done"
+
+# auto-restore.sh 완료 플래그를 기다림 (최대 3분)
+log "auto-restore 플래그 대기 시작 (최대 180초)"
+WAITED=0
+while [ $WAITED -lt 180 ]; do
+    if [ -f "$FLAG_FILE" ]; then
+        FLAG_TIME=$(cat "$FLAG_FILE" 2>/dev/null)
+        NOW=$(date +%s)
+        AGE=$((NOW - ${FLAG_TIME:-0}))
+        if [ "$AGE" -lt 1800 ]; then  # 30분 이내 플래그만 유효
+            log "auto-restore 완료 플래그 확인 (${AGE}초 전) — attach 시작"
+            rm -f "$FLAG_FILE"
+            break
+        else
+            log "플래그가 오래됨 (${AGE}초 전) — 스킵"
+            exit 0
+        fi
+    fi
+    sleep 10
+    WAITED=$((WAITED + 10))
+done
+
+if [ $WAITED -ge 180 ]; then
+    log "auto-restore 플래그 없음 (180초 대기 후) — 스킵"
     exit 0
 fi
 
-log "auto-attach 대기 시작 (90초, 부팅 후 ${UP_ELAPSED:-?}초)"
-sleep 90  # auto-restore.sh 완료 대기 (최대 65초 delay + 여유)
+# tmux 세션 준비 대기
+log "tmux 세션 준비 대기 (10초)"
+sleep 10
 
 # window-groups.json 확인
 if [ ! -f "$WINDOW_GROUPS" ]; then

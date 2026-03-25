@@ -21,11 +21,13 @@ if [ -f "$HOME/.zshrc" ]; then
 fi
 unset CLAUDECODE
 
-# 이미 claude 프로세스가 다수 실행 중이면 스킵 (--force 옵션으로 우회)
+# 이미 claude CLI 프로세스가 다수 실행 중이면 스킵 (--force 옵션으로 우회)
+# ps -A -o comm= 으로 프로세스 이름만 추출 후 정확히 "claude"인 것만 카운트
+# (tmux attach-session -t claude-work:0 같은 프로세스는 제외됨)
 FORCE_MODE="${1:-}"
-EXISTING=$(ps aux | grep "[c]laude" | grep -v "Claude.app\|Helper\|ShipIt\|watchdog\|auto-restore" | grep -v "??" | wc -l | tr -d ' ')
+EXISTING=$(ps -A -o comm= 2>/dev/null | grep -c "^claude$" | tr -d ' ')
 if [ "$EXISTING" -gt 5 ] && [ "$FORCE_MODE" != "--force" ]; then
-    log "이미 claude 프로세스 ${EXISTING}개 실행 중, 스킵 (강제 실행: bash auto-restore.sh --force)"
+    log "이미 claude CLI 프로세스 ${EXISTING}개 실행 중, 스킵 (강제 실행: bash auto-restore.sh --force)"
     exit 0
 fi
 
@@ -33,6 +35,15 @@ fi
 log "기존 claude 프로세스 종료 중..."
 pkill -x "claude" 2>/dev/null || true
 sleep 2
+
+# 스테일 tmux 소켓 파일 정리 (부팅 후 재실행 시 서버가 없는데 소켓 파일이 남아있는 경우 대비)
+for sock in /tmp/tmux-*/default; do
+    [ -e "$sock" ] || continue
+    if ! tmux -S "$sock" list-sessions &>/dev/null 2>&1; then
+        rm -f "$sock"
+        log "스테일 tmux 소켓 삭제: $sock"
+    fi
+done
 
 # window-groups.json 존재 확인
 if [ ! -f "$WINDOW_GROUPS" ]; then
@@ -103,8 +114,8 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
         sleep 1
     fi
 
-    # monitor 창으로 세션 생성
-    tmux new-session -d -s "$SESSION_NAME" -n monitor -c "$HOME/claude" 2>/dev/null
+    # monitor 창으로 세션 생성 (while loop으로 창 유지 — macOS sleep infinity 미지원)
+    tmux new-session -d -s "$SESSION_NAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" 2>/dev/null
     tmux set-window-option -t "$SESSION_NAME:monitor" automatic-rename off 2>/dev/null
     log "$SESSION_NAME 세션 생성 (monitor 창)"
 
@@ -126,6 +137,11 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
             CLAUDE_CMD="claude --dangerously-skip-permissions"
         fi
 
+        # 이미 같은 이름의 창이 있으면 생성 skip (중복 방지)
+        if tmux list-windows -t "$SESSION_NAME" -F '#{window_name}' 2>/dev/null | grep -qxF "$PROFILE_NAME"; then
+            log "SKIP $PROFILE_NAME — 이미 창 있음"
+            continue
+        fi
         tmux new-window -t "$SESSION_NAME" -n "$PROFILE_NAME" -c "$PROJ_PATH" 2>/dev/null
         # 방금 생성된 창의 인덱스 조회 (창 이름에 '.'이 있으면 pane 구분자 오해 방지)
         WIN_IDX=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_index}' 2>/dev/null | sort -n | tail -1)
@@ -156,20 +172,35 @@ if [ -f "$STOPS_FILE" ]; then
     log "intentional-stops.json 초기화 완료"
 fi
 
-# 세션 상태 확인 + 중복 창 제거 (같은 이름의 창이 2개 이상이면 나중 것 제거)
+# 세션 상태 확인 + 중복 창 제거 (window ID 기반 — 인덱스 재배열 문제 방지)
 sleep 3
 for SNAME in $(tmux list-sessions -F '#{session_name}' 2>/dev/null); do
+    log "DEDUP 전 $SNAME 창 목록: $(tmux list-windows -t "$SNAME" -F '#{window_id}:#{window_name}' 2>/dev/null | tr '\n' ' ')"
+
+    # monitor 창 복구: 없으면 인덱스 0 앞에 재생성
+    if ! tmux list-windows -t "$SNAME" -F '#{window_name}' 2>/dev/null | grep -qxF "monitor"; then
+        tmux new-window -t "$SNAME:0" -b -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" 2>/dev/null
+        tmux set-window-option -t "$SNAME:monitor" automatic-rename off 2>/dev/null
+        log "$SNAME monitor 창 복구 (재생성)"
+    fi
     SEEN_NAMES=""
-    while IFS='|' read -r idx name; do
+    while IFS='|' read -r win_id name; do
         [ -z "$name" ] && continue
+        # monitor 창은 절대 삭제하지 않음
+        if [ "$name" = "monitor" ]; then
+            SEEN_NAMES="${SEEN_NAMES}${name}
+"
+            continue
+        fi
         if echo "$SEEN_NAMES" | grep -qxF "$name"; then
-            tmux kill-window -t "$SNAME:$idx" 2>/dev/null
-            log "DEDUP: $SNAME/$name (인덱스 $idx) 제거"
+            # window ID 기반 삭제 (인덱스 재배열 무관)
+            tmux kill-window -t "$win_id" 2>/dev/null
+            log "DEDUP: $SNAME/$name (ID $win_id) 제거"
         else
             SEEN_NAMES="${SEEN_NAMES}${name}
 "
         fi
-    done < <(tmux list-windows -t "$SNAME" -F '#{window_index}|#{window_name}' 2>/dev/null)
+    done < <(tmux list-windows -t "$SNAME" -F '#{window_id}|#{window_name}' 2>/dev/null)
     WIN_COUNT=$(tmux list-windows -t "$SNAME" 2>/dev/null | wc -l | tr -d ' ')
     log "$SNAME: ${WIN_COUNT}개 창 활성"
 done
@@ -179,5 +210,9 @@ if [ -n "$NOTION_API_KEY" ] && [ -f "$HOME/claude/TP_skills/session-manager/noti
     python3 "$HOME/claude/TP_skills/session-manager/notion-advanced.py" \
         "TP_iTerm" "Reboot Recovery (tmux)" "window-groups 기반 ${TOTAL_CREATED}개 세션 복원" 2>/dev/null || true
 fi
+
+# auto-attach.sh에 신호: 플래그 파일 생성 (30분 유효)
+echo "$(date +%s)" > "$HOME/.claude/logs/.auto-restore-done"
+log "auto-attach 트리거 플래그 생성 완료"
 
 log "=== Auto-Restore 완료: ${TOTAL_CREATED}개 창 복원 ==="

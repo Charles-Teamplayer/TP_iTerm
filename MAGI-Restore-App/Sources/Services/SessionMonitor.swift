@@ -686,7 +686,7 @@ final class SessionMonitor: ObservableObject {
         )
         if exists.trimmingCharacters(in: .whitespacesAndNewlines) == "no" {
             await ShellService.runAsync(
-                "tmux new-session -d -s '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' 2>/dev/null; true"
+                "tmux new-session -d -s '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' '/bin/bash -c \"while true; do sleep 86400; done\"' 2>/dev/null; true"
             )
             await ShellService.runAsync(
                 "tmux set-window-option -t '\(escapedSession):monitor' automatic-rename off 2>/dev/null; true"
