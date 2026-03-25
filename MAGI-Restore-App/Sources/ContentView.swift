@@ -32,7 +32,9 @@ struct ContentView: View {
 
     // 창별 색상 팔레트
     static let paneColors: [Color] = [.blue, .purple, .orange, .green, .pink, .cyan, .indigo, .mint]
-    func paneColor(at index: Int) -> Color { Self.paneColors[index % Self.paneColors.count] }
+    func paneColor(for pane: WindowPane, at index: Int) -> Color {
+        pane.isWaitingList ? .secondary : Self.paneColors[index % Self.paneColors.count]
+    }
 
     enum Tab: String, CaseIterable {
         case sessions = "세션"
@@ -261,15 +263,10 @@ struct ContentView: View {
                 Spacer()
             } else {
                 // 창(WindowPane)별 섹션 — ScrollView 기반 (List는 macOS에서 drag 이벤트 차단)
-                let assigned = Set(wgs.groups.flatMap { $0.profileNames })
-                let unassigned = profileSessions.filter { !assigned.contains($0.projectName) }
-                let filteredUnassigned = searchText.isEmpty ? unassigned
-                    : unassigned.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
-
                 let totalVisible = wgs.groups.flatMap { pane in
                     paneSessions(pane, all: profileSessions)
                         .filter { searchText.isEmpty || $0.projectName.localizedCaseInsensitiveContains(searchText) }
-                }.count + filteredUnassigned.count
+                }.count
 
                 ScrollView {
                     VStack(spacing: 0) {
@@ -289,7 +286,7 @@ struct ContentView: View {
                             let paneSess = paneSessions(pane, all: profileSessions)
                             let filtered = searchText.isEmpty ? paneSess
                                 : paneSess.filter { $0.projectName.localizedCaseInsensitiveContains(searchText) }
-                            let color = paneColor(at: paneIdx)
+                            let color = paneColor(for: pane, at: paneIdx)
                             let isCollapsed = collapsedPanes.contains(pane.id)
                             if !filtered.isEmpty || searchText.isEmpty {
                                 // Pane 헤더 (drop target + 색상 구분)
@@ -362,25 +359,6 @@ struct ContentView: View {
                             }
                         }
 
-                        if !filteredUnassigned.isEmpty {
-                            HStack(spacing: 6) {
-                                Image(systemName: "tray").font(.caption).foregroundStyle(.secondary)
-                                Text("미배정").font(.caption.bold()).foregroundStyle(.secondary)
-                                Spacer()
-                                Text("\(filteredUnassigned.count)개").font(.caption2).foregroundStyle(.tertiary)
-                            }
-                            .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(Color(nsColor: .controlBackgroundColor))
-                            Divider()
-                            ForEach(filteredUnassigned) { session in
-                                sessionRow(session, order: nil, pane: nil, total: 0,
-                                           paneColor: .secondary,
-                                           isSelected: selectedSession?.id == session.id,
-                                           onSelect: { selectedSession = session })
-                                    .padding(.horizontal, 10)
-                                Divider().padding(.leading, 10)
-                            }
-                        }
                     }
                 }
                 .overlay {
@@ -397,23 +375,17 @@ struct ContentView: View {
             VStack(spacing: 4) {
                 if allRestorable > 0 || allRunning > 0 || allLaunchable > 0 {
                     HStack(spacing: 6) {
-                        if allLaunchable > 0 {
+                        // 즉시 적용: 창에 배정된 중단 세션 모두 시작
+                        let totalPending = allLaunchable + allRestorable
+                        if totalPending > 0 {
                             Button {
-                                Task { monitor.selectAllLaunchable(); await monitor.restoreSelected() }
+                                Task { await monitor.applyNow() }
                             } label: {
-                                Label("전체 시작 (\(allLaunchable))", systemImage: "play.circle.fill")
+                                Label("즉시 적용 (\(totalPending))", systemImage: "bolt.circle.fill")
                                     .font(.caption).frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.borderedProminent).tint(.blue)
-                        }
-                        if allRestorable > 0 {
-                            Button {
-                                Task { monitor.selectAllStopped(); await monitor.restoreSelected() }
-                            } label: {
-                                Label("전체 복원 (\(allRestorable))", systemImage: "arrow.clockwise.circle.fill")
-                                    .font(.caption).frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.borderedProminent).tint(.green)
+                            .help("창에 배정된 중단/대기 세션을 모두 즉시 시작합니다")
                         }
                         if allRunning > 0 {
                             Button { Task { await monitor.stopAllRunning() } } label: {
@@ -424,10 +396,11 @@ struct ContentView: View {
                         }
                         if allRestorable > 0 {
                             Button { Task { await monitor.purgeIdleZshWindows() } } label: {
-                                Label("zsh 정리 (\(allRestorable))", systemImage: "xmark.circle.fill")
+                                Label("빈 창 정리 (\(allRestorable))", systemImage: "xmark.circle.fill")
                                     .font(.caption).frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered).tint(.red)
+                            .help("Claude 없이 zsh만 실행 중인 빈 tmux 창을 닫습니다 (복원 실패 후 잔여물 정리)")
                         }
                     }
                     .padding(.horizontal, 10).padding(.top, 6)
@@ -507,7 +480,7 @@ struct ContentView: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(color.opacity(0.7))
                     .frame(width: 12)
-                Image(systemName: "macwindow")
+                Image(systemName: pane.isWaitingList ? "tray.full.fill" : "macwindow")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(color)
                 VStack(alignment: .leading, spacing: 1) {
@@ -515,14 +488,20 @@ struct ContentView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.primary)
                     HStack(spacing: 4) {
-                        Text(pane.sessionName)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                        if sessions.count > 0 {
-                            Text("·").font(.system(size: 10)).foregroundStyle(.tertiary)
-                            Text(runCount > 0 ? "\(runCount)개 실행 중" : "\(sessions.count)개")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(runCount > 0 ? Color.green : Color.secondary)
+                        if pane.isWaitingList {
+                            Text("창에 드래그하면 시작 가능")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                        } else {
+                            Text(pane.sessionName)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                            if sessions.count > 0 {
+                                Text("·").font(.system(size: 10)).foregroundStyle(.tertiary)
+                                Text(runCount > 0 ? "\(runCount)개 실행 중" : "\(sessions.count)개")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(runCount > 0 ? Color.green : Color.secondary)
+                            }
                         }
                     }
                 }
@@ -536,38 +515,49 @@ struct ContentView: View {
 
             // 우측: 버튼 그룹 (각 버튼이 독립 탭 처리)
             HStack(spacing: 4) {
-                Button { Task { await monitor.startGroup(pane) } } label: {
-                    Image(systemName: "play.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(sessions.isEmpty ? Color.secondary : color)
-                }
-                .buttonStyle(.plain).help("이 창 전체 시작").disabled(sessions.isEmpty)
+                if pane.isWaitingList {
+                    // 대기 목록: 이름 변경만 허용 (시작/삭제 불가)
+                    Button { renamingPane = pane } label: {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Color.secondary)
+                    }
+                    .buttonStyle(.plain).help("대기 목록 이름 변경")
+                } else {
+                    Button { Task { await monitor.startGroup(pane) } } label: {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(sessions.isEmpty ? Color.secondary : color)
+                    }
+                    .buttonStyle(.plain).help("이 창 전체 시작").disabled(sessions.isEmpty)
 
-                Button { Task { await monitor.stopGroup(pane) } } label: {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(runCount == 0 ? Color.secondary : Color.orange)
-                }
-                .buttonStyle(.plain).help("이 창 실행 중인 세션 중지").disabled(runCount == 0)
+                    Button { Task { await monitor.stopGroup(pane) } } label: {
+                        Image(systemName: "stop.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(runCount == 0 ? Color.secondary : Color.orange)
+                    }
+                    .buttonStyle(.plain).help("이 창 실행 중인 세션 중지").disabled(runCount == 0)
 
-                Button { renamingPane = pane } label: {
-                    Image(systemName: "pencil.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color.secondary)
-                }
-                .buttonStyle(.plain).help("창 이름/세션명 변경")
+                    Button { renamingPane = pane } label: {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Color.secondary)
+                    }
+                    .buttonStyle(.plain).help("창 이름/세션명 변경")
 
-                Button {
-                    paneToDelete = pane
-                    showDeletePaneConfirm = true
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(monitor.windowGroupService.groups.count <= 1 ? Color.secondary : Color.red.opacity(0.8))
+                    let nonWaitingCount = monitor.windowGroupService.groups.filter { !$0.isWaitingList }.count
+                    Button {
+                        paneToDelete = pane
+                        showDeletePaneConfirm = true
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(nonWaitingCount <= 1 ? Color.secondary : Color.red.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(nonWaitingCount <= 1)
+                    .help("창 삭제 (세션은 대기 목록으로 이동)")
                 }
-                .buttonStyle(.plain)
-                .disabled(monitor.windowGroupService.groups.count <= 1)
-                .help("창 삭제")
             }
         }
         .padding(.vertical, 6)
@@ -733,10 +723,11 @@ struct AddPaneSheet: View {
             Form { TextField("창 이름 (예: IMSMS, Tesla)", text: $name) }.padding()
             Divider()
             HStack {
-                Button("취소") { dismiss() }
+                Button("취소") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("추가") { onSave(name); dismiss() }
                     .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
             }.padding()
         }
@@ -769,10 +760,11 @@ struct RenamePaneSheet: View {
             }.padding()
             Divider()
             HStack {
-                Button("취소") { dismiss() }
+                Button("취소") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("저장") { onSave(name, sessionName); dismiss() }
                     .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty ||
                               sessionName.trimmingCharacters(in: .whitespaces).isEmpty)
             }.padding()
@@ -801,7 +793,7 @@ struct ImportToPaneSheet: View {
             HStack {
                 Text("\(selected.count)개 선택됨").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("취소") { dismiss() }
+                Button("취소") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("가져오기") {
                     for id in selected {
                         if let profile = monitor.profileService.profiles.first(where: { $0.id == id }) {
@@ -811,6 +803,7 @@ struct ImportToPaneSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
                 .disabled(selected.isEmpty)
             }.padding()
         }

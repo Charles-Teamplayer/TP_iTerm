@@ -23,9 +23,16 @@ final class SessionMonitor: ObservableObject {
         }
     }
 
-    // 미배정 프로필 목록 반환 (자동 배정 없음 — 배정은 사용자가 직접 드래그)
+    // 미배정 프로필 → 대기 목록 pane 자동 배정 (윈도우에 추가하지 않은 세션은 프로세스 미실행)
     func syncWindowGroupsWithProfiles() {
-        // 더 이상 자동 배정하지 않음 — 윈도우에 추가하지 않은 세션은 프로세스 미실행
+        windowGroupService.ensureWaitingList()
+        let allAssigned = Set(windowGroupService.groups.flatMap { $0.profileNames })
+        let unassigned = profileService.profiles.filter { !allAssigned.contains($0.name) }
+        guard !unassigned.isEmpty else { return }
+        let wl = windowGroupService.waitingList
+        for profile in unassigned {
+            windowGroupService.moveProfile(profile.name, to: wl)
+        }
     }
 
     func stop() {
@@ -101,12 +108,14 @@ final class SessionMonitor: ObservableObject {
 
         // 프로필 병합 — 세션 목록에 없는 프로필은 가상 정지 세션으로 추가
         profileService.load()
-        let assignedProfileNames = Set(windowGroupService.groups.flatMap { $0.profileNames })
+        let waitingListNames = Set(windowGroupService.groups
+            .filter { $0.isWaitingList }
+            .flatMap { $0.profileNames })
         let existingNames = Set(result.map { $0.projectName } + result.map { $0.windowName })
         for profile in profileService.profiles {
             guard !existingNames.contains(profile.name) else { continue }
             let rootPath = profile.root.isEmpty ? "~/claude/\(profile.name)" : profile.root
-            let assigned = assignedProfileNames.contains(profile.name)
+            let assigned = !waitingListNames.contains(profile.name)
             result.append(ClaudeSession(
                 id: "profile-\(profile.id)",
                 pid: 0,
@@ -451,8 +460,15 @@ final class SessionMonitor: ObservableObject {
         await refresh()
     }
 
+    // 즉시 적용: 배정된 pane의 중단된 세션 모두 시작
+    func applyNow() async {
+        selectAllLaunchable()
+        await restoreSelected()
+    }
+
     // 그룹(창) 전체 시작: tmux 세션 생성 + iTerm 새 창 attach + 프로필 순서대로 열기
     func startGroup(_ group: WindowPane) async {
+        guard !group.isWaitingList else { return }  // 대기 목록은 실행하지 않음
         let sessionName = group.sessionName
         let escapedSession = shellEscape(sessionName)
 
