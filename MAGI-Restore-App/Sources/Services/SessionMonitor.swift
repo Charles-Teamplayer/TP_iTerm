@@ -664,15 +664,19 @@ final class SessionMonitor: ObservableObject {
         await refresh(showBanner: true)
     }
 
-    // 즉시 적용: 배정된 pane의 중단된 세션 모두 시작
+    // 즉시 적용: 배정된 pane의 중단된 세션 모두 시작 + 모든 그룹 탭 순서 재배치
     func applyNow() async {
         selectAllLaunchable()
         await restoreSelected()
+        // 모든 활성 그룹 탭 순서 재배치
+        for group in windowGroupService.groups where !group.isWaitingList {
+            await reorderTabs(for: group)
+        }
     }
 
-    // 그룹(창) 전체 시작: tmux 세션 생성 + iTerm 새 창 attach + 프로필 순서대로 열기
+    // 그룹(창) 전체 시작: tmux 세션 생성 + iTerm 새 창 attach + 프로필 순서대로 열기 + 탭 재배치
     func startGroup(_ group: WindowPane) async {
-        guard !group.isWaitingList else { return }  // 대기 목록은 실행하지 않음
+        guard !group.isWaitingList else { return }
         let sessionName = group.sessionName
         let escapedSession = shellEscape(sessionName)
 
@@ -707,11 +711,54 @@ final class SessionMonitor: ObservableObject {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
 
-        // 프로필 순서대로 시작
+        // 꺼진 세션만 기동 (실행 중이면 유지)
         let allProfiles = profileService.profiles
+        let runningSessions = Set(sessions.filter { $0.isRunning }.map { $0.projectName })
         for (i, profileName) in group.profileNames.enumerated() {
             guard let profile = allProfiles.first(where: { $0.name == profileName }) else { continue }
-            await launchProfile(name: profile.name, root: profile.root, delay: i * 5, sessionName: sessionName)
+            if runningSessions.contains(profileName) { continue }  // 실행 중이면 skip
+            await launchProfile(name: profile.name, root: profile.root, delay: i * 3, sessionName: sessionName)
+        }
+
+        // 탭 순서를 profileNames 순서대로 재배치
+        await reorderTabs(for: group)
+        await refresh(showBanner: true)
+    }
+
+    // profileNames 순서대로 tmux 탭 재배치 (1부터 시작, monitor는 0 유지)
+    func reorderTabs(for group: WindowPane) async {
+        guard !group.isWaitingList else { return }
+        let sname = group.sessionName
+        let order = group.profileNames
+
+        // 현재 창 목록 (이름→인덱스)
+        let rawWindows = await ShellService.runAsync(
+            "tmux list-windows -t '\(shellEscape(sname))' -F '#{window_index}|#{window_name}' 2>/dev/null"
+        )
+        var nameToIdx: [String: Int] = [:]
+        for line in rawWindows.components(separatedBy: "\n") {
+            let parts = line.components(separatedBy: "|")
+            guard parts.count >= 2, let idx = Int(parts[0]) else { continue }
+            nameToIdx[parts[1]] = idx
+        }
+
+        // temp 인덱스(500+)로 이동 → 충돌 없이 순서 변경 가능
+        let tempBase = 500
+        for (i, profile) in order.enumerated() {
+            guard let src = nameToIdx[profile] else { continue }
+            await ShellService.runAsync(
+                "tmux move-window -s '\(shellEscape(sname)):\(src)' -t '\(shellEscape(sname)):\(tempBase + i)' 2>/dev/null; true"
+            )
+        }
+
+        // 최종 순서로 이동 (1부터 시작)
+        for (i, profile) in order.enumerated() {
+            let tempIdx = tempBase + i
+            let targetIdx = i + 1
+            await ShellService.runAsync(
+                "tmux move-window -s '\(shellEscape(sname)):\(tempIdx)' -t '\(shellEscape(sname)):\(targetIdx)' 2>/dev/null; true"
+            )
+            _ = profile  // suppress warning
         }
     }
 
