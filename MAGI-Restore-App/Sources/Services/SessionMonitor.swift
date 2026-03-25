@@ -725,28 +725,23 @@ final class SessionMonitor: ObservableObject {
                 winPairs.append((idx, parts[1]))
             }
         }
-        guard !winPairs.isEmpty else { return }
+        // monitor 제외한 실제 탭만 생성 (monitor 탭은 사용자에게 불필요)
+        let realPairs = winPairs.filter { $0.1 != "monitor" }
+        guard !realPairs.isEmpty else { return }
 
-        // AppleScript 생성: 첫 탭(monitor) + 나머지 탭들 (인덱스 기반 — 특수문자 회피)
-        let monitorIdx = winPairs.first(where: { $0.1 == "monitor" })?.0 ?? 0
+        // AppleScript: command 파라미터 방식 (write text 타이밍 문제 회피)
+        // exec /bin/zsh -l: Close Sessions On End=true 대비 tmux 종료 후에도 탭 유지
+        let firstCmd = "/bin/bash -lc 'tmux attach-session -t \\'\(sname):\(realPairs[0].0)\\'; exec /bin/zsh -l'"
         var lines: [String] = [
             "tell application \"iTerm2\"",
             "    activate",
-            "    set newWin to (create window with default profile)",
-            "    delay 1",
-            "    tell current session of current tab of newWin",
-            "        write text \"tmux attach-session -t '\(sname):\(monitorIdx)'\"",
-            "    end tell",
+            "    set newWin to (create window with default profile command \"\(firstCmd)\")",
         ]
-        for (tabIdx, (winIdx, _)) in winPairs.enumerated() where winPairs[tabIdx].1 != "monitor" {
-            let tabVar = "tab\(tabIdx)"
+        for (winIdx, _) in realPairs.dropFirst() {
+            let cmd = "/bin/bash -lc 'tmux attach-session -t \\'\(sname):\(winIdx)\\'; exec /bin/zsh -l'"
             lines.append("    delay 0.5")
             lines.append("    tell newWin")
-            lines.append("        set \(tabVar) to (create tab with default profile)")
-            lines.append("    end tell")
-            lines.append("    delay 0.8")
-            lines.append("    tell current session of \(tabVar)")
-            lines.append("        write text \"tmux attach-session -t '\(sname):\(winIdx)'\"")
+            lines.append("        create tab with default profile command \"\(cmd)\"")
             lines.append("    end tell")
         }
         lines.append("end tell")
