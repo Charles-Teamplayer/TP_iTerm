@@ -46,21 +46,28 @@ if [ ! -f "$WINDOW_GROUPS" ]; then
     exit 0
 fi
 
-# iTerm2 실행 대기 (최대 60초)
+# iTerm2 즉시 실행 (이미 실행 중이면 activate만, 미실행이면 시작)
+log "iTerm2 시작/활성화 중..."
+open -a iTerm 2>/dev/null || true
+
+# iTerm2 프로세스가 올라올 때까지 최대 60초 대기
+ITERM_READY=0
 for i in $(seq 1 12); do
     if ps -A 2>/dev/null | grep -q "iTerm.app/Contents/MacOS/iTerm2"; then
+        log "iTerm2 준비됨 (${i}번째 확인, $((i*5))초)"
+        ITERM_READY=1
         break
     fi
     log "iTerm2 대기 중... (${i}/12)"
     sleep 5
 done
 
-# iTerm2 미실행 시 직접 실행
-if ! ps -A 2>/dev/null | grep -q "iTerm.app/Contents/MacOS/iTerm2"; then
-    log "iTerm2 미실행 — open으로 실행"
-    open -a iTerm 2>/dev/null || true
-    sleep 5
+if [ $ITERM_READY -eq 0 ]; then
+    log "ERROR: iTerm2 60초 내 시작 실패 — 스킵"
+    exit 1
 fi
+
+sleep 3  # 창 완전 초기화 대기
 
 # window-groups.json에서 활성 그룹(isWaitingList=false) 읽기
 GROUPS_JSON=$(python3 -c "
@@ -97,7 +104,7 @@ while IFS= read -r SESSION_NAME; do
         continue
     fi
 
-    # AppleScript 생성
+    # AppleScript 생성 — command 파라미터 방식 (write text 불필요, 타이밍 무관)
     APPLE_SCRIPT=$(python3 << PYEOF
 import sys
 
@@ -115,33 +122,30 @@ for line in raw.strip().split('\n'):
         except ValueError:
             pass
 
-if not winPairs:
+# monitor 제외한 실제 세션 탭만 생성
+realPairs = [(idx, name) for idx, name in winPairs if name != 'monitor']
+
+if not realPairs:
     sys.exit(0)
 
-monitor_idx = next((idx for idx, name in winPairs if name == 'monitor'), winPairs[0][0])
+firstIdx, firstName = realPairs[0]
+# Close Sessions On End=true 대비: tmux 종료 후에도 탭이 닫히지 않도록 exec zsh 추가
+# /bin/bash -lc: login shell → homebrew PATH 포함, tmux 실패해도 zsh가 탭 유지
+firstCmd = f"/bin/bash -lc 'tmux attach-session -t {session}:{firstIdx}; exec /bin/zsh -l'"
 
 lines = [
     'tell application "iTerm2"',
     '    activate',
-    '    set newWin to (create window with default profile)',
-    '    delay 1',
-    '    tell current session of current tab of newWin',
-    f'        write text "tmux attach-session -t \\'{session}:{monitor_idx}\\'"',
-    '    end tell',
+    f'    set newWin to (create window with default profile command "{firstCmd}")',
 ]
 
-for tabIdx, (winIdx, name) in enumerate(winPairs):
-    if name == 'monitor':
-        continue
-    tabVar = f'tab{tabIdx}'
+for (winIdx, name) in realPairs[1:]:
+    cmd = f"/bin/bash -lc 'tmux attach-session -t {session}:{winIdx}; exec /bin/zsh -l'"
     lines.append('    delay 0.5')
     lines.append('    tell newWin')
-    lines.append(f'        set {tabVar} to (create tab with default profile)')
+    lines.append(f'        create tab with default profile command "{cmd}"')
     lines.append('    end tell')
-    lines.append('    delay 0.8')
-    lines.append(f'    tell current session of {tabVar}')
-    lines.append(f'        write text "tmux attach-session -t \\'{session}:{winIdx}\\'"')
-    lines.append('    end tell')
+
 lines.append('end tell')
 
 print('\n'.join(lines))
@@ -153,15 +157,19 @@ PYEOF
         continue
     fi
 
-    # osascript 실행
-    osascript << __APPLES__
+    log "$SESSION_NAME AppleScript 실행 시작"
+
+    # osascript 실행 (stderr도 캡처)
+    OSASCRIPT_ERR=$(osascript << __APPLES__ 2>&1
 $APPLE_SCRIPT
 __APPLES__
+)
+    OSASCRIPT_EXIT=$?
 
-    if [ $? -eq 0 ]; then
-        log "$SESSION_NAME iTerm2 창+탭 생성 완료"
+    if [ $OSASCRIPT_EXIT -eq 0 ]; then
+        log "$SESSION_NAME iTerm2 창+탭 생성 완료 (window $OSASCRIPT_ERR)"
     else
-        log "ERROR: $SESSION_NAME osascript 실패"
+        log "ERROR: $SESSION_NAME osascript 실패 (exit=$OSASCRIPT_EXIT): $OSASCRIPT_ERR"
     fi
 
     sleep 2  # 그룹 간 딜레이
