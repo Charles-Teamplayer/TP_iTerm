@@ -1,10 +1,11 @@
 #!/bin/bash
 # Claude Code Auto-Restore Script
-# MAGI+NORN 자동 복원 시스템 - LaunchAgent에서 호출
-# 헤드리스 모드: tmux 세션만 생성 (iTerm2 의존성 제거)
+# window-groups.json 기반 — 각 그룹의 tmux 세션 생성
 
 LOG_FILE="$HOME/.claude/logs/auto-restore.log"
 STOPS_FILE="$HOME/.claude/intentional-stops.json"
+WINDOW_GROUPS="$HOME/.claude/window-groups.json"
+ACTIVATED_FILE="$HOME/.claude/activated-sessions.json"
 mkdir -p "$(dirname "$LOG_FILE")"
 
 log() {
@@ -13,27 +14,14 @@ log() {
 
 log "=== Auto-Restore 시작 ==="
 
-# 부팅 시 orphan tab-states 정리 (이전 세션 잔존 파일 제거)
-STATE_DIR="$HOME/.claude/tab-states"
-if [ -d "$STATE_DIR" ]; then
-    for sf in "$STATE_DIR"/ttys*; do
-        [ ! -f "$sf" ] && continue
-        TTY_DEV="/dev/$(basename "$sf")"
-        if [ ! -c "$TTY_DEV" ]; then
-            rm -f "$sf"
-            log "Orphan tab-state 제거: $(basename "$sf")"
-        fi
-    done
-fi
-
-# 환경변수 로드 후 CLAUDECODE 해제 (순서 중요: source 후 unset)
+# 환경변수 로드
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 if [ -f "$HOME/.zshrc" ]; then
     source "$HOME/.zshrc" 2>/dev/null || true
 fi
 unset CLAUDECODE
 
-# 이미 claude 프로세스가 다수 실행 중이면 스킵 (--force 옵션으로 우회 가능)
+# 이미 claude 프로세스가 다수 실행 중이면 스킵 (--force 옵션으로 우회)
 FORCE_MODE="${1:-}"
 EXISTING=$(ps aux | grep "[c]laude" | grep -v "Claude.app\|Helper\|ShipIt\|watchdog\|auto-restore" | grep -v "??" | wc -l | tr -d ' ')
 if [ "$EXISTING" -gt 5 ] && [ "$FORCE_MODE" != "--force" ]; then
@@ -41,128 +29,155 @@ if [ "$EXISTING" -gt 5 ] && [ "$FORCE_MODE" != "--force" ]; then
     exit 0
 fi
 
-# 제외 목록을 변수에 저장
-STOPPED_WINDOWS=$(python3 -c "
-import json, os
-stops_path = os.path.expanduser('~/.claude/intentional-stops.json')
-try:
-    with open(stops_path, 'r') as f:
-        data = json.load(f)
-    for s in data.get('stops', []):
-        wn = s.get('window_name', '')
-        if wn:
-            print(wn)
-except Exception:
-    pass
-" 2>/dev/null)
+# 기존 claude 프로세스 모두 종료 (새 세션 생성 전, 신규 tmux 창 생성 방지)
+log "기존 claude 프로세스 종료 중..."
+pkill -x "claude" 2>/dev/null || true
+sleep 2
 
-is_stopped() {
-    echo "$STOPPED_WINDOWS" | grep -qx "$1"
-}
-
-# 기존 tmux 세션 정리
-if tmux has-session -t claude-work 2>/dev/null; then
-    log "기존 claude-work tmux 세션 종료"
-    tmux kill-session -t claude-work 2>/dev/null || true
-    # 레지스트리 초기화 (이전 PID들로 인한 watchdog 오탐 방지)
-    python3 -c "
-import json, os
-path = os.path.expanduser('~/.claude/active-sessions.json')
-from datetime import datetime, timezone
-data = {'sessions': [], 'last_updated': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'version': '1.0'}
-with open(path, 'w') as f:
-    json.dump(data, f, indent=2)
-print('[auto-restore] Registry cleared (reboot recovery)')
-" 2>/dev/null || true
-    sleep 2
+# window-groups.json 존재 확인
+if [ ! -f "$WINDOW_GROUPS" ]; then
+    log "window-groups.json 없음 — 종료"
+    exit 1
 fi
 
-# === Step 1: tmux 세션 생성 (activated-sessions.json 기반) ===
-log "tmux 세션 생성 (activated-sessions.json 기반)"
-tmux new-session -d -s claude-work -n monitor -c "$HOME/claude" 2>/dev/null
-tmux set-window-option -t "claude-work:monitor" automatic-rename off 2>/dev/null
-
-ACTIVATED_FILE="$HOME/.claude/activated-sessions.json"
-
-# activated-sessions.json에서 경로 목록 읽기
-ACTIVATED_ROOTS=$(python3 -c "
-import json, os, sys
+# activated-sessions.json에서 name→path 맵 생성 (공백↔밑줄 정규화 비교)
+get_path_for_name() {
+    local name="$1"
+    python3 -c "
+import json, os, sys, re
+name = sys.argv[1]
+# 공백/밑줄을 동일하게 취급: 공백→_ 정규화 후 비교
+def normalize(s):
+    return re.sub(r'[ _]+', '_', s).lower()
+norm_name = normalize(name)
 path = os.path.expanduser('~/.claude/activated-sessions.json')
 for candidate in [path, path + '.bak']:
     try:
         data = json.load(open(candidate))
-        for r in data.get('activated', []):
-            print(r)
-        sys.exit(0)
+        for p in data.get('activated', []):
+            bname = os.path.basename(p)
+            # 정확 매칭 우선, 그 다음 정규화 비교
+            if bname == name or normalize(bname) == norm_name:
+                print(p)
+                sys.exit(0)
     except Exception:
         continue
+" "$name" 2>/dev/null
+}
+
+# window-groups.json에서 활성 그룹(isWaitingList=false) 목록 읽기
+GROUPS_JSON=$(python3 -c "
+import json, sys
+path = '$WINDOW_GROUPS'
+try:
+    groups = json.load(open(path))
+    active = [g for g in groups if not g.get('isWaitingList', False)]
+    for g in active:
+        profiles = '|'.join(g.get('profileNames', []))
+        print(g['sessionName'] + '\t' + profiles)
+except Exception as e:
+    sys.exit(1)
 " 2>/dev/null)
 
-if [ -z "$ACTIVATED_ROOTS" ]; then
-    log "activated-sessions.json 없음 또는 비어있음 — 복원 대상 없음"
+if [ -z "$GROUPS_JSON" ]; then
+    log "활성 그룹 없음 — 종료"
+    exit 1
 fi
 
-CREATED=0
-SKIPPED=0
+TOTAL_CREATED=0
 DELAY=0
-while IFS= read -r PROJ_PATH; do
-    [ -z "$PROJ_PATH" ] && continue
-    [ ! -d "$PROJ_PATH" ] && { log "SKIP (디렉토리 없음): $PROJ_PATH"; continue; }
 
-    NAME=$(basename "$PROJ_PATH")
+while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
+    [ -z "$SESSION_NAME" ] && continue
+    log "--- 그룹 처리: $SESSION_NAME ---"
 
-    # claude project 파일 있으면 --continue
-    if [ -d "$PROJ_PATH/.claude/projects" ] && ls "$PROJ_PATH/.claude/projects"/*.jsonl 2>/dev/null | head -1 | grep -q .; then
-        CLAUDE_CMD="claude --dangerously-skip-permissions --continue"
-    else
-        CLAUDE_CMD="claude --dangerously-skip-permissions"
+    # 기존 tmux 세션 종료 (claude 프로세스가 새 창 만드는 것 방지: kill-server 전 약간 대기)
+    if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+        log "기존 $SESSION_NAME tmux 세션 종료"
+        # 세션의 모든 pane에서 실행 중인 claude 프로세스 먼저 종료
+        tmux list-panes -t "$SESSION_NAME" -a -F '#{pane_pid}' 2>/dev/null | while read -r ppid; do
+            pkill -P "$ppid" -x "claude" 2>/dev/null || true
+        done
+        sleep 1
+        tmux kill-session -t "$SESSION_NAME" 2>/dev/null || true
+        sleep 1
     fi
 
-    tmux new-window -t claude-work -n "$NAME" -c "$PROJ_PATH" 2>/dev/null
-    tmux set-window-option -t "claude-work:$NAME" automatic-rename off 2>/dev/null
-    tmux send-keys -t "claude-work:$NAME" "sleep $DELAY && bash ~/.claude/scripts/tab-status.sh starting '$NAME' && unset CLAUDECODE && $CLAUDE_CMD" Enter
-    CREATED=$((CREATED + 1))
-    DELAY=$((DELAY + 3))
-    log "tmux 윈도우 생성: $NAME"
-done <<< "$ACTIVATED_ROOTS"
+    # monitor 창으로 세션 생성
+    tmux new-session -d -s "$SESSION_NAME" -n monitor -c "$HOME/claude" 2>/dev/null
+    tmux set-window-option -t "$SESSION_NAME:monitor" automatic-rename off 2>/dev/null
+    log "$SESSION_NAME 세션 생성 (monitor 창)"
 
-log "tmux 생성 완료: ${CREATED}개 생성, ${SKIPPED}개 제외"
+    # 각 profileName으로 창 생성
+    IFS='|' read -ra PROFILES <<< "$PROFILES_STR"
+    for PROFILE_NAME in "${PROFILES[@]}"; do
+        [ -z "$PROFILE_NAME" ] && continue
 
-# 세션 수 확인 (헤드리스: iTerm2 attach 없이 tmux만 운영)
-sleep 3
-SESSION_COUNT=$(tmux list-windows -t claude-work 2>/dev/null | wc -l | tr -d ' ')
-log "tmux 윈도우 ${SESSION_COUNT}개 활성"
+        PROJ_PATH=$(get_path_for_name "$PROFILE_NAME")
+        if [ -z "$PROJ_PATH" ] || [ ! -d "$PROJ_PATH" ]; then
+            log "SKIP $PROFILE_NAME — activated-sessions에 경로 없음"
+            continue
+        fi
 
-# Health check: 최대 delay(39초) + 여유 30초 후 claude 프로세스 확인
-(
-    sleep 70
-    CLAUDE_COUNT=$(ps aux | grep '[c]laude' | grep -v 'Claude.app\|Helper\|ShipIt\|watchdog\|auto-restore\|tab-focus' | grep -v '??' | wc -l | tr -d ' ')
-    EXPECTED=$CREATED
-    if [ "$CLAUDE_COUNT" -lt "$EXPECTED" ]; then
-        MISSING=$((EXPECTED - CLAUDE_COUNT))
-        log "HEALTH CHECK WARNING: ${CLAUDE_COUNT}/${EXPECTED} claude 프로세스 실행 중 (${MISSING}개 미시작)"
-    else
-        log "HEALTH CHECK OK: ${CLAUDE_COUNT}/${EXPECTED} claude 프로세스 정상"
-    fi
-) &
+        # claude project 파일 있으면 --continue
+        if [ -d "$PROJ_PATH/.claude/projects" ] && ls "$PROJ_PATH/.claude/projects"/*.jsonl 2>/dev/null | head -1 | grep -q .; then
+            CLAUDE_CMD="claude --dangerously-skip-permissions --continue"
+        else
+            CLAUDE_CMD="claude --dangerously-skip-permissions"
+        fi
 
-# 복원 완료 후 intentional-stops.json 초기화 (다음 부팅은 fresh)
+        tmux new-window -t "$SESSION_NAME" -n "$PROFILE_NAME" -c "$PROJ_PATH" 2>/dev/null
+        # 방금 생성된 창의 인덱스 조회 (창 이름에 '.'이 있으면 pane 구분자 오해 방지)
+        WIN_IDX=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_index}' 2>/dev/null | sort -n | tail -1)
+        tmux set-window-option -t "$SESSION_NAME:$WIN_IDX" automatic-rename off 2>/dev/null
+        tmux send-keys -t "$SESSION_NAME:$WIN_IDX" \
+            "sleep $DELAY && bash ~/.claude/scripts/tab-status.sh starting '$PROFILE_NAME' && unset CLAUDECODE && $CLAUDE_CMD" Enter
+
+        TOTAL_CREATED=$((TOTAL_CREATED + 1))
+        DELAY=$((DELAY + 3))
+        log "창 생성: $SESSION_NAME/$PROFILE_NAME (delay ${DELAY}s)"
+    done
+
+done <<< "$GROUPS_JSON"
+
+# active-sessions.json 초기화 (이전 PID로 인한 watchdog 오탐 방지)
+python3 -c "
+import json, os
+from datetime import datetime, timezone
+path = os.path.expanduser('~/.claude/active-sessions.json')
+data = {'sessions': [], 'last_updated': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'version': '1.0'}
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+" 2>/dev/null || true
+
+# intentional-stops.json 초기화
 if [ -f "$STOPS_FILE" ]; then
     echo '{"stops":[],"last_updated":"'"$(date -u '+%Y-%m-%dT%H:%M:%SZ')"'"}' > "$STOPS_FILE"
     log "intentional-stops.json 초기화 완료"
 fi
 
-# 복원 완료 macOS 알림
-NOTIFY_MSG="Claude Code ${CREATED}개 세션 복원 완료"
-if [ "$SKIPPED" -gt 0 ]; then
-    NOTIFY_MSG="${NOTIFY_MSG} (${SKIPPED}개 의도적 종료 제외)"
-fi
-log "NOTIFY: ${NOTIFY_MSG}"
+# 세션 상태 확인 + 중복 창 제거 (같은 이름의 창이 2개 이상이면 나중 것 제거)
+sleep 3
+for SNAME in $(tmux list-sessions -F '#{session_name}' 2>/dev/null); do
+    SEEN_NAMES=""
+    while IFS='|' read -r idx name; do
+        [ -z "$name" ] && continue
+        if echo "$SEEN_NAMES" | grep -qxF "$name"; then
+            tmux kill-window -t "$SNAME:$idx" 2>/dev/null
+            log "DEDUP: $SNAME/$name (인덱스 $idx) 제거"
+        else
+            SEEN_NAMES="${SEEN_NAMES}${name}
+"
+        fi
+    done < <(tmux list-windows -t "$SNAME" -F '#{window_index}|#{window_name}' 2>/dev/null)
+    WIN_COUNT=$(tmux list-windows -t "$SNAME" 2>/dev/null | wc -l | tr -d ' ')
+    log "$SNAME: ${WIN_COUNT}개 창 활성"
+done
 
-# Notion에 복원 기록
+# Notion 기록
 if [ -n "$NOTION_API_KEY" ] && [ -f "$HOME/claude/TP_skills/session-manager/notion-advanced.py" ]; then
     python3 "$HOME/claude/TP_skills/session-manager/notion-advanced.py" \
-        "TP_iTerm" "Reboot Recovery (tmux)" "${NOTIFY_MSG}" 2>/dev/null || true
+        "TP_iTerm" "Reboot Recovery (tmux)" "window-groups 기반 ${TOTAL_CREATED}개 세션 복원" 2>/dev/null || true
 fi
 
-log "=== Auto-Restore 완료: ${CREATED}개 복원, ${SKIPPED}개 제외 ==="
+log "=== Auto-Restore 완료: ${TOTAL_CREATED}개 창 복원 ==="
