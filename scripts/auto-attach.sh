@@ -131,7 +131,10 @@ if not realPairs:
 firstIdx, firstName = realPairs[0]
 # Close Sessions On End=true 대비: tmux 종료 후에도 탭이 닫히지 않도록 exec zsh 추가
 # /bin/bash -lc: login shell → homebrew PATH 포함, tmux 실패해도 zsh가 탭 유지
-firstCmd = f"/bin/bash -lc 'tmux attach-session -t {session}:{firstIdx}; exec /bin/zsh -l'"
+# linked session 방식: 각 탭이 독립적인 tmux 창 추적
+# tmux attach-session -t session:N은 session 전체 current window를 변경하므로 사용 불가
+firstLinked = f"{session}-v{firstIdx}"
+firstCmd = f"/bin/bash -lc 'tmux has-session -t {firstLinked} 2>/dev/null || tmux new-session -d -s {firstLinked} -t {session} 2>/dev/null; tmux select-window -t {firstLinked}:{firstIdx} 2>/dev/null; tmux attach-session -t {firstLinked}; exec /bin/zsh -l'"
 
 lines = [
     'tell application "iTerm2"',
@@ -140,7 +143,8 @@ lines = [
 ]
 
 for (winIdx, name) in realPairs[1:]:
-    cmd = f"/bin/bash -lc 'tmux attach-session -t {session}:{winIdx}; exec /bin/zsh -l'"
+    linkedName = f"{session}-v{winIdx}"
+    cmd = f"/bin/bash -lc 'tmux has-session -t {linkedName} 2>/dev/null || tmux new-session -d -s {linkedName} -t {session} 2>/dev/null; tmux select-window -t {linkedName}:{winIdx} 2>/dev/null; tmux attach-session -t {linkedName}; exec /bin/zsh -l'"
     lines.append('    delay 0.5')
     lines.append('    tell newWin')
     lines.append(f'        create tab with default profile command "{cmd}"')

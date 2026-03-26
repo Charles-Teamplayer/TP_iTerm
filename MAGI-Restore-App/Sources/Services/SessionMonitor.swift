@@ -700,6 +700,7 @@ final class SessionMonitor: ObservableObject {
         }
 
         // 기존 monitor 창 모두 제거 후 맨 마지막에 하나만 재생성 + _init_ 제거
+        // 이전 linked view sessions 정리 (중복 방지)
         await ShellService.runAsync("""
             tmux list-windows -t '\(escapedSession)' -F '#{window_id}|#{window_name}' 2>/dev/null \
               | awk -F'|' '$2=="monitor"{print $1}' \
@@ -707,6 +708,9 @@ final class SessionMonitor: ObservableObject {
             tmux kill-window -t '\(escapedSession):_init_' 2>/dev/null; \
             tmux new-window -t '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' '/bin/bash -c \"while true; do sleep 86400; done\"' 2>/dev/null; \
             tmux set-window-option -t '\(escapedSession):monitor' automatic-rename off 2>/dev/null; \
+            tmux list-sessions -F '#{session_name}' 2>/dev/null \
+              | grep '^\(sessionName)-v[0-9]' \
+              | xargs -I{} tmux kill-session -t {} 2>/dev/null; \
             true
             """
         )
@@ -723,8 +727,14 @@ final class SessionMonitor: ObservableObject {
 
     // 이 tmux 세션에 붙어있는 기존 iTerm2 창 모두 닫기 (TTY 기반 매칭)
     func closeExistingITermWindows(for sessionName: String) async {
-        let ttysRaw = await ShellService.runAsync(
-            "tmux list-clients -t '\(shellEscape(sessionName))' -F '#{client_tty}' 2>/dev/null"
+        // main session + linked view sessions(-v*)에서 클라이언트 TTY 수집
+        let ttysRaw = await ShellService.runAsync("""
+            { tmux list-clients -t '\(shellEscape(sessionName))' -F '#{client_tty}' 2>/dev/null; \
+              tmux list-sessions -F '#{session_name}' 2>/dev/null \
+                | grep '^\(sessionName)-v[0-9]' \
+                | while read s; do tmux list-clients -t "$s" -F '#{client_tty}' 2>/dev/null; done; \
+            } | sort -u
+            """
         )
         let ttys = ttysRaw.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         guard !ttys.isEmpty else { return }
@@ -734,18 +744,19 @@ final class SessionMonitor: ObservableObject {
         osascript << '__APPLES__'
         tell application "iTerm2"
             set ttySet to {\(ttyList)}
-            set winList to every window
-            repeat with w in reverse of winList
-                set doClose to false
+            set toClose to {}
+            repeat with w in every window
                 repeat with t in every tab of w
                     try
                         if tty of current session of t is in ttySet then
-                            set doClose to true
+                            set end of toClose to w
                             exit repeat
                         end if
                     end try
                 end repeat
-                if doClose then close w
+            end repeat
+            repeat with w in toClose
+                close w
             end repeat
         end tell
         __APPLES__
@@ -773,17 +784,20 @@ final class SessionMonitor: ObservableObject {
         let realPairs = winPairs.filter { $0.1 != "monitor" }
         guard !realPairs.isEmpty else { return }
 
-        // AppleScript: command 파라미터 방식 (write text 타이밍 문제 회피)
-        // exec /bin/zsh -l: Close Sessions On End=true 대비 tmux 종료 후에도 탭 유지
-        // 주의: AppleScript command 문자열은 "로 감싸므로 내부 '는 이스케이프 불필요
-        let firstCmd = "/bin/bash -lc 'tmux attach-session -t \(sname):\(realPairs[0].0); exec /bin/zsh -l'"
+        // AppleScript: linked session 방식 (각 탭이 독립적인 창 추적)
+        // tmux attach-session -t session:N 방식은 마지막 N이 session 전체 current window를 덮어씀
+        // → {sname}-v{winIdx} linked session 생성으로 각 탭 독립 창 보장
+        let firstWinIdx = realPairs[0].0
+        let firstLinked = "\(sname)-v\(firstWinIdx)"
+        let firstCmd = "/bin/bash -lc 'tmux has-session -t \(firstLinked) 2>/dev/null || tmux new-session -d -s \(firstLinked) -t \(sname) 2>/dev/null; tmux select-window -t \(firstLinked):\(firstWinIdx) 2>/dev/null; tmux attach-session -t \(firstLinked); exec /bin/zsh -l'"
         var lines: [String] = [
             "tell application \"iTerm2\"",
             "    activate",
             "    set newWin to (create window with default profile command \"\(firstCmd)\")",
         ]
         for (winIdx, _) in realPairs.dropFirst() {
-            let cmd = "/bin/bash -lc 'tmux attach-session -t \(sname):\(winIdx); exec /bin/zsh -l'"
+            let linkedName = "\(sname)-v\(winIdx)"
+            let cmd = "/bin/bash -lc 'tmux has-session -t \(linkedName) 2>/dev/null || tmux new-session -d -s \(linkedName) -t \(sname) 2>/dev/null; tmux select-window -t \(linkedName):\(winIdx) 2>/dev/null; tmux attach-session -t \(linkedName); exec /bin/zsh -l'"
             lines.append("    delay 0.5")
             lines.append("    tell newWin")
             lines.append("        create tab with default profile command \"\(cmd)\"")
