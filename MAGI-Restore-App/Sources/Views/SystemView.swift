@@ -264,6 +264,17 @@ struct SystemView: View {
     @State private var useCustomAttempts = false
     @State private var customDelayInput = ""
     @State private var customAttemptsInput = ""
+    @State private var useCustomSyncInterval = false
+    @State private var customSyncIntervalInput = ""
+    @State private var syncIntervalUnit: SyncUnit = .seconds
+
+    enum SyncUnit: String, CaseIterable, Identifiable {
+        case seconds = "초"
+        case minutes = "분"
+        var id: String { rawValue }
+        func toSeconds(_ v: Int) -> Int { self == .minutes ? v * 60 : v }
+        func fromSeconds(_ s: Int) -> Int { self == .minutes ? s / 60 : s }
+    }
 
     var body: some View {
         Form {
@@ -341,6 +352,76 @@ struct SystemView: View {
                         .font(.caption).foregroundStyle(.tertiary)
                 }
             }
+            // ── 자동 동기화 설정 ──
+            Section("자동 동기화 설정") {
+                Toggle("자동 동기화", isOn: $monitor.restoreSettings.autoSync)
+                    .onChange(of: monitor.restoreSettings.autoSync) { _, _ in
+                        monitor.restoreSettings.save()
+                        monitor.restartSyncTimer()
+                    }
+
+                if monitor.restoreSettings.autoSync {
+                    HStack {
+                        Text("동기화 간격").foregroundStyle(.secondary)
+                        Spacer()
+                        if !useCustomSyncInterval {
+                            Picker("", selection: $monitor.restoreSettings.syncIntervalSeconds) {
+                                ForEach(RestoreSettings.syncIntervalPresets, id: \.seconds) { p in
+                                    Text(p.label).tag(p.seconds)
+                                }
+                            }
+                            .pickerStyle(.menu).labelsHidden().frame(width: 80)
+                            .onChange(of: monitor.restoreSettings.syncIntervalSeconds) { _, _ in
+                                monitor.restoreSettings.save()
+                                monitor.restartSyncTimer()
+                            }
+                        } else {
+                            HStack(spacing: 4) {
+                                TextField("값", text: $customSyncIntervalInput)
+                                    .frame(width: 60).textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
+                                    .onSubmit {
+                                        if let v = Int(customSyncIntervalInput), v > 0 {
+                                            monitor.restoreSettings.syncIntervalSeconds = syncIntervalUnit.toSeconds(v)
+                                            monitor.restoreSettings.save()
+                                            monitor.restartSyncTimer()
+                                        }
+                                    }
+                                Picker("", selection: $syncIntervalUnit) {
+                                    ForEach(SyncUnit.allCases) { u in Text(u.rawValue).tag(u) }
+                                }
+                                .pickerStyle(.segmented).frame(width: 60)
+                                .onChange(of: syncIntervalUnit) { _, newUnit in
+                                    if let v = Int(customSyncIntervalInput), v > 0 {
+                                        monitor.restoreSettings.syncIntervalSeconds = newUnit.toSeconds(v)
+                                        monitor.restoreSettings.save()
+                                        monitor.restartSyncTimer()
+                                    }
+                                }
+                            }
+                        }
+                        Button(useCustomSyncInterval ? "프리셋" : "직접 입력") {
+                            useCustomSyncInterval.toggle()
+                            if useCustomSyncInterval {
+                                let secs = monitor.restoreSettings.syncIntervalSeconds
+                                if secs % 60 == 0 {
+                                    syncIntervalUnit = .minutes
+                                    customSyncIntervalInput = "\(secs / 60)"
+                                } else {
+                                    syncIntervalUnit = .seconds
+                                    customSyncIntervalInput = "\(secs)"
+                                }
+                            }
+                        }
+                        .buttonStyle(.link).font(.caption)
+                    }
+
+                    let interval = monitor.restoreSettings.syncIntervalSeconds
+                    let label = interval < 60 ? "\(interval)초" : "\(interval / 60)분\(interval % 60 > 0 ? " \(interval % 60)초" : "")"
+                    Text("window-groups.json 변경 시 \(label)마다 탭 자동 동기화. 작업 중인 탭은 영향 없음.")
+                        .font(.caption).foregroundStyle(.tertiary)
+                }
+            }
+
             Section("Claude 세션") {
                 HStack {
                     Text("실행 중인 세션")

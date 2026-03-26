@@ -11,6 +11,7 @@ final class SessionMonitor: ObservableObject {
     private var cancelRestoreFlag = false
 
     private var timer: Timer?
+    private var syncTimer: Timer?
     @Published var isRefreshing = false   // 내부 dedup 전용
     @Published var isSyncing = false      // UI 배너 표시 전용 (사용자 액션 시만)
     private let activeSessionsPath = NSHomeDirectory() + "/.claude/active-sessions.json"
@@ -37,6 +38,17 @@ final class SessionMonitor: ObservableObject {
             }
         }
         setupStateWatcher()
+        restartSyncTimer()
+    }
+
+    func restartSyncTimer() {
+        syncTimer?.invalidate()
+        syncTimer = nil
+        guard restoreSettings.autoSync, restoreSettings.syncIntervalSeconds > 0 else { return }
+        let interval = TimeInterval(restoreSettings.syncIntervalSeconds)
+        syncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.checkAutoSync() }
+        }
     }
 
     private func setupStateWatcher() {
@@ -96,6 +108,8 @@ final class SessionMonitor: ObservableObject {
     func stop() {
         timer?.invalidate()
         timer = nil
+        syncTimer?.invalidate()
+        syncTimer = nil
         statesDirSource?.cancel()
         statesDirSource = nil
         debounceTask?.cancel()
@@ -662,6 +676,77 @@ final class SessionMonitor: ObservableObject {
         await ShellService.runAsync(cmd)
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh(showBanner: true)
+    }
+
+    // 자동 동기화: window-groups.json 상태와 tmux 실제 상태를 비교해 최소 변경만 적용
+    // - 추가된 탭: launchProfile로 새 tmux 창 생성 (기존 창 무관)
+    // - 제거된 탭: 해당 tmux 창만 kill (다른 창 무관)
+    // - 순서 변경: reorderTabs로 move-window만 사용 (프로세스 재시작 없음)
+    func checkAutoSync() async {
+        guard restoreSettings.autoSync else { return }
+        windowGroupService.load()
+        let activeGroups = windowGroupService.groups.filter { !$0.isWaitingList }
+        for group in activeGroups {
+            let sname = group.sessionName
+            let escaped = shellEscape(sname)
+
+            // tmux 세션 없으면 스킵 (startGroup으로 명시적 시작 필요)
+            let exists = await ShellService.runAsync(
+                "tmux has-session -t '\(escaped)' 2>/dev/null && echo yes || echo no"
+            )
+            guard exists.trimmingCharacters(in: .whitespacesAndNewlines) == "yes" else { continue }
+
+            // 현재 tmux 창 목록 (monitor, _init_ 제외)
+            let rawWins = await ShellService.runAsync(
+                "tmux list-windows -t '\(escaped)' -F '#{window_name}' 2>/dev/null"
+            )
+            let currentWindows = rawWins.components(separatedBy: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && $0 != "monitor" && $0 != "_init_" }
+
+            let desiredProfiles = group.profileNames
+            let currentSet = Set(currentWindows)
+            let desiredSet = Set(desiredProfiles)
+
+            // 이미 동일하면 스킵
+            if currentWindows == desiredProfiles { continue }
+
+            var anyChange = false
+
+            // 추가: desired에 있는데 tmux에 없는 탭
+            for profileName in desiredProfiles where !currentSet.contains(profileName) {
+                guard let profile = profileService.profiles.first(where: { $0.name == profileName }) else { continue }
+                let safeRoot = profile.root.hasPrefix("~") ? NSHomeDirectory() + profile.root.dropFirst() : profile.root
+                let dirOk = await ShellService.runAsync("[ -d '\(shellEscape(safeRoot))' ] && echo yes || echo no")
+                guard dirOk.trimmingCharacters(in: .whitespacesAndNewlines) == "yes" else { continue }
+                await launchProfile(name: profile.name, root: profile.root, delay: 0, sessionName: sname)
+                anyChange = true
+            }
+
+            // 제거: tmux에 있는데 desired에 없는 탭 (해당 창만 kill)
+            for windowName in currentWindows where !desiredSet.contains(windowName) {
+                await ShellService.runAsync(
+                    "tmux kill-window -t '\(escaped):\(shellEscape(windowName))' 2>/dev/null; true"
+                )
+                anyChange = true
+            }
+
+            // 순서 변경: desired 순서와 다르면 reorderTabs (move-window만 사용, 프로세스 무관)
+            let rawWinsAfter = await ShellService.runAsync(
+                "tmux list-windows -t '\(escaped)' -F '#{window_name}' 2>/dev/null"
+            )
+            let windowsAfter = rawWinsAfter.components(separatedBy: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && $0 != "monitor" && $0 != "_init_" }
+            if windowsAfter != desiredProfiles {
+                await reorderTabs(for: group)
+                anyChange = true
+            }
+
+            if anyChange {
+                await refresh(showBanner: false)
+            }
+        }
     }
 
     // 즉시 적용: 배정된 pane의 중단된 세션 모두 시작 + 모든 그룹 탭 순서 재배치
