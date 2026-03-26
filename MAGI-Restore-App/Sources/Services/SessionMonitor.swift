@@ -699,16 +699,58 @@ final class SessionMonitor: ObservableObject {
             await launchProfile(name: profile.name, root: profile.root, delay: i * 2, sessionName: sessionName)
         }
 
-        // monitor를 맨 마지막에 추가 + _init_ 제거
-        await ShellService.runAsync(
-            "tmux new-window -t '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' '/bin/bash -c \"while true; do sleep 86400; done\"' 2>/dev/null; tmux set-window-option -t '\(escapedSession):monitor' automatic-rename off 2>/dev/null; tmux kill-window -t '\(escapedSession):_init_' 2>/dev/null; true"
+        // 기존 monitor 창 모두 제거 후 맨 마지막에 하나만 재생성 + _init_ 제거
+        await ShellService.runAsync("""
+            tmux list-windows -t '\(escapedSession)' -F '#{window_id}|#{window_name}' 2>/dev/null \
+              | awk -F'|' '$2=="monitor"{print $1}' \
+              | xargs -I{} tmux kill-window -t {} 2>/dev/null; \
+            tmux kill-window -t '\(escapedSession):_init_' 2>/dev/null; \
+            tmux new-window -t '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' '/bin/bash -c \"while true; do sleep 86400; done\"' 2>/dev/null; \
+            tmux set-window-option -t '\(escapedSession):monitor' automatic-rename off 2>/dev/null; \
+            true
+            """
         )
+
+        // 기존에 이 세션에 붙어있는 iTerm2 창 닫기 (미러링 방지)
+        await closeExistingITermWindows(for: sessionName)
 
         // iTerm2 새 창 + 각 tmux 창마다 탭 생성 (CC 모드 대신 개별 attach)
         try? await Task.sleep(nanoseconds: 2_000_000_000)  // 창 생성 대기
         await openITermTabs(for: group)
 
         await refresh(showBanner: true)
+    }
+
+    // 이 tmux 세션에 붙어있는 기존 iTerm2 창 모두 닫기 (TTY 기반 매칭)
+    func closeExistingITermWindows(for sessionName: String) async {
+        let ttysRaw = await ShellService.runAsync(
+            "tmux list-clients -t '\(shellEscape(sessionName))' -F '#{client_tty}' 2>/dev/null"
+        )
+        let ttys = ttysRaw.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard !ttys.isEmpty else { return }
+
+        let ttyList = ttys.map { "\"\($0)\"" }.joined(separator: ", ")
+        let script = """
+        osascript << '__APPLES__'
+        tell application "iTerm2"
+            set ttySet to {\(ttyList)}
+            set winList to every window
+            repeat with w in reverse of winList
+                set doClose to false
+                repeat with t in every tab of w
+                    try
+                        if tty of current session of t is in ttySet then
+                            set doClose to true
+                            exit repeat
+                        end if
+                    end try
+                end repeat
+                if doClose then close w
+            end repeat
+        end tell
+        __APPLES__
+        """
+        await ShellService.runAsync(script)
     }
 
     // iTerm2 새 창 + tmux 창마다 탭 생성 (CC 모드 대신 개별 attach)
