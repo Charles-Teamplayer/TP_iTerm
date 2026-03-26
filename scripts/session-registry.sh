@@ -167,7 +167,7 @@ DIR_TO_WINDOW = {
     os.path.expanduser("~/claude/TP_BTT"): "btt",
     os.path.expanduser("~/claude/TP_Infra_reduce_Project"): "infra",
     os.path.expanduser("~/claude/TP_skills"): "skills",
-    os.path.expanduser("~/claude/AppleTV_ScreenSaver.app"): "appletv",
+    os.path.expanduser("~/claude/AppleTV_ScreenSaver.app"): "AppleTV_ScreenSaver.app",
     os.path.expanduser("~/claude/imsms.im-website"): "imsms-web",
     os.path.expanduser("~/claude/TP_iTerm"): "session-mgr",
 }
@@ -232,22 +232,39 @@ DIR_TO_WINDOW = {
     os.path.expanduser("~/claude/TP_BTT"): "btt",
     os.path.expanduser("~/claude/TP_Infra_reduce_Project"): "infra",
     os.path.expanduser("~/claude/TP_skills"): "skills",
-    os.path.expanduser("~/claude/AppleTV_ScreenSaver.app"): "appletv",
+    os.path.expanduser("~/claude/AppleTV_ScreenSaver.app"): "AppleTV_ScreenSaver.app",
     os.path.expanduser("~/claude/imsms.im-website"): "imsms-web",
     os.path.expanduser("~/claude/TP_iTerm"): "session-mgr",
     os.path.expanduser("~/claude/TP_MailSystem"): "mailsystem",
 }
 
-# tmux 윈도우 목록 1회 캐시 (반복 호출 방지)
+# tmux 윈도우 목록 1회 캐시 (반복 호출 방지) — 모든 세션 포함
 _tmux_windows = None
 def get_tmux_windows():
     global _tmux_windows
     if _tmux_windows is None:
-        r = subprocess.run(
-            ['tmux', 'list-windows', '-t', 'claude-work', '-F', '#{window_name}'],
-            capture_output=True, text=True
-        )
-        _tmux_windows = r.stdout.strip().splitlines() if r.returncode == 0 else []
+        windows = []
+        import json as _json, os as _os
+        _groups_path = _os.path.expanduser('~/.claude/window-groups.json')
+        _active_sessions = []
+        try:
+            _groups = _json.load(open(_groups_path))
+            for _g in _groups:
+                _sn = _g.get('sessionName','')
+                if not _g.get('isWaitingList', False) and _sn and _sn != '__waiting__':
+                    _active_sessions.append(_sn)
+        except Exception:
+            pass
+        if not _active_sessions:
+            _active_sessions = ['claude-work']
+        for session in _active_sessions:
+            r = subprocess.run(
+                ['tmux', 'list-windows', '-t', session, '-F', '#{window_name}'],
+                capture_output=True, text=True
+            )
+            if r.returncode == 0:
+                windows.extend(r.stdout.strip().splitlines())
+        _tmux_windows = windows
     return _tmux_windows
 
 def strip_prefix(name):

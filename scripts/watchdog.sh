@@ -148,17 +148,45 @@ for candidate in [path, path + '.bak']:
                     continue
                 fi
 
-                # tmux claude-work 세션이 있는지 확인
-                if ! tmux has-session -t claude-work 2>/dev/null; then
-                    log "SKIP restart: claude-work tmux session not found"
+                # window-groups.json에서 이 윈도우가 속한 세션 + 대기목록 여부 확인
+                SESSION_INFO=$(python3 -c "
+import json, os, sys
+name = sys.argv[1]
+path = os.path.expanduser('~/.claude/window-groups.json')
+try:
+    groups = json.load(open(path))
+    for g in groups:
+        if name in g.get('profileNames', []):
+            waiting = 'yes' if g.get('isWaitingList') or g.get('sessionName','') == '__waiting__' else 'no'
+            print(waiting + '|' + g.get('sessionName','claude-work'))
+            sys.exit(0)
+except Exception:
+    pass
+print('no|claude-work')
+" "$WINDOW_NAME" 2>/dev/null)
+                IS_WAITING=$(echo "$SESSION_INFO" | cut -d'|' -f1)
+                TARGET_SESSION=$(echo "$SESSION_INFO" | cut -d'|' -f2)
+                [ -z "$TARGET_SESSION" ] && TARGET_SESSION="claude-work"
+
+                if [ "$IS_WAITING" = "yes" ]; then
+                    log "SKIP restart: $WINDOW_NAME — 대기목록 세션"
                     continue
                 fi
 
-                # 해당 윈도우가 이미 있으면 kill 후 재생성, 없으면 새로 생성
-                if tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null | grep -qx "$WINDOW_NAME"; then
-                    tmux kill-window -t "claude-work:$WINDOW_NAME" 2>/dev/null
-                    sleep 1
+                # 해당 tmux 세션이 존재하는지 확인
+                if ! tmux has-session -t "$TARGET_SESSION" 2>/dev/null; then
+                    log "SKIP restart: $TARGET_SESSION tmux session not found"
+                    continue
                 fi
+
+                # 해당 윈도우가 타겟 세션에 없으면 재시작 스킵 (비활성 세션)
+                if ! tmux list-windows -t "$TARGET_SESSION" -F '#{window_name}' 2>/dev/null | grep -qx "$WINDOW_NAME"; then
+                    log "SKIP restart: $WINDOW_NAME — $TARGET_SESSION에 창 없음"
+                    continue
+                fi
+                # 기존 창 kill 후 재생성
+                tmux kill-window -t "$TARGET_SESSION:$WINDOW_NAME" 2>/dev/null
+                sleep 1
 
                 # 연속 크래시 카운터 증가 (COUNT|TIMESTAMP 형식, 24h 만료)
                 CRASH_COUNT_FILE="$CRASH_COUNT_DIR/${RESTART_PROJECT//[^a-zA-Z0-9_-]/_}"
@@ -186,11 +214,11 @@ for candidate in [path, path + '.bak']:
                     continue
                 fi
 
-                tmux new-window -t claude-work -n "$WINDOW_NAME" -c "$PROJ_PATH" 2>/dev/null
-                tmux set-window-option -t "claude-work:$WINDOW_NAME" automatic-rename off 2>/dev/null
-                tmux send-keys -t "claude-work:$WINDOW_NAME" "bash ~/.claude/scripts/tab-status.sh starting $WINDOW_NAME && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
+                tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_PATH" 2>/dev/null
+                tmux set-window-option -t "$TARGET_SESSION:$WINDOW_NAME" automatic-rename off 2>/dev/null
+                tmux send-keys -t "$TARGET_SESSION:$WINDOW_NAME" "bash ~/.claude/scripts/tab-status.sh starting $WINDOW_NAME && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
 
-                log "AUTO-RESTART: $RESTART_PROJECT → tmux window $WINDOW_NAME (연속 ${NEW_COUNT}/${CRASH_MAX}회)"
+                log "AUTO-RESTART: $RESTART_PROJECT → $TARGET_SESSION:$WINDOW_NAME (연속 ${NEW_COUNT}/${CRASH_MAX}회)"
                 notify "세션 자동 복구: $RESTART_PROJECT"
             done
         fi
@@ -282,35 +310,57 @@ for candidate in [path, path + '.bak']:
         log "WARNING: iTerm2 not running"
     fi
 
-    # monitor 창 소실 감지 및 자동 복구 (idle zsh — claude 명령 없음)
-    if tmux has-session -t claude-work 2>/dev/null; then
-        if ! tmux list-windows -t claude-work -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
-            log "MONITOR 창 없음 — 자동 복구"
-            if tmux new-window -t claude-work -n monitor -c "$HOME/claude" 2>/dev/null; then
-                tmux set-window-option -t "claude-work:monitor" automatic-rename off 2>/dev/null
-                log "MONITOR 창 복구 완료"
-            else
-                log "ERROR: MONITOR 창 복구 실패"
-            fi
-        fi
-    fi
+    # monitor 창 소실 감지 및 자동 복구 (모든 active 세션)
+    ACTIVE_SESSIONS_MON=$(python3 -c "
+import json, os
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    for g in groups:
+        sn = g.get('sessionName','')
+        if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
+            print(sn)
+except: pass
+" 2>/dev/null)
+    [ -z "$ACTIVE_SESSIONS_MON" ] && ACTIVE_SESSIONS_MON="claude-work"
 
-    # 5. tmux CC 클라이언트 연결 상태 모니터링
-    if tmux has-session -t claude-work 2>/dev/null; then
-        CLIENT_COUNT=$(tmux list-clients -t claude-work -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
-        if [ "${CLIENT_COUNT:-0}" -eq 0 ]; then
-            # 마지막 CC fix 시도 시간 체크 (2분 쿨다운)
-            CC_FIX_LOCK="/tmp/.cc-fix-last"
-            LAST_FIX=0
-            [ -f "$CC_FIX_LOCK" ] && LAST_FIX=$(cat "$CC_FIX_LOCK" 2>/dev/null || echo 0)
-            NOW_FIX=$(date +%s)
-            if [ $((NOW_FIX - LAST_FIX)) -gt 120 ]; then
-                log "WARNING: claude-work 클라이언트 없음 — 자동 CC 재연결 시도"
-                echo "$NOW_FIX" > "$CC_FIX_LOCK"
-                bash "$HOME/.claude/scripts/cc-fix.sh" 2>/dev/null &
+    for MON_SESSION in $ACTIVE_SESSIONS_MON; do
+        if tmux has-session -t "$MON_SESSION" 2>/dev/null; then
+            if ! tmux list-windows -t "$MON_SESSION" -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
+                log "MONITOR 창 없음 ($MON_SESSION) — 자동 복구"
+                if tmux new-window -t "$MON_SESSION" -n monitor -c "$HOME/claude" 2>/dev/null; then
+                    tmux set-window-option -t "$MON_SESSION:monitor" automatic-rename off 2>/dev/null
+                    tmux move-window -s "$MON_SESSION:monitor" -t "$MON_SESSION:999" 2>/dev/null || true
+                    log "MONITOR 창 복구 완료 ($MON_SESSION)"
+                else
+                    log "ERROR: MONITOR 창 복구 실패 ($MON_SESSION)"
+                fi
+            else
+                # monitor 창이 999번이 아니면 이동
+                MON_IDX=$(tmux list-windows -t "$MON_SESSION" -F "#{window_index} #{window_name}" 2>/dev/null | awk '/^[0-9]+ monitor$/{print $1}')
+                if [ -n "$MON_IDX" ] && [ "$MON_IDX" != "999" ]; then
+                    tmux move-window -s "$MON_SESSION:monitor" -t "$MON_SESSION:999" 2>/dev/null || true
+                fi
             fi
         fi
-    fi
+    done
+
+    # 5. tmux CC 클라이언트 연결 상태 모니터링 (모든 active 세션)
+    for CC_SESSION in $ACTIVE_SESSIONS_MON; do
+        if tmux has-session -t "$CC_SESSION" 2>/dev/null; then
+            CLIENT_COUNT=$(tmux list-clients -t "$CC_SESSION" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
+            if [ "${CLIENT_COUNT:-0}" -eq 0 ]; then
+                CC_FIX_LOCK="/tmp/.cc-fix-last-${CC_SESSION//[^a-zA-Z0-9]/_}"
+                LAST_FIX=0
+                [ -f "$CC_FIX_LOCK" ] && LAST_FIX=$(cat "$CC_FIX_LOCK" 2>/dev/null || echo 0)
+                NOW_FIX=$(date +%s)
+                if [ $((NOW_FIX - LAST_FIX)) -gt 120 ]; then
+                    log "WARNING: $CC_SESSION 클라이언트 없음 — 자동 CC 재연결 시도"
+                    echo "$NOW_FIX" > "$CC_FIX_LOCK"
+                    TMUX_SESSION="$CC_SESSION" bash "$HOME/.claude/scripts/cc-fix.sh" 2>/dev/null &
+                fi
+            fi
+        fi
+    done
 
     # stderr.log 로테이션 (매 루프마다 체크)
     rotate_stderr_log

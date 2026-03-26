@@ -3,7 +3,7 @@
 # raw %extended-output 라인이 노출될 때 CC 클라이언트를 재연결
 
 LOG="$HOME/.claude/logs/cc-fix.log"
-SESSION="claude-work"
+SESSION="${TMUX_SESSION:-claude-work}"
 
 log() { echo "[$(date '+%H:%M:%S')] $1" >> "$LOG"; }
 
@@ -23,16 +23,17 @@ else
     sleep 2
 fi
 
-# 새 iTerm2 창으로 tmux -CC attach
-osascript -e '
-tell application "iTerm2"
+# 새 iTerm2 창으로 tmux -CC attach (TMUX 변수 unset 필수: 중첩 tmux 방지)
+osascript -e "
+tell application \"iTerm2\"
     activate
     set newWindow to (create window with default profile)
+    delay 1
     tell current session of newWindow
-        write text "tmux -CC attach -t claude-work"
+        write text \"unset TMUX; tmux -CC attach -t $SESSION\"
     end tell
 end tell
-' 2>>"$LOG"
+" 2>>"$LOG"
 
 log "새 iTerm2 창에서 CC 재attach 실행"
 log "=== cc-fix 완료 ==="
