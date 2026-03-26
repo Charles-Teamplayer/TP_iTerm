@@ -37,10 +37,10 @@ struct ContentView: View {
     }
 
     enum Tab: String, CaseIterable {
-        case sessions = "세션"
-        case profiles = "프로필"
-        case backup = "백업"
-        case system = "시스템"
+        case sessions = "Sessions"
+        case profiles = "Profiles"
+        case backup = "Backup"
+        case system = "System"
         var icon: String {
             switch self {
             case .sessions: "terminal"
@@ -132,13 +132,13 @@ struct ContentView: View {
             ImportToPaneSheet(pane: pane, monitor: monitor)
         }
         .confirmationDialog(
-            "'\(paneToDelete?.name ?? "")' 창을 삭제하시겠습니까?\n세션은 첫 번째 창으로 이동합니다.",
+            "Delete group '\(paneToDelete?.name ?? "")'?\nSessions will be moved to the first group.",
             isPresented: $showDeletePaneConfirm, titleVisibility: .visible
         ) {
-            Button("삭제", role: .destructive) {
+            Button("Delete", role: .destructive) {
                 if let p = paneToDelete { monitor.windowGroupService.deleteGroup(p) }
             }
-            Button("취소", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         }
         .background {
             Group {
@@ -238,7 +238,7 @@ struct ContentView: View {
             // 검색바
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.caption)
-                TextField("검색...", text: $searchText)
+                TextField("Search...", text: $searchText)
                     .textFieldStyle(.plain).font(.caption).focused($searchFocused)
                 if !searchText.isEmpty {
                     Button { searchText = "" } label: {
@@ -253,7 +253,7 @@ struct ContentView: View {
             if monitor.isSyncing {
                 HStack(spacing: 6) {
                     ProgressView().progressViewStyle(.circular).scaleEffect(0.55)
-                    Text("동기화 중...").font(.caption2).foregroundStyle(.secondary)
+                    Text("Syncing...").font(.caption2).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
@@ -266,9 +266,9 @@ struct ContentView: View {
             if profileSessions.isEmpty {
                 Spacer()
                 Image(systemName: "rectangle.3.group").font(.system(size: 32)).foregroundStyle(.secondary)
-                Text("프로필 설정 없음").foregroundStyle(.secondary).font(.callout)
+                Text("No profiles configured").foregroundStyle(.secondary).font(.callout)
                 Button { showAddPane = true } label: {
-                    Label("새 창 추가", systemImage: "plus.rectangle")
+                    Label("Add Group", systemImage: "plus.rectangle")
                 }
                 .buttonStyle(.borderedProminent).controlSize(.small)
                 .padding(.top, 8)
@@ -285,7 +285,7 @@ struct ContentView: View {
 
                         // 새 창 추가 버튼
                         Button { showAddPane = true } label: {
-                            Label("새 창 추가", systemImage: "plus.rectangle")
+                            Label("Add Group", systemImage: "plus.rectangle")
                                 .font(.caption)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 10).padding(.vertical, 6)
@@ -393,26 +393,26 @@ struct ContentView: View {
                             Button {
                                 Task { await monitor.applyNow() }
                             } label: {
-                                Label("즉시 적용 (\(totalPending))", systemImage: "bolt.circle.fill")
+                                Label("Apply Now (\(totalPending))", systemImage: "bolt.circle.fill")
                                     .font(.caption).frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent).tint(.green)
-                            .help("창에 배정된 중단/대기 세션을 모두 즉시 시작합니다")
+                            .help("Start all stopped/idle sessions assigned to a group")
                         }
                         if allRunning > 0 {
                             Button { Task { await monitor.stopAllRunning() } } label: {
-                                Label("중지 (\(allRunning))", systemImage: "stop.circle.fill")
+                                Label("Stop (\(allRunning))", systemImage: "stop.circle.fill")
                                     .font(.caption).frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered).tint(.orange)
                         }
                         if allRestorable > 0 {
                             Button { Task { await monitor.purgeIdleZshWindows() } } label: {
-                                Label("빈 창 정리 (\(allRestorable))", systemImage: "xmark.circle.fill")
+                                Label("Clean Up (\(allRestorable))", systemImage: "xmark.circle.fill")
                                     .font(.caption).frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered).tint(.red)
-                            .help("Claude 없이 zsh만 실행 중인 빈 tmux 창을 닫습니다 (복원 실패 후 잔여물 정리)")
+                            .help("Close empty tmux windows running only zsh without Claude (leftover cleanup after restore failure)")
                         }
                     }
                     .padding(.horizontal, 10).padding(.top, 6)
@@ -423,11 +423,11 @@ struct ContentView: View {
                         ProgressView(value: Double(progress.current), total: Double(progress.total))
                             .progressViewStyle(.linear)
                         HStack {
-                            Text("복원 중... \(progress.current)/\(progress.total)")
+                            Text("Restoring... \(progress.current)/\(progress.total)")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Button("취소") { monitor.cancelRestore() }
+                            Button("Cancel") { monitor.cancelRestore() }
                                 .font(.caption2)
                                 .buttonStyle(.bordered)
                                 .tint(.red)
@@ -439,21 +439,21 @@ struct ContentView: View {
 
                 HStack(spacing: 6) {
                     Circle().fill(Color.green).frame(width: 6, height: 6)
-                    Text("실행 \(allRunning)").font(.caption).foregroundStyle(.secondary)
+                    Text("Running \(allRunning)").font(.caption).foregroundStyle(.secondary)
                     if allRestorable > 0 {
                         Circle().fill(Color.orange).frame(width: 6, height: 6)
-                        Text("복원 \(allRestorable)").font(.caption).foregroundStyle(.secondary)
+                        Text("Restorable \(allRestorable)").font(.caption).foregroundStyle(.secondary)
                     }
                     if allLaunchable > 0 {
                         Circle().fill(Color.secondary).frame(width: 6, height: 6)
-                        Text("대기 \(allLaunchable)").font(.caption).foregroundStyle(.secondary)
+                        Text("Idle \(allLaunchable)").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button { showNewSession = true } label: {
                         Image(systemName: "plus").font(.caption)
                     }
                     .buttonStyle(.plain)
-                    .help("새 세션 추가")
+                    .help("Add new session")
                     Button {
                         selectedSession = nil
                         monitor.deselectAll()
@@ -462,12 +462,12 @@ struct ContentView: View {
                         Image(systemName: "xmark.circle").font(.caption)
                     }
                     .buttonStyle(.plain)
-                    .help("선택 초기화")
+                    .help("Clear selection")
                     Button { Task { await monitor.refresh(showBanner: true) } } label: {
                         Image(systemName: "arrow.clockwise").font(.caption)
                     }
                     .buttonStyle(.plain)
-                    .help("새로고침")
+                    .help("Refresh")
                 }
                 .padding(.horizontal, 10).padding(.vertical, 5)
             }
@@ -502,7 +502,7 @@ struct ContentView: View {
                         .foregroundStyle(.primary)
                     HStack(spacing: 4) {
                         if pane.isWaitingList {
-                            Text("창에 드래그하면 시작 가능")
+                            Text("Drag here to assign")
                                 .font(.system(size: 10))
                                 .foregroundStyle(.tertiary)
                         } else {
@@ -511,7 +511,7 @@ struct ContentView: View {
                                 .foregroundStyle(.tertiary)
                             if sessions.count > 0 {
                                 Text("·").font(.system(size: 10)).foregroundStyle(.tertiary)
-                                Text(runCount > 0 ? "\(runCount)개 실행 중" : "\(sessions.count)개")
+                                Text(runCount > 0 ? "\(runCount) running" : "\(sessions.count) tabs")
                                     .font(.system(size: 10, weight: .medium))
                                     .foregroundStyle(runCount > 0 ? Color.green : Color.secondary)
                             }
@@ -539,21 +539,21 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(!hasWindows)
-                    .help("대기 목록의 열린 tmux 창 전체 닫기")
+                    .help("Close all open tmux windows in waiting list")
 
                     Button { renamingPane = pane } label: {
                         Image(systemName: "pencil.circle.fill")
                             .font(.system(size: 16))
                             .foregroundStyle(Color.secondary)
                     }
-                    .buttonStyle(.plain).help("대기 목록 이름 변경")
+                    .buttonStyle(.plain).help("Rename waiting list")
                 } else {
                     Button { Task { await monitor.startGroup(pane) } } label: {
                         Image(systemName: "play.circle.fill")
                             .font(.system(size: 16))
                             .foregroundStyle(sessions.isEmpty ? Color.secondary : color)
                     }
-                    .buttonStyle(.plain).help("이 창 전체 시작").disabled(sessions.isEmpty)
+                    .buttonStyle(.plain).help("Start all in group").disabled(sessions.isEmpty)
                     .accessibilityIdentifier("startGroup_\(pane.sessionName)")
 
                     Button { Task { await monitor.stopGroup(pane) } } label: {
@@ -561,14 +561,14 @@ struct ContentView: View {
                             .font(.system(size: 16))
                             .foregroundStyle(runCount == 0 ? Color.secondary : Color.orange)
                     }
-                    .buttonStyle(.plain).help("이 창 실행 중인 세션 중지").disabled(runCount == 0)
+                    .buttonStyle(.plain).help("Stop running sessions in group").disabled(runCount == 0)
 
                     Button { renamingPane = pane } label: {
                         Image(systemName: "pencil.circle.fill")
                             .font(.system(size: 16))
                             .foregroundStyle(Color.secondary)
                     }
-                    .buttonStyle(.plain).help("창 이름/세션명 변경")
+                    .buttonStyle(.plain).help("Rename group")
 
                     let nonWaitingCount = monitor.windowGroupService.groups.filter { !$0.isWaitingList }.count
                     Button {
@@ -581,7 +581,7 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(nonWaitingCount <= 1)
-                    .help("창 삭제 (세션은 대기 목록으로 이동)")
+                    .help("Delete group (sessions move to waiting list)")
                 }
             }
         }
@@ -647,28 +647,27 @@ struct ContentView: View {
                     HStack(spacing: 4) {
                         // 우선순위: 특수상태 → 실행상태 → 디렉토리 → 기본
                         if session.didCrash {
-                            Text("충돌 감지").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.red)
+                            Text("Crashed").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.red)
                         } else if session.isRunning && session.claudeStatus == .working {
-                            Text("작업 중").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.blue)
+                            Text("Working").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.blue)
                         } else if session.isRunning && session.claudeStatus == .blocked {
-                            Text("확인 필요!").font(.system(size: 10, weight: .bold)).foregroundStyle(Color.orange)
+                            Text("Needs Input!").font(.system(size: 10, weight: .bold)).foregroundStyle(Color.orange)
                         } else if session.isRunning && session.claudeStatus == .starting {
-                            Text("시작 중").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.yellow.opacity(0.9))
+                            Text("Starting").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.yellow.opacity(0.9))
                         } else if session.isRunning && session.claudeStatus == .waiting {
-                            Text("대기").font(.system(size: 10)).foregroundStyle(Color.blue.opacity(0.7))
+                            Text("Waiting").font(.system(size: 10)).foregroundStyle(Color.blue.opacity(0.7))
                         } else if session.isRunning {
-                            // idle/unknown: 디렉토리 + 실행 중
                             if !dirName.isEmpty {
                                 Image(systemName: "folder").font(.system(size: 9)).foregroundStyle(.tertiary)
                                 Text(dirName).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
                             } else {
-                                Text("실행 중").font(.system(size: 10)).foregroundStyle(Color.green.opacity(0.8))
+                                Text("Running").font(.system(size: 10)).foregroundStyle(Color.green.opacity(0.8))
                             }
                         } else if !dirName.isEmpty {
                             Image(systemName: "folder").font(.system(size: 9)).foregroundStyle(.tertiary)
                             Text(dirName).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
                         } else if !session.isRunning && session.windowIndex != Int.max && session.windowIndex >= 0 {
-                            Text("복원 가능").font(.system(size: 10)).foregroundStyle(Color.secondary)
+                            Text("Restorable").font(.system(size: 10)).foregroundStyle(Color.secondary)
                         }
                     }
                 }
@@ -685,7 +684,7 @@ struct ContentView: View {
                                 .foregroundStyle(Color.orange)
                         }
                         .buttonStyle(.plain)
-                        .help("재시작 (기존 창 유지)")
+                        .help("Restart (keep existing window)")
 
                         Button {
                             Task { await monitor.forceResetSession(session) }
@@ -695,7 +694,7 @@ struct ContentView: View {
                                 .foregroundStyle(Color.red)
                         }
                         .buttonStyle(.plain)
-                        .help("강제 복구 (창 재생성 후 재실행)")
+                        .help("Force reset (recreate window)")
                     }
                     .padding(.trailing, 2)
                 }
@@ -714,19 +713,19 @@ struct ContentView: View {
                 Button {
                     Task { await monitor.restartSession(session) }
                 } label: {
-                    Label("재시작", systemImage: "arrow.clockwise")
+                    Label("Restart", systemImage: "arrow.clockwise")
                 }
                 Button(role: .destructive) {
                     Task { await monitor.forceResetSession(session) }
                 } label: {
-                    Label("강제 복구 (창 재생성)", systemImage: "bolt.circle.fill")
+                    Label("Force Reset", systemImage: "bolt.circle.fill")
                 }
                 Divider()
             }
             if let pane {
                 let others = monitor.windowGroupService.groups.filter { $0.id != pane.id }
                 if !others.isEmpty {
-                    Menu("다른 창으로 이동") {
+                    Menu("Move to Group") {
                         ForEach(others) { target in
                             Button(target.name) {
                                 monitor.windowGroupService.moveProfile(session.projectName, to: target)
@@ -735,7 +734,7 @@ struct ContentView: View {
                     }
                 }
             } else {
-                Menu("창에 추가") {
+                Menu("Add to Group") {
                     ForEach(monitor.windowGroupService.groups) { target in
                         Button(target.name) {
                             monitor.windowGroupService.moveProfile(session.projectName, to: target)
@@ -761,7 +760,7 @@ struct ContentView: View {
         case .profiles: ProfilesView(monitor: monitor, searchFocused: $profileSearchFocused, selection: $profileSelection)
         case .backup:   BackupView()
         case .system:   SystemView(monitor: monitor)
-        default:        EmptyStateView(title: "항목을 선택하세요", systemImage: "sidebar.left")
+        default:        EmptyStateView(title: "Select an item", systemImage: "sidebar.left")
         }
     }
 }
@@ -860,14 +859,14 @@ struct AddPaneSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("새 창 추가").font(.headline).padding()
+            Text("Add Group").font(.headline).padding()
             Divider()
-            Form { TextField("창 이름 (예: IMSMS, Tesla)", text: $name) }.padding()
+            Form { TextField("Group name (e.g. IMSMS, Tesla)", text: $name) }.padding()
             Divider()
             HStack {
-                Button("취소") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("추가") { onSave(name); dismiss() }
+                Button("Add") { onSave(name); dismiss() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -893,18 +892,18 @@ struct RenamePaneSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("창 수정").font(.headline).padding()
+            Text("Edit Group").font(.headline).padding()
             Divider()
             Form {
-                TextField("창 이름 (UI 표시)", text: $name)
-                TextField("tmux 세션명", text: $sessionName)
-                    .help("예: claude-work, claude-imsms")
+                TextField("Group name (UI label)", text: $name)
+                TextField("tmux session name", text: $sessionName)
+                    .help("e.g. claude-work, claude-imsms")
             }.padding()
             Divider()
             HStack {
-                Button("취소") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("저장") { onSave(name, sessionName); dismiss() }
+                Button("Save") { onSave(name, sessionName); dismiss() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty ||
@@ -923,7 +922,7 @@ struct ImportToPaneSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("'\(pane.name)' 창에 세션 가져오기").font(.headline).padding()
+            Text("Import sessions to '\(pane.name)'").font(.headline).padding()
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -933,10 +932,10 @@ struct ImportToPaneSheet: View {
             .frame(minHeight: 150)
             Divider()
             HStack {
-                Text("\(selected.count)개 선택됨").font(.caption).foregroundStyle(.secondary)
+                Text("\(selected.count) selected").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("취소") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("가져오기") {
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Import") {
                     for id in selected {
                         if let profile = monitor.profileService.profiles.first(where: { $0.id == id }) {
                             monitor.windowGroupService.moveProfile(profile.name, to: pane)
@@ -977,7 +976,7 @@ private struct ImportProfileRow: View {
     var currentPane: WindowPane {
         groups.first { $0.profileNames.contains(profile.name) }
             ?? groups.first
-            ?? WindowPane(name: "메인", sessionName: "claude-work", profileNames: [])
+            ?? WindowPane(name: "Main", sessionName: "claude-work", profileNames: [])
     }
     var isCurrentPane: Bool { currentPane.id == targetPane.id }
 
@@ -997,7 +996,7 @@ private struct ImportProfileRow: View {
                 Text(profile.root).font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(isCurrentPane ? "현재" : currentPane.name)
+            Text(isCurrentPane ? "Current" : currentPane.name)
                 .font(.caption)
                 .foregroundStyle(isCurrentPane ? Color.secondary : Color.blue)
         }
@@ -1023,16 +1022,16 @@ struct NewSessionSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("새 세션 추가").font(.headline)
+            Text("Add New Session").font(.headline)
 
-            GroupBox("프로젝트 디렉토리") {
+            GroupBox("Project Directory") {
                 HStack {
-                    Text(directory.isEmpty ? "선택하지 않음" : directory)
+                    Text(directory.isEmpty ? "Not selected" : directory)
                         .foregroundStyle(directory.isEmpty ? .secondary : .primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("선택...") {
+                    Button("Browse...") {
                         let panel = NSOpenPanel()
                         panel.canChooseFiles = false
                         panel.canChooseDirectories = true
@@ -1046,9 +1045,9 @@ struct NewSessionSheet: View {
                 .padding(4)
             }
 
-            GroupBox("세션 이름 (tmux 윈도우명)") {
-                LabeledContent("이름") {
-                    Text(derivedName.isEmpty ? "경로 선택 후 자동 입력" : derivedName)
+            GroupBox("Session Name (tmux window name)") {
+                LabeledContent("Name") {
+                    Text(derivedName.isEmpty ? "Auto-filled after selecting a path" : derivedName)
                         .foregroundStyle(derivedName.isEmpty ? .secondary : .primary)
                 }
                 .padding(4)
@@ -1056,9 +1055,9 @@ struct NewSessionSheet: View {
 
             HStack {
                 Spacer()
-                Button("취소") { isPresented = false }
+                Button("Cancel") { isPresented = false }
                     .keyboardShortcut(.escape)
-                Button("생성") {
+                Button("Create") {
                     Task {
                         isCreating = true
                         await monitor.createSession(name: derivedName, directory: directory)

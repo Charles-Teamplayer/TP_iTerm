@@ -147,9 +147,9 @@ struct MenuBarMenuView: View {
 
     var body: some View {
         // 상태
-        Label("Claude \(state.sessionCount)개 실행 중", systemImage: "terminal")
+        Label("\(state.sessionCount) Claude session\(state.sessionCount == 1 ? "" : "s") running", systemImage: "terminal")
             .foregroundStyle(.secondary)
-        Label(state.allDaemonsRunning ? "데몬 정상" : "데몬 이상",
+        Label(state.allDaemonsRunning ? "Daemons OK" : "Daemon issue",
               systemImage: state.allDaemonsRunning ? "checkmark.circle" : "exclamationmark.circle")
             .foregroundStyle(state.allDaemonsRunning ? Color.secondary : Color.orange)
 
@@ -160,7 +160,7 @@ struct MenuBarMenuView: View {
             Button {
                 state.openInITerm(sessionName: state.tmuxSessionNames.first ?? "claude-work")
             } label: {
-                Label("iTerm2에서 열기 (\(state.tmuxSessionNames.first ?? "claude-work"))",
+                Label("Open in iTerm2 (\(state.tmuxSessionNames.first ?? "claude-work"))",
                       systemImage: "macwindow.badge.plus")
             }
         } else {
@@ -169,26 +169,24 @@ struct MenuBarMenuView: View {
                     Button(session) { state.openInITerm(sessionName: session) }
                 }
             } label: {
-                Label("iTerm2에서 열기", systemImage: "macwindow.badge.plus")
+                Label("Open in iTerm2", systemImage: "macwindow.badge.plus")
             }
         }
 
         Divider()
 
-        // 복원
-        Button(state.isRestoring ? "복원 중..." : "지금 복원") {
+        Button(state.isRestoring ? "Restoring..." : "Restore Now") {
             Task { await state.quickRestore() }
         }
         .disabled(state.isRestoring)
 
-        Button("새로고침") {
+        Button("Refresh") {
             Task { await state.refresh() }
         }
 
         Divider()
 
-        // 대시보드 열기
-        Button("대시보드 열기") {
+        Button("Open Dashboard") {
             openWindow(id: "main")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 NSApp.activate(ignoringOtherApps: true)
@@ -201,7 +199,7 @@ struct MenuBarMenuView: View {
 
         Divider()
 
-        Button("종료") {
+        Button("Quit") {
             NSApplication.shared.terminate(nil)
         }
     }

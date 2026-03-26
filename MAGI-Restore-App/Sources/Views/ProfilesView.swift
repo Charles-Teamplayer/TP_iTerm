@@ -23,7 +23,7 @@ struct ProfilesView: View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.caption)
-                TextField("검색...", text: $searchText)
+                TextField("Search...", text: $searchText)
                     .textFieldStyle(.plain).font(.caption).focused(searchFocused)
                 if !searchText.isEmpty {
                     Button { searchText = "" } label: {
@@ -37,22 +37,22 @@ struct ProfilesView: View {
             Divider()
 
             Table(filtered, selection: $selection) {
-                TableColumn("에이전트명") { profile in
+                TableColumn("Profile") { profile in
                     Text(profile.name)
                         .foregroundStyle(profile.enabled ? .primary : .secondary)
                 }
-                TableColumn("경로") { profile in
+                TableColumn("Path") { profile in
                     Text(profile.root).font(.caption).foregroundStyle(.secondary)
                 }
-                TableColumn("창") { profile in
+                TableColumn("Group") { profile in
                     let pane = monitor.windowGroupService.group(for: profile.name)
                     Text(pane.name).font(.caption).foregroundStyle(.secondary)
                 }
                 .width(60)
                 TableColumn("") { profile in
                     HStack(spacing: 8) {
-                        Button("편집") { editingProfile = profile }.buttonStyle(.link)
-                        Button("삭제") {
+                        Button("Edit") { editingProfile = profile }.buttonStyle(.link)
+                        Button("Delete") {
                             profileToDelete = profile
                             showDeleteConfirm = true
                         }.buttonStyle(.link).foregroundStyle(.red)
@@ -69,7 +69,7 @@ struct ProfilesView: View {
             monitor.windowGroupService.load()
         }
         .sheet(isPresented: $showAddSheet) {
-            ProfileFormSheet(title: "프로필 추가") { newProfile in
+            ProfileFormSheet(title: "Add Profile") { newProfile in
                 monitor.profileService.add(newProfile)
                 if let first = monitor.windowGroupService.groups.first {
                     monitor.windowGroupService.moveProfile(newProfile.name, to: first)
@@ -77,7 +77,7 @@ struct ProfilesView: View {
             }
         }
         .sheet(item: $editingProfile) { profile in
-            ProfileFormSheet(title: "프로필 편집", existing: profile) { updated in
+            ProfileFormSheet(title: "Edit Profile", existing: profile) { updated in
                 var list = monitor.profileService.profiles
                 if let idx = list.firstIndex(where: { $0.id == profile.id }) {
                     // 이름이 바뀌면 windowGroupService에서도 업데이트
@@ -90,13 +90,13 @@ struct ProfilesView: View {
             }
         }
         .confirmationDialog(
-            "'\(profileToDelete?.name ?? "")' 프로필을 삭제하시겠습니까?",
+            "Delete profile '\(profileToDelete?.name ?? "")'?",
             isPresented: $showDeleteConfirm, titleVisibility: .visible
         ) {
-            Button("삭제", role: .destructive) {
+            Button("Delete", role: .destructive) {
                 if let p = profileToDelete { monitor.profileService.delete(p) }
             }
-            Button("취소", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         }
     }
 
@@ -108,28 +108,28 @@ struct ProfilesView: View {
             }
             HStack {
                 Button { monitor.profileService.load() } label: {
-                    Image(systemName: "arrow.clockwise"); Text("새로고침")
+                    Image(systemName: "arrow.clockwise"); Text("Refresh")
                 }
                 Button {
                     let (added, removed) = monitor.syncProfilesWithDirectory()
                     monitor.profileService.load()
                     if added.isEmpty && removed.isEmpty {
-                        syncResult = "이미 동기화됨"
+                        syncResult = "Already in sync"
                     } else {
                         var parts: [String] = []
-                        if !added.isEmpty { parts.append("추가 \(added.count)개") }
-                        if !removed.isEmpty { parts.append("제거 \(removed.count)개") }
-                        syncResult = "동기화 완료: " + parts.joined(separator: ", ")
+                        if !added.isEmpty { parts.append("\(added.count) added") }
+                        if !removed.isEmpty { parts.append("\(removed.count) removed") }
+                        syncResult = "Synced: " + parts.joined(separator: ", ")
                     }
                     Task { try? await Task.sleep(nanoseconds: 3_000_000_000); syncResult = nil }
                 } label: {
-                    Image(systemName: "arrow.triangle.2.circlepath"); Text("디렉토리 동기화")
+                    Image(systemName: "arrow.triangle.2.circlepath"); Text("Sync Directory")
                 }
                 Spacer()
-                Text("\(monitor.profileService.profiles.count)개 프로필")
+                Text("\(monitor.profileService.profiles.count) profiles")
                     .font(.caption).foregroundStyle(.secondary)
                 Button { showAddSheet = true } label: {
-                    Image(systemName: "plus"); Text("추가")
+                    Image(systemName: "plus"); Text("Add")
                 }.buttonStyle(.borderedProminent)
             }
             .padding(8)
@@ -153,10 +153,9 @@ struct ProfileFormSheet: View {
         self.existing = existing
         self.onSave = onSave
         _name = State(initialValue: existing?.name ?? "")
-        _root = State(initialValue: existing?.root ?? "~/claude/")
+        _root = State(initialValue: existing?.root ?? "~/")
     }
 
-    // 이름 미입력 시 경로에서 자동 도출
     var effectiveName: String {
         name.trimmingCharacters(in: .whitespaces).isEmpty
             ? (root as NSString).lastPathComponent
@@ -169,8 +168,8 @@ struct ProfileFormSheet: View {
             Divider()
             Form {
                 HStack {
-                    TextField("경로 (root)", text: $root)
-                    Button("선택...") {
+                    TextField("Path (root)", text: $root)
+                    Button("Browse...") {
                         let panel = NSOpenPanel()
                         panel.canChooseFiles = false
                         panel.canChooseDirectories = true
@@ -184,19 +183,19 @@ struct ProfileFormSheet: View {
                         }
                     }
                 }
-                TextField("에이전트명 (tmux 창 이름)", text: $name)
-                    .help("비워두면 경로 마지막 폴더명 자동 사용")
-                LabeledContent("최종 이름") {
-                    Text(effectiveName.isEmpty ? "경로를 먼저 선택하세요" : effectiveName)
+                TextField("Profile name (tmux window name)", text: $name)
+                    .help("Leave blank to use the last folder name from the path")
+                LabeledContent("Effective Name") {
+                    Text(effectiveName.isEmpty ? "Select a path first" : effectiveName)
                         .foregroundStyle(effectiveName.isEmpty ? .secondary : .primary)
                 }
             }
             .padding()
             Divider()
             HStack {
-                Button("취소") { dismiss() }
+                Button("Cancel") { dismiss() }
                 Spacer()
-                Button("저장") {
+                Button("Save") {
                     let profile = SmugProfile(
                         id: existing?.id ?? UUID(),
                         name: effectiveName, root: root,

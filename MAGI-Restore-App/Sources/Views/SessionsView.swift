@@ -21,17 +21,17 @@ struct SessionDetailView: View {
                             Circle()
                                 .fill(session.isRunning ? Color.green : Color.red)
                                 .frame(width: 12, height: 12)
-                            Text(session.isRunning ? "실행 중" : "중단됨")
+                            Text(session.isRunning ? "Running" : "Stopped")
                                 .font(.headline)
                                 .foregroundStyle(session.isRunning ? .primary : Color.red)
                         }
 
-                        GroupBox("세션 정보") {
+                        GroupBox("Session Info") {
                             VStack(alignment: .leading, spacing: 8) {
-                                LabeledContent("프로젝트", value: session.projectName)
-                                LabeledContent("tmux 윈도우", value: session.windowName)
+                                LabeledContent("Project", value: session.projectName)
+                                LabeledContent("tmux Window", value: session.windowName)
                                 if session.windowIndex >= 0 && session.windowIndex != Int.max {
-                                    LabeledContent("윈도우 #", value: "\(session.windowIndex)")
+                                    LabeledContent("Window #", value: "\(session.windowIndex)")
                                 }
                                 if session.pid > 0 {
                                     LabeledContent("PID", value: "\(session.pid)")
@@ -40,11 +40,11 @@ struct SessionDetailView: View {
                                     LabeledContent("TTY", value: session.tty)
                                 }
                                 if !session.startTime.isEmpty {
-                                    LabeledContent("시작 시각", value: session.startTime)
+                                    LabeledContent("Started", value: session.startTime)
                                 }
                                 let displayDir = session.profileRoot ?? session.directory
                                 if !displayDir.isEmpty {
-                                    LabeledContent("경로", value: displayDir)
+                                    LabeledContent("Path", value: displayDir)
                                 }
                             }
                             .padding(4)
@@ -53,51 +53,51 @@ struct SessionDetailView: View {
                         // 액션 버튼
                         if session.isRunning {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("제어").font(.caption).foregroundStyle(.secondary)
+                                Text("Control").font(.caption).foregroundStyle(.secondary)
                                 HStack(spacing: 10) {
-                                    Button("숨기기") { showHideConfirm = true }
-                                        .help("iTerm2 창 최소화 — 프로세스는 계속 실행")
+                                    Button("Hide") { showHideConfirm = true }
+                                        .help("Minimize iTerm2 window — process keeps running")
                                         .confirmationDialog(
-                                            "iTerm2 창을 숨기시겠습니까?\n프로세스는 계속 실행됩니다",
+                                            "Hide iTerm2 window?\nThe process will keep running.",
                                             isPresented: $showHideConfirm,
                                             titleVisibility: .visible
                                         ) {
-                                            Button("숨기기") { doHide(session) }
-                                            Button("취소", role: .cancel) {}
+                                            Button("Hide") { doHide(session) }
+                                            Button("Cancel", role: .cancel) {}
                                         }
 
-                                    Button("종료") { showStopConfirm = true }
-                                        .help("SIGTERM — 정상 종료 요청 (나중에 복원 가능)")
+                                    Button("Stop") { showStopConfirm = true }
+                                        .help("SIGTERM — graceful stop (restorable)")
                                         .confirmationDialog(
-                                            "'\(session.projectName)' 세션을 종료하시겠습니까?\n정상 종료 후 나중에 복원할 수 있습니다",
+                                            "Stop '\(session.projectName)'?\nYou can restore it later.",
                                             isPresented: $showStopConfirm,
                                             titleVisibility: .visible
                                         ) {
-                                            Button("종료") { doStop(session) }
-                                            Button("취소", role: .cancel) {}
+                                            Button("Stop") { doStop(session) }
+                                            Button("Cancel", role: .cancel) {}
                                         }
 
-                                    Button("강제종료", role: .destructive) { showKillConfirm = true }
-                                        .help("SIGKILL — 즉시 강제 종료 (응답 없을 때 사용)")
+                                    Button("Force Kill", role: .destructive) { showKillConfirm = true }
+                                        .help("SIGKILL — immediate force quit (use when unresponsive)")
                                         .confirmationDialog(
-                                            "'\(session.projectName)' 세션을 강제종료하시겠습니까?\n저장 없이 즉시 종료됩니다",
+                                            "Force kill '\(session.projectName)'?\nThe process will be terminated immediately without saving.",
                                             isPresented: $showKillConfirm,
                                             titleVisibility: .visible
                                         ) {
-                                            Button("강제종료", role: .destructive) { doKill(session) }
-                                            Button("취소", role: .cancel) {}
+                                            Button("Force Kill", role: .destructive) { doKill(session) }
+                                            Button("Cancel", role: .cancel) {}
                                         }
 
-                                    Button("완전삭제", role: .destructive) { showPurgeConfirm = true }
-                                        .help("강제종료 + tmux window 제거 + 레지스트리 + state 파일 삭제")
+                                    Button("Purge", role: .destructive) { showPurgeConfirm = true }
+                                        .help("Force kill + remove tmux window + registry + state files")
                                 }
                             }
                         } else {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(session.profileRoot != nil ? "시작" : "복원")
+                                Text(session.profileRoot != nil ? "Start" : "Restore")
                                     .font(.caption).foregroundStyle(.secondary)
                                 if !session.isAssigned {
-                                    Label("창에 배정 후 시작 가능 — 드래그로 창에 추가하세요", systemImage: "tray.and.arrow.down")
+                                    Label("Assign to a group first — drag to add to a group", systemImage: "tray.and.arrow.down")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .padding(.vertical, 4)
@@ -120,10 +120,10 @@ struct SessionDetailView: View {
                                             }
                                         } label: {
                                             if isRestoring {
-                                                Label(dirExists ? "시작 중..." : "생성 중...",
+                                                Label(dirExists ? "Starting..." : "Creating...",
                                                       systemImage: dirExists ? "play.fill" : "folder.badge.plus")
                                             } else {
-                                                Label(dirExists ? "시작" : "생성",
+                                                Label(dirExists ? "Start" : "Create",
                                                       systemImage: dirExists ? "play.fill" : "folder.badge.plus")
                                             }
                                         }
@@ -140,16 +140,16 @@ struct SessionDetailView: View {
                                             }
                                         } label: {
                                             if isRestoring {
-                                                Label("복원 중...", systemImage: "arrow.clockwise")
+                                                Label("Restoring...", systemImage: "arrow.clockwise")
                                             } else {
-                                                Label("복원", systemImage: "arrow.clockwise")
+                                                Label("Restore", systemImage: "arrow.clockwise")
                                             }
                                         }
                                         .buttonStyle(.borderedProminent)
                                         .disabled(isRestoring)
                                     }
 
-                                    Button("완전 삭제", role: .destructive) { showPurgeConfirm = true }
+                                    Button("Purge", role: .destructive) { showPurgeConfirm = true }
                                         .disabled(isPurging)
                                 }
                             }
@@ -161,19 +161,19 @@ struct SessionDetailView: View {
                 }
                 .navigationTitle(session.projectName)
                 .confirmationDialog(
-                    "'\(session.projectName)' 세션을 완전히 삭제하시겠습니까?",
+                    "Permanently delete '\(session.projectName)'?",
                     isPresented: $showPurgeConfirm,
                     titleVisibility: .visible
                 ) {
-                    Button("완전 삭제", role: .destructive) { doPurge(session) }
-                    Button("취소", role: .cancel) {}
+                    Button("Purge", role: .destructive) { doPurge(session) }
+                    Button("Cancel", role: .cancel) {}
                 }
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "cursorarrow.click")
                         .font(.system(size: 48)).foregroundStyle(.secondary)
-                    Text("세션을 선택하세요").font(.title3).foregroundStyle(.secondary)
-                    Text("← 왼쪽 목록에서 세션을 클릭하세요").font(.caption).foregroundStyle(.tertiary)
+                    Text("Select a session").font(.title3).foregroundStyle(.secondary)
+                    Text("← Click a session in the list on the left").font(.caption).foregroundStyle(.tertiary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

@@ -12,7 +12,7 @@ final class SystemViewModel: ObservableObject {
     @Published var daemons: [DaemonInfo] = [
         DaemonInfo(id: "com.claude.watchdog",           displayName: "Watchdog",          isRunning: false),
         DaemonInfo(id: "com.claude.tab-focus-monitor",  displayName: "Tab Focus Monitor", isRunning: false),
-        DaemonInfo(id: "com.claude.auto-restore",       displayName: "Auto Restore (일회성)", isRunning: false),
+        DaemonInfo(id: "com.claude.auto-restore",       displayName: "Auto Restore (one-shot)", isRunning: false),
     ]
     @Published var sessionCount: Int = 0
     @Published var isInstalling: Bool = false
@@ -269,8 +269,8 @@ struct SystemView: View {
     @State private var syncIntervalUnit: SyncUnit = .seconds
 
     enum SyncUnit: String, CaseIterable, Identifiable {
-        case seconds = "초"
-        case minutes = "분"
+        case seconds = "sec"
+        case minutes = "min"
         var id: String { rawValue }
         func toSeconds(_ v: Int) -> Int { self == .minutes ? v * 60 : v }
         func fromSeconds(_ s: Int) -> Int { self == .minutes ? s / 60 : s }
@@ -278,15 +278,14 @@ struct SystemView: View {
 
     var body: some View {
         Form {
-            // ── 자동 재시작 설정 ──
-            Section("자동 재시작 설정") {
-                Toggle("크래시 감지 시 자동 재시작", isOn: $monitor.restoreSettings.autoRestore)
+            // ── Auto-Restart ──
+            Section("Auto-Restart") {
+                Toggle("Auto-restart on crash", isOn: $monitor.restoreSettings.autoRestore)
                     .onChange(of: monitor.restoreSettings.autoRestore) { _, _ in monitor.restoreSettings.save() }
 
                 if monitor.restoreSettings.autoRestore {
-                    // 대기 시간
                     HStack {
-                        Text("재시작까지 대기").foregroundStyle(.secondary)
+                        Text("Restart delay").foregroundStyle(.secondary)
                         Spacer()
                         if !useCustomDelay {
                             Picker("", selection: $monitor.restoreSettings.delaySeconds) {
@@ -298,7 +297,7 @@ struct SystemView: View {
                             .onChange(of: monitor.restoreSettings.delaySeconds) { _, _ in monitor.restoreSettings.save() }
                         } else {
                             HStack(spacing: 4) {
-                                TextField("초", text: $customDelayInput)
+                                TextField("s", text: $customDelayInput)
                                     .frame(width: 60).textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
                                     .onSubmit {
                                         if let v = Int(customDelayInput), v > 0 {
@@ -306,19 +305,18 @@ struct SystemView: View {
                                             monitor.restoreSettings.save()
                                         }
                                     }
-                                Text("초").font(.caption).foregroundStyle(.secondary)
+                                Text("s").font(.caption).foregroundStyle(.secondary)
                             }
                         }
-                        Button(useCustomDelay ? "프리셋" : "직접 입력") {
+                        Button(useCustomDelay ? "Presets" : "Custom") {
                             useCustomDelay.toggle()
                             if useCustomDelay { customDelayInput = "\(monitor.restoreSettings.delaySeconds)" }
                         }
                         .buttonStyle(.link).font(.caption)
                     }
 
-                    // 최대 시도 횟수
                     HStack {
-                        Text("최대 재시작 시도").foregroundStyle(.secondary)
+                        Text("Max restart attempts").foregroundStyle(.secondary)
                         Spacer()
                         if !useCustomAttempts {
                             Picker("", selection: $monitor.restoreSettings.maxAttempts) {
@@ -330,7 +328,7 @@ struct SystemView: View {
                             .onChange(of: monitor.restoreSettings.maxAttempts) { _, _ in monitor.restoreSettings.save() }
                         } else {
                             HStack(spacing: 4) {
-                                TextField("횟수", text: $customAttemptsInput)
+                                TextField("×", text: $customAttemptsInput)
                                     .frame(width: 60).textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
                                     .onSubmit {
                                         if let v = Int(customAttemptsInput), v > 0 {
@@ -338,23 +336,23 @@ struct SystemView: View {
                                             monitor.restoreSettings.save()
                                         }
                                     }
-                                Text("회").font(.caption).foregroundStyle(.secondary)
+                                Text("×").font(.caption).foregroundStyle(.secondary)
                             }
                         }
-                        Button(useCustomAttempts ? "프리셋" : "직접 입력") {
+                        Button(useCustomAttempts ? "Presets" : "Custom") {
                             useCustomAttempts.toggle()
                             if useCustomAttempts { customAttemptsInput = "\(monitor.restoreSettings.maxAttempts)" }
                         }
                         .buttonStyle(.link).font(.caption)
                     }
 
-                    Text("최대 \(monitor.restoreSettings.maxAttempts)회 연속 실패 시 자동 재시작 중단")
+                    Text("Auto-restart stops after \(monitor.restoreSettings.maxAttempts) consecutive failures")
                         .font(.caption).foregroundStyle(.tertiary)
                 }
             }
-            // ── 자동 동기화 설정 ──
-            Section("자동 동기화 설정") {
-                Toggle("자동 동기화", isOn: $monitor.restoreSettings.autoSync)
+            // ── Auto-Sync ──
+            Section("Auto-Sync") {
+                Toggle("Auto Sync", isOn: $monitor.restoreSettings.autoSync)
                     .onChange(of: monitor.restoreSettings.autoSync) { _, _ in
                         monitor.restoreSettings.save()
                         monitor.restartSyncTimer()
@@ -362,7 +360,7 @@ struct SystemView: View {
 
                 if monitor.restoreSettings.autoSync {
                     HStack {
-                        Text("동기화 간격").foregroundStyle(.secondary)
+                        Text("Sync Interval").foregroundStyle(.secondary)
                         Spacer()
                         if !useCustomSyncInterval {
                             Picker("", selection: $monitor.restoreSettings.syncIntervalSeconds) {
@@ -377,7 +375,7 @@ struct SystemView: View {
                             }
                         } else {
                             HStack(spacing: 4) {
-                                TextField("값", text: $customSyncIntervalInput)
+                                TextField("Value", text: $customSyncIntervalInput)
                                     .frame(width: 60).textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
                                     .onSubmit {
                                         if let v = Int(customSyncIntervalInput), v > 0 {
@@ -399,7 +397,7 @@ struct SystemView: View {
                                 }
                             }
                         }
-                        Button(useCustomSyncInterval ? "프리셋" : "직접 입력") {
+                        Button(useCustomSyncInterval ? "Presets" : "Custom") {
                             useCustomSyncInterval.toggle()
                             if useCustomSyncInterval {
                                 let secs = monitor.restoreSettings.syncIntervalSeconds
@@ -416,23 +414,23 @@ struct SystemView: View {
                     }
 
                     let interval = monitor.restoreSettings.syncIntervalSeconds
-                    let label = interval < 60 ? "\(interval)초" : "\(interval / 60)분\(interval % 60 > 0 ? " \(interval % 60)초" : "")"
-                    Text("window-groups.json 변경 시 \(label)마다 탭 자동 동기화. 작업 중인 탭은 영향 없음.")
+                    let label = interval < 60 ? "\(interval)s" : "\(interval / 60)m\(interval % 60 > 0 ? " \(interval % 60)s" : "")"
+                    Text("Syncs tabs every \(label) when window-groups.json changes. Active tabs are not affected.")
                         .font(.caption).foregroundStyle(.tertiary)
                 }
             }
 
-            Section("Claude 세션") {
+            Section("Claude Sessions") {
                 HStack {
-                    Text("실행 중인 세션")
+                    Text("Active Sessions")
                     Spacer()
-                    Text("\(vm.sessionCount)개")
+                    Text("\(vm.sessionCount)")
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
             }
 
-            Section("데몬 상태") {
+            Section("Daemons") {
                 ForEach($vm.daemons) { $daemon in
                     HStack {
                         Circle()
@@ -449,17 +447,17 @@ struct SystemView: View {
                 }
             }
 
-            Section("세션 복원") {
+            Section("Session Restore") {
                 Button(action: {
                     Task { await vm.runRestore() }
                 }) {
                     if vm.isRestoring {
                         HStack(spacing: 8) {
                             ProgressView().scaleEffect(0.8)
-                            Text("복원 중...")
+                            Text("Restoring...")
                         }
                     } else {
-                        Label("세션 복원", systemImage: "arrow.clockwise.circle.fill")
+                        Label("Restore Sessions", systemImage: "arrow.clockwise.circle.fill")
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -471,29 +469,29 @@ struct SystemView: View {
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 4)
-                    Button("전체 로그 보기") { showRestoreLog = true }
+                    Button("View Full Log") { showRestoreLog = true }
                         .buttonStyle(.link)
                 }
             }
 
-            Section("업데이트") {
+            Section("Updates") {
                 Button(action: {
                     Task { await vm.runInstall() }
                 }) {
                     if vm.isInstalling {
                         HStack(spacing: 8) {
                             ProgressView().scaleEffect(0.8)
-                            Text("설치 중...")
+                            Text("Installing...")
                         }
                     } else {
-                        Text("업데이트 설치")
+                        Text("Install Update")
                     }
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(vm.isInstalling)
 
                 if !vm.installLog.isEmpty {
-                    Button("설치 로그 보기") { showInstallLog.toggle() }
+                    Button("View Install Log") { showInstallLog.toggle() }
                         .buttonStyle(.link)
                 }
             }
@@ -507,10 +505,10 @@ struct SystemView: View {
         .sheet(isPresented: $showRestoreLog) {
             VStack(alignment: .leading) {
                 HStack {
-                    Text("복원 로그")
+                    Text("Restore Log")
                         .font(.headline)
                     Spacer()
-                    Button("닫기") { showRestoreLog = false }
+                    Button("Close") { showRestoreLog = false }
                 }
                 .padding()
                 Divider()
@@ -526,10 +524,10 @@ struct SystemView: View {
         .sheet(isPresented: $showInstallLog) {
             VStack(alignment: .leading) {
                 HStack {
-                    Text("설치 로그")
+                    Text("Install Log")
                         .font(.headline)
                     Spacer()
-                    Button("닫기") { showInstallLog = false }
+                    Button("Close") { showInstallLog = false }
                 }
                 .padding()
                 Divider()

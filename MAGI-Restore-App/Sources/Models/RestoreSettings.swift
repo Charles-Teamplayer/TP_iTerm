@@ -8,13 +8,13 @@ struct RestoreSettings {
     var syncIntervalSeconds: Int = 300  // 기본 5분
 
     static let delayPresets: [(label: String, seconds: Int)] = [
-        ("30초", 30), ("1분", 60), ("3분", 180), ("5분", 300)
+        ("30s", 30), ("1m", 60), ("3m", 180), ("5m", 300)
     ]
     static let attemptPresets: [(label: String, count: Int)] = [
-        ("1회", 1), ("3회", 3), ("5회", 5), ("10회", 10)
+        ("1×", 1), ("3×", 3), ("5×", 5), ("10×", 10)
     ]
     static let syncIntervalPresets: [(label: String, seconds: Int)] = [
-        ("30초", 30), ("1분", 60), ("5분", 300), ("10분", 600), ("30분", 1800)
+        ("30s", 30), ("1m", 60), ("5m", 300), ("10m", 600), ("30m", 1800)
     ]
 
     private enum Keys {

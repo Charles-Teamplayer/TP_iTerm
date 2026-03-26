@@ -5,8 +5,8 @@ struct BackupView: View {
 
     var body: some View {
         Form {
-            Section("백업 설정") {
-                Toggle("백업 활성화", isOn: Binding(
+            Section("Backup Settings") {
+                Toggle("Enable Backup", isOn: Binding(
                     get: { service.config.enabled },
                     set: { val in
                         var updated = service.config
@@ -16,23 +16,23 @@ struct BackupView: View {
                 ))
 
                 HStack {
-                    Text("백업 경로")
+                    Text("Backup Path")
                     Spacer()
                     Text(service.config.path)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.head)
-                    Button("변경") { selectBackupPath() }
+                    Button("Change") { selectBackupPath() }
                         .buttonStyle(.link)
                 }
             }
 
-            Section("상태") {
+            Section("Status") {
                 HStack {
-                    Text("마지막 백업")
+                    Text("Last Backup")
                     Spacer()
-                    Text(service.config.lastBackup ?? "없음")
+                    Text(service.config.lastBackup ?? "Never")
                         .foregroundStyle(.secondary)
                         .font(.caption)
                 }
@@ -44,10 +44,10 @@ struct BackupView: View {
                         HStack(spacing: 8) {
                             ProgressView()
                                 .scaleEffect(0.8)
-                            Text("백업 중...")
+                            Text("Backing up...")
                         }
                     } else {
-                        Text("지금 백업")
+                        Text("Backup Now")
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -63,7 +63,7 @@ struct BackupView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
-        panel.prompt = "선택"
+        panel.prompt = "Select"
         if panel.runModal() == .OK, let url = panel.url {
             var updated = service.config
             updated.path = url.path
