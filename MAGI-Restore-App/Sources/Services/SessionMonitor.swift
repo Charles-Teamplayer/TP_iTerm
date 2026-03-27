@@ -27,7 +27,8 @@ final class SessionMonitor: ObservableObject {
     @Published var restoreSettings = RestoreSettings.load()
     private var crashTimestamps: [String: Date] = [:]        // id → crash 발생 시각
     private var restoreAttemptCounts: [String: Int] = [:]    // id → 재시작 시도 횟수
-    private var intentionallyStoppedIds: Set<String> = []    // 의도적 중지 추적
+    private var intentionallyStoppedIds: Set<String> = []    // 의도적 중지 추적 (by session ID)
+    private var intentionallyStoppedProfiles: Set<String> = [] // 의도적 중지 추적 (by profileName, checkAutoSync 용)
 
     func start() {
         Task {
@@ -540,7 +541,8 @@ final class SessionMonitor: ObservableObject {
                     "tmux kill-window -t '\(group.sessionName):\(session.windowIndex)' 2>/dev/null; true"
                 )
             }
-            // checkAutoSync 재시작 방지: deactivate 호출 (doStop과 동일 패턴)
+            // checkAutoSync 재시작 방지: 인메모리 셋 + deactivate (watchdog 보호 포함)
+            intentionallyStoppedProfiles.insert(session.projectName)
             let root = session.profileRoot ?? session.directory
             ActivationService.shared.deactivate(root: root)
         }
@@ -563,7 +565,8 @@ final class SessionMonitor: ObservableObject {
                     "tmux kill-window -t '\(session.tmuxSession):\(session.windowIndex)' 2>/dev/null; true"
                 )
             }
-            // checkAutoSync 재시작 방지: deactivate 호출
+            // checkAutoSync 재시작 방지: 인메모리 셋 + deactivate (watchdog 보호 포함)
+            intentionallyStoppedProfiles.insert(session.projectName)
             let root = session.profileRoot ?? session.directory
             ActivationService.shared.deactivate(root: root)
         }
@@ -708,6 +711,7 @@ final class SessionMonitor: ObservableObject {
         true
         """
         ActivationService.shared.activate(root: safeRoot)
+        intentionallyStoppedProfiles.remove(name)  // 수동 시작 → 중지 게이트 해제
         await ShellService.runAsync(cmd)
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh(showBanner: true)
@@ -756,11 +760,9 @@ final class SessionMonitor: ObservableObject {
 
             // 추가: desired에 있는데 tmux에 없는 탭
             let activatedPathList = ActivationService.shared.loadActivated()
-            // activated 경로를 정규화된 Set으로 변환 (activation gate용)
-            let activatedSet = Set(activatedPathList.map { p in
-                p.hasPrefix("~") ? NSHomeDirectory() + p.dropFirst() : p
-            })
             for profileName in desiredProfiles where !currentSet.contains(profileName) {
+                // 의도적으로 중지된 세션은 자동 재시작 안 함 (stopGroup/stopAllRunning 후)
+                guard !intentionallyStoppedProfiles.contains(profileName) else { continue }
                 // ProfileService 우선, 없으면 activated-sessions.json에서 경로 추론
                 var rootToUse: String
                 if let profile = profileService.profiles.first(where: { $0.name == profileName }) {
@@ -771,8 +773,6 @@ final class SessionMonitor: ObservableObject {
                     continue
                 }
                 let safeRoot = rootToUse.hasPrefix("~") ? NSHomeDirectory() + rootToUse.dropFirst() : rootToUse
-                // Activation gate: deactivated 세션(stopGroup/doStop 후)은 자동 재시작 안 함
-                guard activatedSet.contains(safeRoot) else { continue }
                 let dirOk = await ShellService.runAsync("[ -d '\(shellEscape(safeRoot))' ] && echo yes || echo no")
                 guard dirOk.trimmingCharacters(in: .whitespacesAndNewlines) == "yes" else { continue }
                 await launchProfile(name: profileName, root: rootToUse, delay: 0, sessionName: sname)
