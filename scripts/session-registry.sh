@@ -94,6 +94,31 @@ PYEOF
                 kill -0 "$pp" 2>/dev/null && echo "$pp"
             done > "${PROTECTED_FILE}.tmp" 2>/dev/null && mv "${PROTECTED_FILE}.tmp" "$PROTECTED_FILE" 2>/dev/null || true
         fi
+        # BUG-INTENTIONAL-STOP-CLEAR fix: 세션 등록 시 intentional-stops.json에서 해당 프로젝트 제거
+        # 사용자가 의도적으로 세션을 다시 열었으면, 이전 intentional-stop 기록은 무효화해야 함
+        STOPS_FILE_REG="$HOME/.claude/intentional-stops.json"
+        if [ -f "$STOPS_FILE_REG" ]; then
+            WINDOW_NAME_REG=$(basename "$PROJECT_DIR")
+            python3 -c "
+import json, os, tempfile, sys
+path = os.path.expanduser('~/.claude/intentional-stops.json')
+window_name = sys.argv[1]
+try:
+    with open(path, 'r') as f:
+        data = json.load(f)
+    before = len(data.get('stops', []))
+    data['stops'] = [s for s in data.get('stops', []) if s.get('window_name', '') != window_name]
+    after = len(data.get('stops', []))
+    if before != after:
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
+        with os.fdopen(fd, 'w') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, path)
+        print(f'[URD] intentional-stop cleared: {window_name}')
+except Exception as e:
+    pass
+" "$WINDOW_NAME_REG" 2>/dev/null || true
+        fi
         # 크래시 카운터: 등록 후 5분 이상 경과해야 리셋 (빠른 크래시 루프 방지)
         CRASH_COUNT_FILE="$HOME/.claude/crash-counts/${PROJECT_NAME//[^a-zA-Z0-9_-]/_}"
         if [ -f "$CRASH_COUNT_FILE" ]; then
