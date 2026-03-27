@@ -713,6 +713,12 @@ final class SessionMonitor: ObservableObject {
     // - 순서 변경: reorderTabs로 move-window만 사용 (프로세스 재시작 없음)
     func checkAutoSync() async {
         guard restoreSettings.autoSync else { return }
+        // auto-restore.sh가 최근 5분 내 실행된 경우 충돌 방지 (부팅 직후 경쟁 방지)
+        let restoreDoneFlag = NSHomeDirectory() + "/.claude/logs/.auto-restore-done"
+        if let ts = try? String(contentsOfFile: restoreDoneFlag, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+           let flagTime = Double(ts), Date().timeIntervalSince1970 - flagTime < 300 {
+            return
+        }
         windowGroupService.load()
         let activeGroups = windowGroupService.groups.filter { !$0.isWaitingList }
         for group in activeGroups {
@@ -992,9 +998,12 @@ final class SessionMonitor: ObservableObject {
         let escapedSession = shellEscape(targetSession)
         let nameForStatus = safeName.replacingOccurrences(of: "\"", with: "\\\"")
                                      .replacingOccurrences(of: "'", with: "'\\''")
+        // 중복 방지: check+create 단일 shell 명령
         let cmd = """
-        tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedDir)' \\; \
-        send-keys "bash ~/.claude/scripts/tab-status.sh starting '\(nameForStatus)' && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; true
+        if ! tmux list-windows -t '\(escapedSession)' -F '#{window_name}' 2>/dev/null | grep -qxF '\(escapedName)'; then \
+          tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedDir)' \\; \
+          send-keys "bash ~/.claude/scripts/tab-status.sh starting '\(nameForStatus)' && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; \
+        fi; true
         """
         await ShellService.runAsync(cmd)
         try? await Task.sleep(nanoseconds: 2_000_000_000)
