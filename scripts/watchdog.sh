@@ -121,7 +121,14 @@ echo "$NOW_INIT" > "/tmp/.linked-cleanup-last"
 # 메인 루프
 while true; do
     # 1. 레지스트리 기반 크래시 감지
-    if [ -f "$REGISTRY" ]; then
+    # BUG-010 fix: auto-restore 실행 중에는 crash-detect 스킵 (부팅 시 race condition 방지)
+    RESTORE_LOCK="/tmp/.auto-restore.lock"
+    RESTORE_ACTIVE=false
+    if [ -f "$RESTORE_LOCK" ]; then
+        R_PID=$(cat "$RESTORE_LOCK" 2>/dev/null)
+        [ -n "$R_PID" ] && kill -0 "$R_PID" 2>/dev/null && RESTORE_ACTIVE=true
+    fi
+    if [ -f "$REGISTRY" ] && [ "$RESTORE_ACTIVE" = "false" ]; then
         CRASHED=$(bash "$HOME/.claude/scripts/session-registry.sh" crash-detect 2>/dev/null | grep "CRASH DETECTED" || true)
 
         if [ -n "$CRASHED" ]; then
