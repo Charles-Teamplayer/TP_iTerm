@@ -211,28 +211,15 @@ except:
             log "SKIP $PROFILE_NAME — 이미 창 있음"
             continue
         fi
-        tmux new-window -t "$SESSION_NAME" -n "$PROFILE_NAME" -c "$PROJ_PATH" 2>/dev/null
-        # BUG#4 fix: sort|tail 대신 창 이름으로 직접 인덱스 조회 (인덱스 재사용 방어)
-        # BUG#2 fix: 창 이름에 '.'이 있으면 tmux target 파싱 오류 → window_id 기반 조회
-        # BUG-ARRACE fix: new-window 직후 list-windows에 없을 수 있음 → 최대 1.5s retry
-        WIN_ID_AR=""
-        WIN_IDX=""
-        for _retry in 1 2 3; do
-            WIN_ID_AR=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$PROFILE_NAME" '$2==w{print $1; exit}')
-            WIN_IDX=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$PROFILE_NAME" '$2==w{print $1; exit}')
-            [ -n "$WIN_ID_AR" ] && break
-            sleep 0.5
-        done
+        # BUG-B fix (auto-restore): -P -F '#{window_id}' 로 즉시 ID 캡처 → auto-rename race 제거
+        WIN_ID_AR=$(tmux new-window -t "$SESSION_NAME" -n "$PROFILE_NAME" -c "$PROJ_PATH" -P -F '#{window_id}' 2>/dev/null || true)
         if [ -n "$WIN_ID_AR" ]; then
-            tmux set-window-option -t "$WIN_ID_AR" automatic-rename off 2>/dev/null
+            tmux set-window-option -t "$WIN_ID_AR" automatic-rename off 2>/dev/null || true
+            tmux rename-window -t "$WIN_ID_AR" "$PROFILE_NAME" 2>/dev/null || true
             tmux send-keys -t "$WIN_ID_AR" \
                 "sleep $DELAY && (bash ~/.claude/scripts/tab-status.sh starting '$PROFILE_NAME' 2>/dev/null || true) && unset CLAUDECODE && $CLAUDE_CMD" Enter
-        elif [ -n "$WIN_IDX" ]; then
-            tmux set-window-option -t "$SESSION_NAME:$WIN_IDX" automatic-rename off 2>/dev/null
-            tmux send-keys -t "$SESSION_NAME:$WIN_IDX" \
-                "sleep $DELAY && (bash ~/.claude/scripts/tab-status.sh starting '$PROFILE_NAME' 2>/dev/null || true) && unset CLAUDECODE && $CLAUDE_CMD" Enter
         else
-            log "WARN: $PROFILE_NAME 창 index/id 조회 실패 — send-keys 스킵"
+            log "WARN: $PROFILE_NAME 창 생성 실패 (tmux new-window)"
         fi
 
         TOTAL_CREATED=$((TOTAL_CREATED + 1))
@@ -241,19 +228,14 @@ except:
     done
 
     # monitor 창을 맨 마지막에 추가 + _init_ 임시 창 제거
-    tmux new-window -t "$SESSION_NAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" 2>/dev/null
-    # BUG-ARRACE: monitor도 retry 후 window_id 기반 set-option (이름 직접 사용 회피)
-    MON_WIN_ID=""
-    for _retry in 1 2 3; do
-        MON_WIN_ID=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' '$2=="monitor"{print $1; exit}')
-        [ -n "$MON_WIN_ID" ] && break
-        sleep 0.5
-    done
+    # BUG-B fix: -P -F '#{window_id}' 즉시 캡처 → auto-rename race 제거
+    MON_WIN_ID=$(tmux new-window -t "$SESSION_NAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" -P -F '#{window_id}' 2>/dev/null || true)
     if [ -n "$MON_WIN_ID" ]; then
-        tmux set-window-option -t "$MON_WIN_ID" automatic-rename off 2>/dev/null
+        tmux set-window-option -t "$MON_WIN_ID" automatic-rename off 2>/dev/null || true
+        tmux rename-window -t "$MON_WIN_ID" "monitor" 2>/dev/null || true
         tmux move-window -s "$MON_WIN_ID" -t "$SESSION_NAME:999" 2>/dev/null || true
     else
-        tmux set-window-option -t "$SESSION_NAME:monitor" automatic-rename off 2>/dev/null
+        tmux set-window-option -t "$SESSION_NAME:monitor" automatic-rename off 2>/dev/null || true
         tmux move-window -s "$SESSION_NAME:monitor" -t "$SESSION_NAME:999" 2>/dev/null || true
     fi
     # BUG-INIT-RENAME fix: 이름 기반 kill 실패 대비 → window_id 기반 fallback
