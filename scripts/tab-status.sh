@@ -46,10 +46,11 @@ if [ "$STATE" = "working" ] || [ "$STATE" = "waiting" ] || [ "$STATE" = "attenti
         STATE_FILE="$STATE_DIR/${CURRENT_TTY}.json"
         if [ -f "$STATE_FILE" ]; then
             # BUG#5 fix: 4회 파일 읽기 → 1회 통합 (race condition 제거)
-            _STATE_DATA=$(python3 -c "
-import json
+            _STATE_DATA=$(_TSF="$STATE_FILE" python3 -c "
+import json, os
 try:
-    d=json.load(open('$STATE_FILE'))
+    with open(os.environ['_TSF']) as _f:
+        d=json.load(_f)
     c=d.get('color',{})
     print(d.get('type',''))
     print(c.get('r',0))
@@ -70,12 +71,14 @@ except:
                 printf '\e]6;1;bg;red;brightness;%s\a\e]6;1;bg;green;brightness;%s\a\e]6;1;bg;blue;brightness;%s\a' \
                     "${_COLOR_R:-0}" "${_COLOR_G:-220}" "${_COLOR_B:-0}" > "/dev/$CURRENT_TTY" 2>/dev/null
                 # timestamp 갱신 (watchdog aging 방지)
-                python3 -c "
-import json, datetime
-f='$STATE_FILE'
-with open(f) as fp: d=json.load(fp)
-d['timestamp']=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-with open(f,'w') as fp: json.dump(d,fp)
+                _TSF2="$STATE_FILE" python3 -c "
+import json, datetime, os
+f=os.environ['_TSF2']
+try:
+    with open(f) as fp: d=json.load(fp)
+    d['timestamp']=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    with open(f,'w') as fp: json.dump(d,fp)
+except: pass
 " 2>/dev/null
                 exit 0
             fi

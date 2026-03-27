@@ -273,12 +273,14 @@ done <<< "$GROUPS_JSON"
 
 # active-sessions.json 초기화 (이전 PID로 인한 watchdog 오탐 방지)
 python3 -c "
-import json, os
+import json, os, tempfile
 from datetime import datetime, timezone
 path = os.path.expanduser('~/.claude/active-sessions.json')
 data = {'sessions': [], 'last_updated': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'version': '1.0'}
-with open(path, 'w') as f:
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix='.tmp')
+with os.fdopen(fd, 'w') as f:
     json.dump(data, f, indent=2)
+os.replace(tmp, path)
 " 2>/dev/null || true
 
 # intentional-stops.json — 48시간 이상 된 항목만 제거 (최근 의도적 중지는 보존)

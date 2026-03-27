@@ -43,7 +43,7 @@ echo -e "\n${BOLD}[2] tmux 세션 상태${NC}"
 ACTIVE_SESSIONS=$(python3 -c "
 import json, os
 try:
-    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    with open(os.path.expanduser('~/.claude/window-groups.json')) as _wg: groups = json.load(_wg)
     seen = set()
     result = []
     for g in groups:
@@ -109,7 +109,7 @@ CLAUDE_PROCS=$(ps aux | grep "[c]laude" | grep -v "Claude.app\|Helper\|ShipIt\|w
 EXPECTED_PROCS=$(python3 -c "
 import json, os
 try:
-    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    with open(os.path.expanduser('~/.claude/window-groups.json')) as _wg: groups = json.load(_wg)
     total = sum(len(g.get('profileNames',[])) for g in groups if not g.get('isWaitingList', False) and g.get('sessionName','') not in ('', '__waiting__'))
     print(total)
 except:
@@ -142,11 +142,18 @@ fi
 # 6. active-sessions.json
 echo -e "\n${BOLD}[6] 세션 레지스트리${NC}"
 if [ -f "$HOME/.claude/active-sessions.json" ]; then
-    SESSION_CNT=$(python3 -c "import json; d=json.load(open('$HOME/.claude/active-sessions.json')); print(len(d['sessions']))" 2>/dev/null || echo "?")
+    SESSION_CNT=$(python3 -c "
+import json,os
+p=os.path.expanduser('~/.claude/active-sessions.json')
+try:
+    with open(p) as _f: d=json.load(_f)
+    print(len(d['sessions']))
+except: print('?')
+" 2>/dev/null || echo "?")
     EXPECTED_SESSIONS=$(python3 -c "
 import json, os
 try:
-    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    with open(os.path.expanduser('~/.claude/window-groups.json')) as _wg: groups = json.load(_wg)
     total = sum(len(g.get('profileNames',[])) for g in groups if not g.get('isWaitingList', False) and g.get('sessionName','') not in ('', '__waiting__'))
     print(total)
 except:
@@ -164,13 +171,21 @@ fi
 # 7. intentional-stops.json
 STOPS_FILE="$HOME/.claude/intentional-stops.json"
 if [ -f "$STOPS_FILE" ]; then
-    STOP_CNT=$(python3 -c "import json; d=json.load(open('$STOPS_FILE')); print(len(d.get('stops',[])))" 2>/dev/null || echo "0")
+    STOP_CNT=$(_HC_STOPS="$STOPS_FILE" python3 -c "
+import json,os
+try:
+    with open(os.environ['_HC_STOPS']) as _f: d=json.load(_f)
+    print(len(d.get('stops',[])))
+except: print(0)
+" 2>/dev/null || echo "0")
     if [[ "$STOP_CNT" =~ ^[0-9]+$ ]] && [ "$STOP_CNT" -gt 0 ]; then
         warn "의도적 정지: ${STOP_CNT}개 (watchdog 자동재시작 + reboot auto-restore 제외, stop-session.sh --remove 로 해제)"
-        python3 -c "
-import json
-d=json.load(open('$STOPS_FILE'))
-for s in d.get('stops',[]): print('    - ' + s.get('window_name','?'))
+        _HC_STOPS="$STOPS_FILE" python3 -c "
+import json,os
+try:
+    with open(os.environ['_HC_STOPS']) as _f: d=json.load(_f)
+    for s in d.get('stops',[]): print('    - ' + s.get('window_name','?'))
+except: pass
 " 2>/dev/null
     else
         ok "의도적 정지: 없음"

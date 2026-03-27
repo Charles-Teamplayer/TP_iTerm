@@ -20,17 +20,19 @@ _config() {
     if command -v jq &>/dev/null; then
         jq -r "$KEY // \"$DEFAULT\"" "$CONFIG" 2>/dev/null || echo "$DEFAULT"
     else
-        python3 -c "
-import json, sys
+        _CFG="$CONFIG" _KEY="$KEY" _DEF="$DEFAULT" python3 -c "
+import json, os, sys
+cfg = os.environ['_CFG']; key = os.environ['_KEY']; dfl = os.environ['_DEF']
 try:
-    d = json.load(open('$CONFIG'))
-    keys = '$KEY'.lstrip('.').split('.')
+    with open(cfg) as _f:
+        d = json.load(_f)
+    keys = key.lstrip('.').split('.')
     v = d
     for k in keys:
         v = v[k]
-    print(v if v is not None else '$DEFAULT')
+    print(v if v is not None else dfl)
 except:
-    print('$DEFAULT')
+    print(dfl)
 " 2>/dev/null || echo "$DEFAULT"
     fi
 }
@@ -59,10 +61,15 @@ _map_project() {
         MAPPED=$(jq -r ".project_names[\"$RAW\"] // \"$RAW\"" "$CONFIG" 2>/dev/null)
         echo "${MAPPED:-$RAW}"
     else
-        python3 -c "
-import json
-d = json.load(open('$CONFIG'))
-print(d.get('project_names', {}).get('$RAW', '$RAW'))
+        _CFG="$CONFIG" _RAW="$RAW" python3 -c "
+import json, os
+cfg = os.environ['_CFG']; raw = os.environ['_RAW']
+try:
+    with open(cfg) as _f:
+        d = json.load(_f)
+    print(d.get('project_names', {}).get(raw, raw))
+except:
+    print(raw)
 " 2>/dev/null || echo "$RAW"
     fi
 }
@@ -73,10 +80,8 @@ _save_state() {
     local JSON_FILE="$STATE_DIR/${TTY_NAME}.json"
     local ESCAPED_PROJECT
     ESCAPED_PROJECT=$(printf '%s' "$PROJECT" | sed 's/\\/\\\\/g; s/"/\\"/g')
-    # iter57: CC_PROCESS_PID(tab-status.sh에서 전달된 실제 CC PID) 사용 — watchdog aging 방지
-    local _STATE_PID=${CC_PROCESS_PID:-0}
     printf '{"session_id":"%s","type":"%s","project":"%s","tty":"/dev/%s","pid":%d,"timestamp":"%s","color":{"r":%d,"g":%d,"b":%d}}\n' \
-        "$TTY_NAME" "$STATE" "$ESCAPED_PROJECT" "$TTY_NAME" $_STATE_PID \
+        "$TTY_NAME" "$STATE" "$ESCAPED_PROJECT" "$TTY_NAME" $$ \
         "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$R" "$G" "$B" > "$JSON_FILE"
 }
 
@@ -85,37 +90,26 @@ TTY_PATH=$(find_tty)
 [ -z "$TTY_PATH" ] && { _log "TTY not found for state=$STATE"; exit 0; }
 TTY_NAME="${TTY_PATH#/dev/}"
 
-# TTY 쓰기 권한 체크 (Operation not permitted 방지 — set -e 환경에서 즉시 exit 방어)
-if [ ! -w "$TTY_PATH" ]; then
-    _log "SKIP: $TTY_NAME not writable (permission denied)"
-    exit 0
-fi
-
-# tmux pane 보호: tmux에 속하지 않는 TTY (= Claude Code 자체 터미널 등)에는 색상 쓰지 않음
-if ! tmux list-panes -a -F "#{pane_tty}" 2>/dev/null | grep -qxF "$TTY_PATH"; then
-    _log "SKIP: $TTY_NAME is not a tmux pane (self-protection)"
-    exit 0
-fi
-
 # config에서 색상 읽기
 if command -v jq &>/dev/null; then
     READ_COLOR=$(jq -r ".states[\"$STATE\"] | \"\(.color[0])|\(.color[1])|\(.color[2])\"" "$CONFIG" 2>/dev/null)
 else
-    READ_COLOR=$(python3 -c "
-import json
-d = json.load(open('$CONFIG'))
-c = d['states'].get('$STATE', {}).get('color', [128,128,128])
-# None 값 방어 (BUG-NULL-COLOR: json null → Python None → 'None' 문자열 방지)
-print('|'.join(str(v) if v is not None else '128' for v in c[:3]))
+    READ_COLOR=$(_CFG="$CONFIG" _ST="$STATE" python3 -c "
+import json, os
+cfg = os.environ['_CFG']; st = os.environ['_ST']
+try:
+    with open(cfg) as _f:
+        d = json.load(_f)
+    c = d['states'].get(st, {}).get('color', [128,128,128])
+    print(f'{c[0]}|{c[1]}|{c[2]}')
+except:
+    print('128|128|128')
 " 2>/dev/null)
 fi
 R=$(echo "$READ_COLOR" | cut -d'|' -f1)
 G=$(echo "$READ_COLOR" | cut -d'|' -f2)
 B=$(echo "$READ_COLOR" | cut -d'|' -f3)
-# "null"(jq), "None"(python3), 빈 문자열 모두 128 fallback
-[[ -z "$R" || "$R" == "null" || "$R" == "None" ]] && R=128
-[[ -z "$G" || "$G" == "null" || "$G" == "None" ]] && G=128
-[[ -z "$B" || "$B" == "null" || "$B" == "None" ]] && B=128
+R=${R:-128}; G=${G:-128}; B=${B:-128}
 
 # 프로젝트명 매핑
 [ -z "$PROJECT" ] && PROJECT=$(basename "$PWD")
@@ -125,10 +119,15 @@ PROJECT=$(_map_project "$PROJECT")
 if command -v jq &>/dev/null; then
     PREFIX=$(jq -r ".states[\"$STATE\"].title_prefix // \"\"" "$CONFIG" 2>/dev/null)
 else
-    PREFIX=$(python3 -c "
-import json
-d = json.load(open('$CONFIG'))
-print(d['states'].get('$STATE', {}).get('title_prefix', ''))
+    PREFIX=$(_CFG="$CONFIG" _ST="$STATE" python3 -c "
+import json, os
+cfg = os.environ['_CFG']; st = os.environ['_ST']
+try:
+    with open(cfg) as _f:
+        d = json.load(_f)
+    print(d['states'].get(st, {}).get('title_prefix', ''))
+except:
+    print('')
 " 2>/dev/null)
 fi
 TITLE="${PREFIX:+$PREFIX }${PROJECT}"
@@ -138,8 +137,11 @@ printf '\e]1;%s\a' "$TITLE" > "$TTY_PATH" 2>/dev/null
 printf '\e]6;1;bg;red;brightness;%s\a\e]6;1;bg;green;brightness;%s\a\e]6;1;bg;blue;brightness;%s\a' \
     "$R" "$G" "$B" > "$TTY_PATH" 2>/dev/null
 
-# tmux rename-window 비활성화 — 창 이름이 원본 프로파일명으로 유지되어야 함
-# (탭 색상/배지는 escape sequence로만 처리)
+# tmux -CC 모드: 윈도우 이름으로 탭 제목 설정 (OSC 1은 tmux가 가로채므로)
+if [ -n "${TMUX:-}" ]; then
+    CURRENT_WINDOW=$(tmux display-message -p '#I' 2>/dev/null)
+    [ -n "$CURRENT_WINDOW" ] && tmux rename-window -t "$CURRENT_WINDOW" "$TITLE" 2>/dev/null || true
+fi
 
 # badge
 BADGE_ENABLED=$(jq -r '.badge_enabled // false' "$CONFIG" 2>/dev/null || echo "false")
@@ -147,7 +149,14 @@ if [ "$BADGE_ENABLED" = "true" ]; then
     if command -v jq &>/dev/null; then
         BADGE=$(jq -r ".states[\"$STATE\"].badge // \"\"" "$CONFIG" 2>/dev/null)
     else
-        BADGE=$(python3 -c "import json; d=json.load(open('$CONFIG')); print(d['states'].get('$STATE',{}).get('badge',''))" 2>/dev/null)
+        BADGE=$(_CFG="$CONFIG" _ST="$STATE" python3 -c "
+import json,os
+cfg=os.environ['_CFG']; st=os.environ['_ST']
+try:
+    with open(cfg) as _f: d=json.load(_f)
+    print(d['states'].get(st,{}).get('badge',''))
+except: print('')
+" 2>/dev/null)
     fi
     [ -n "$BADGE" ] && printf '\e]1337;SetBadgeFormat=%s\a' "$(printf '%s' "$BADGE" | base64)" > "$TTY_PATH" 2>/dev/null
 fi
@@ -156,10 +165,6 @@ fi
 mkdir -p "$STATE_DIR"
 _save_state "$TTY_NAME" "$PROJECT" "$R" "$G" "$B"
 
-# 하위호환: pipe-delimited 상태 저장 (watchdog/tab-focus-monitor용)
-COMPAT_STATE_DIR="$HOME/.claude/tab-states"
-mkdir -p "$COMPAT_STATE_DIR"
-echo "${STATE}|${PROJECT}|$(date +%s)" > "$COMPAT_STATE_DIR/$TTY_NAME"
 
 # flash 처리
 FLASH=$(jq -r ".states[\"$STATE\"].flash // false" "$CONFIG" 2>/dev/null || echo "false")
@@ -170,7 +175,8 @@ if [ "$FLASH" = "true" ] && [ -f "$FLASH_ENGINE" ]; then
     # 기존 flash kill
     if [ -f "$FLASH_PID_FILE" ]; then
         OLD_PID=$(cat "$FLASH_PID_FILE" 2>/dev/null)
-        [ -n "$OLD_PID" ] && kill "$OLD_PID" 2>/dev/null && rm -f "$FLASH_PID_FILE"
+        [[ "$OLD_PID" =~ ^[0-9]+$ ]] && [ "$OLD_PID" -gt 0 ] && kill "$OLD_PID" 2>/dev/null
+        rm -f "$FLASH_PID_FILE"
     fi
     bash "$FLASH_ENGINE" "$STATE" "$TTY_PATH" "$CONFIG" &
     echo $! > "$FLASH_PID_FILE"
@@ -180,7 +186,7 @@ elif [ "$STATE" != "attention" ] && [ "$STATE" != "crashed" ]; then
     FLASH_PID_FILE="/tmp/tab-flash-${TTY_NAME}.pid"
     if [ -f "$FLASH_PID_FILE" ]; then
         OLD_PID=$(cat "$FLASH_PID_FILE" 2>/dev/null)
-        [ -n "$OLD_PID" ] && kill "$OLD_PID" 2>/dev/null
+        [[ "$OLD_PID" =~ ^[0-9]+$ ]] && [ "$OLD_PID" -gt 0 ] && kill "$OLD_PID" 2>/dev/null
         rm -f "$FLASH_PID_FILE"
     fi
 fi

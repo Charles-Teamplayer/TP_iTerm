@@ -27,10 +27,11 @@ declare -A LAST_WIN_MAP
 get_active_sessions() {
     local _out
     if [ -f "$WINDOW_GROUPS" ]; then
-        _out=$(python3 -c "
+        _out=$(_TFM_WG="$WINDOW_GROUPS" python3 -c "
 import json, os
 try:
-    groups = json.load(open('$WINDOW_GROUPS'))
+    with open(os.environ['_TFM_WG']) as _f:
+        groups = json.load(_f)
     for g in groups:
         sn = g.get('sessionName','')
         if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
@@ -87,10 +88,11 @@ while true; do
             [ ! -f "$STATE_FILE" ] && continue
 
             # BUG#5 fix: state file 2회 읽기 → 1회 통합 (race condition 제거)
-            _TAB_DATA=$(python3 -c "
-import json
+            _TAB_DATA=$(_TFM_SF="$STATE_FILE" python3 -c "
+import json, os
 try:
-    d=json.load(open('$STATE_FILE'))
+    with open(os.environ['_TFM_SF']) as _f:
+        d=json.load(_f)
     print(d.get('type',''))
     print(d.get('project',''))
 except:

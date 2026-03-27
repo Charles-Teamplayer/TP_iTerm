@@ -11,8 +11,18 @@ for JSON_FILE in "$STATE_DIR"/*.json; do
     [ -c "$TTY_PATH" ] || continue
     [ -w "$TTY_PATH" ] || continue
 
-    STATE=$(python3 -c "import json; d=json.load(open('$JSON_FILE')); print(d.get('type','idle'))" 2>/dev/null)
-    PROJECT=$(python3 -c "import json; d=json.load(open('$JSON_FILE')); print(d.get('project',''))" 2>/dev/null)
+    _RST_DATA=$(_JF="$JSON_FILE" python3 -c "
+import json, os
+try:
+    with open(os.environ['_JF']) as _f:
+        d=json.load(_f)
+    print(d.get('type','idle'))
+    print(d.get('project',''))
+except:
+    print('idle'); print('')
+" 2>/dev/null)
+    STATE=$(printf '%s' "$_RST_DATA" | sed -n '1p')
+    PROJECT=$(printf '%s' "$_RST_DATA" | sed -n '2p')
 
     TAB_TTY="$TTY_PATH" bash "$HOME/.claude/tab-color/engine/set-color.sh" "$STATE" "$PROJECT"
     RESTORED=$((RESTORED + 1))

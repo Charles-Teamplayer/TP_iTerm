@@ -4,38 +4,42 @@ STATE="$1"
 TTY_PATH="$2"
 CONFIG="$3"
 
-INTERVAL=$(python3 -c "
-import json
-d = json.load(open('$CONFIG'))
-print(d['states'].get('$STATE', {}).get('flash_interval', 0.8))
+INTERVAL=$(_CFG="$CONFIG" _ST="$STATE" python3 -c "
+import json, os
+cfg=os.environ['_CFG']; st=os.environ['_ST']
+try:
+    with open(cfg) as _f: d=json.load(_f)
+    print(d['states'].get(st, {}).get('flash_interval', 0.8))
+except: print(0.8)
 " 2>/dev/null || echo "0.8")
 
 # 주 색상
-MAIN_COLOR=$(python3 -c "
-import json
-d = json.load(open('$CONFIG'))
-c = d['states'].get('$STATE', {}).get('color', [255,0,0])
-print(f'{c[0]}|{c[1]}|{c[2]}')
+MAIN_COLOR=$(_CFG="$CONFIG" _ST="$STATE" python3 -c "
+import json, os
+cfg=os.environ['_CFG']; st=os.environ['_ST']
+try:
+    with open(cfg) as _f: d=json.load(_f)
+    c=d['states'].get(st,{}).get('color',[255,0,0])
+    print(f'{c[0]}|{c[1]}|{c[2]}')
+except: print('255|0|0')
 " 2>/dev/null || echo "255|0|0")
 MR=$(echo "$MAIN_COLOR" | cut -d'|' -f1)
 MG=$(echo "$MAIN_COLOR" | cut -d'|' -f2)
 MB=$(echo "$MAIN_COLOR" | cut -d'|' -f3)
 
 # 대체 색상
-ALT_COLOR=$(python3 -c "
-import json
-d = json.load(open('$CONFIG'))
-c = d['states'].get('$STATE', {}).get('flash_alt_color', [255,140,0])
-print(f'{c[0]}|{c[1]}|{c[2]}')
+ALT_COLOR=$(_CFG="$CONFIG" _ST="$STATE" python3 -c "
+import json, os
+cfg=os.environ['_CFG']; st=os.environ['_ST']
+try:
+    with open(cfg) as _f: d=json.load(_f)
+    c=d['states'].get(st,{}).get('flash_alt_color',[255,140,0])
+    print(f'{c[0]}|{c[1]}|{c[2]}')
+except: print('255|140|0')
 " 2>/dev/null || echo "255|140|0")
 AR=$(echo "$ALT_COLOR" | cut -d'|' -f1)
 AG=$(echo "$ALT_COLOR" | cut -d'|' -f2)
 AB=$(echo "$ALT_COLOR" | cut -d'|' -f3)
-
-# TTY 쓰기 권한 전역 체크 (Operation not permitted 방지 — bash stdout redirection 오류 억제)
-if [ ! -c "$TTY_PATH" ] || [ ! -w "$TTY_PATH" ]; then
-    exit 0
-fi
 
 apply_color() {
     local R=$1 G=$2 B=$3
@@ -46,7 +50,6 @@ apply_color() {
 if [ "$STATE" = "crashed" ]; then
     # crashed: 10회 후 종료
     for i in $(seq 1 10); do
-        [ ! -w "$TTY_PATH" ] && exit 0
         apply_color $AR $AG $AB; sleep "$INTERVAL"
         apply_color $MR $MG $MB; sleep "$INTERVAL"
     done

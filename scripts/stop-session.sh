@@ -22,14 +22,14 @@ import json, os
 result = set()
 # window-groups.json에서 profileNames 수집
 try:
-    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    with open(os.path.expanduser('~/.claude/window-groups.json')) as _wg: groups = json.load(_wg)
     for g in groups:
         for p in g.get('profileNames', []):
             result.add(p)
 except: pass
 # activated-sessions.json에서 basename 수집
 try:
-    d = json.load(open(os.path.expanduser('~/.claude/activated-sessions.json')))
+    with open(os.path.expanduser('~/.claude/activated-sessions.json')) as _as: d = json.load(_as)
     for p in d.get('activated', []):
         result.add(os.path.basename(p))
 except: pass
@@ -46,9 +46,10 @@ case "${1:-}" in
     --list)
         init_stops
         echo "=== 의도적 정지 목록 ==="
-        python3 -c "
-import json
-d = json.load(open('$STOPS_FILE'))
+        _SS_STOPS="$STOPS_FILE" python3 -c "
+import json, os
+with open(os.environ['_SS_STOPS']) as _f:
+    d = json.load(_f)
 stops = d.get('stops', [])
 if not stops:
     print('  (없음) — 모든 프로젝트가 다음 복원 시 시작됩니다')
