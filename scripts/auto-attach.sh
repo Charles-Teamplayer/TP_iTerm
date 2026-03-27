@@ -133,11 +133,11 @@ while IFS= read -r SESSION_NAME; do
     fi
 
     # AppleScript 생성 — command 파라미터 방식 (write text 불필요, 타이밍 무관)
-    APPLE_SCRIPT=$(python3 << PYEOF
-import sys
+    APPLE_SCRIPT=$(CCFIX_SESSION="$SESSION_NAME" CCFIX_RAW_WINS="$RAW_WINS" python3 << 'PYEOF'
+import sys, os
 
-session = "$SESSION_NAME"
-raw = """$RAW_WINS"""
+session = os.environ['CCFIX_SESSION']
+raw = os.environ['CCFIX_RAW_WINS']
 
 winPairs = []
 for line in raw.strip().split('\n'):

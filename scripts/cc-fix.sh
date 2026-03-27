@@ -37,6 +37,19 @@ if [ -f "/tmp/.auto-attach.lock" ]; then
     fi
 fi
 
+# BUG-BOOT-DUP fix: 부팅 직후 auto-restore-done 플래그가 최근 5분 내면 auto-attach에 위임
+# (cc-fix 첫 30s 사이클과 auto-attach가 동시에 창 생성하는 경쟁 방지)
+RESTORE_DONE_FLAG="$HOME/.claude/logs/.auto-restore-done"
+if [ -f "$RESTORE_DONE_FLAG" ]; then
+    BOOT_FLAG_TIME=$(cat "$RESTORE_DONE_FLAG" 2>/dev/null || echo "0")
+    NOW_GRACE=$(date +%s)
+    AGE_GRACE=$(( NOW_GRACE - ${BOOT_FLAG_TIME:-0} ))
+    if [ "$AGE_GRACE" -lt 300 ]; then
+        log "부팅 직후 grace (auto-restore 완료 후 ${AGE_GRACE}초 < 300) — auto-attach에 위임, cc-fix 스킵"
+        exit 0
+    fi
+fi
+
 log "=== cc-fix 시작 ==="
 
 # 이중 체크: 실제로 클라이언트 없는지 재확인 (main + linked sessions)
@@ -72,11 +85,11 @@ if ! ps -A 2>/dev/null | grep -q "iTerm.app/Contents/MacOS/iTerm2"; then
 fi
 
 # AppleScript 생성 — auto-attach.sh와 동일한 linked session 방식
-APPLE_SCRIPT=$(python3 << PYEOF
-import sys
+APPLE_SCRIPT=$(CCFIX_SESSION="$SESSION" CCFIX_RAW_WINS="$RAW_WINS" python3 << 'PYEOF'
+import sys, os
 
-session = "$SESSION"
-raw = """$RAW_WINS"""
+session = os.environ['CCFIX_SESSION']
+raw = os.environ['CCFIX_RAW_WINS']
 
 winPairs = []
 for line in raw.strip().split('\n'):

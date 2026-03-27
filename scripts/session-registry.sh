@@ -47,7 +47,7 @@ case "$ACTION" in
         REG_TTY="${SESSION_TTY:-}" \
         REG_TIMESTAMP="$TIMESTAMP" \
         python3 << 'PYEOF'
-import json, os
+import json, os, tempfile
 
 registry_path = os.environ['REG_REGISTRY']
 project_dir = os.environ['REG_PROJECT_DIR']
@@ -71,8 +71,15 @@ data['sessions'].append({
 })
 data['last_updated'] = timestamp
 
-with open(registry_path, 'w') as f:
-    json.dump(data, f, indent=2, ensure_ascii=False)
+dir_name = os.path.dirname(registry_path)
+fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+try:
+    with os.fdopen(fd, 'w') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, registry_path)
+except:
+    os.unlink(tmp_path)
+    raise
 
 print(f"[URD] Session registered: {project_name} (PID: {pid})")
 PYEOF
@@ -105,7 +112,7 @@ PYEOF
         UNREG_PROJECT_NAME="$PROJECT_NAME" \
         UNREG_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
         python3 << 'PYEOF'
-import json, os
+import json, os, tempfile
 
 registry_path = os.environ['UNREG_REGISTRY']
 project_dir = os.environ['UNREG_PROJECT_DIR']
@@ -120,8 +127,15 @@ data['sessions'] = [s for s in data['sessions'] if s.get('dir') != project_dir]
 after = len(data['sessions'])
 data['last_updated'] = timestamp
 
-with open(registry_path, 'w') as f:
-    json.dump(data, f, indent=2, ensure_ascii=False)
+dir_name = os.path.dirname(registry_path)
+fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+try:
+    with os.fdopen(fd, 'w') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, registry_path)
+except:
+    os.unlink(tmp_path)
+    raise
 
 if before > after:
     print(f"[URD] Session unregistered: {project_name}")
@@ -159,8 +173,15 @@ data['sessions'] = [s for s in data['sessions'] if s.get('dir') != project_dir]
 after = len(data['sessions'])
 data['last_updated'] = timestamp
 
-with open(registry_path, 'w') as f:
-    json.dump(data, f, indent=2, ensure_ascii=False)
+dir_name = os.path.dirname(registry_path)
+fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+try:
+    with os.fdopen(fd, 'w') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, registry_path)
+except:
+    os.unlink(tmp_path)
+    raise
 
 if before > after:
     print(f"[URD] Session unregistered: {project_name}")
@@ -209,7 +230,7 @@ PYEOF
         CD_REGISTRY="$REGISTRY" \
         CD_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
         python3 << 'PYEOF'
-import json, subprocess, os
+import json, subprocess, os, tempfile
 
 registry_path = os.environ['CD_REGISTRY']
 cd_timestamp = os.environ['CD_TIMESTAMP']
@@ -353,8 +374,15 @@ if crashed:
     # 크래시된 세션 제거
     data['sessions'] = alive
     data['last_updated'] = cd_timestamp
-    with open(registry_path, 'w') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    dir_name = os.path.dirname(registry_path)
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, registry_path)
+    except:
+        os.unlink(tmp_path)
+        raise
 
 if not crashed:
     print("[URD] All sessions alive")
@@ -367,7 +395,7 @@ PYEOF
         HB_PROJECT_DIR="$PROJECT_DIR" \
         HB_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
         python3 << 'PYEOF'
-import json, os
+import json, os, tempfile
 
 registry_path = os.environ['HB_REGISTRY']
 project_dir = os.environ['HB_PROJECT_DIR']
@@ -381,8 +409,15 @@ for s in data['sessions']:
         s['last_heartbeat'] = timestamp
         break
 
-with open(registry_path, 'w') as f:
-    json.dump(data, f, indent=2, ensure_ascii=False)
+dir_name = os.path.dirname(registry_path)
+fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+try:
+    with os.fdopen(fd, 'w') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, registry_path)
+except:
+    os.unlink(tmp_path)
+    raise
 PYEOF
         ;;
 
