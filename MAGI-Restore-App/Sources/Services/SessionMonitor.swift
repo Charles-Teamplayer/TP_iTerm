@@ -1156,6 +1156,15 @@ final class SessionMonitor: ObservableObject {
             _ = profile
         }
 
+        // BUG-001 fix: 999에 다른 창이 있으면 먼저 900번대 임시 위치로 이동 후 monitor 배치
+        let win999 = await ShellService.runAsync(
+            "tmux list-windows -t '\(shellEscape(sname))' -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' '$1==\"999\" && $2!=\"monitor\"{print $2}'"
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !win999.isEmpty {
+            await ShellService.runAsync(
+                "tmux move-window -s '\(shellEscape(sname)):999' -t '\(shellEscape(sname)):900' 2>/dev/null; true"
+            )
+        }
         // monitor는 항상 맨 뒤 (index 999)
         await ShellService.runAsync(
             "tmux move-window -s '\(shellEscape(sname)):monitor' -t '\(shellEscape(sname)):999' 2>/dev/null; true"
@@ -1175,9 +1184,11 @@ final class SessionMonitor: ObservableObject {
         let escapedSession = shellEscape(targetSession)
         let nameForStatus = safeName.replacingOccurrences(of: "\"", with: "\\\"")
                                      .replacingOccurrences(of: "'", with: "'\\''")
+        // BUG-009 fix: 디렉토리가 없으면 mkdir -p (tmux new-window -c 실패 방지)
         // 중복 방지: check+create 단일 shell 명령
         // BUG-SENDKEYS-NOTARGET fix: index 캡처 후 명시적 -t send-keys
         let cmd = """
+        mkdir -p '\(escapedDir)' 2>/dev/null; \
         if ! tmux list-windows -t '\(escapedSession)' -F '#{window_name}' 2>/dev/null | grep -qxF '\(escapedName)'; then \
           _WIDX=$(tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedDir)' -P -F '#{window_index}' 2>/dev/null); \
           [ -n "$_WIDX" ] && tmux send-keys -t '\(escapedSession)':$_WIDX "(bash ~/.claude/scripts/tab-status.sh starting '\(nameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; \
