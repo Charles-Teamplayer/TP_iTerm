@@ -66,15 +66,21 @@ except: pass
         var count = 0
         var anySessionExists = false
         for sname in checkSessions {
-            let hasSession = await ShellService.runAsync("tmux has-session -t '\(sname.replacingOccurrences(of: "'", with: "'\\''"))' 2>/dev/null && echo YES || echo NO")
+            let escaped = sname.replacingOccurrences(of: "'", with: "'\\''")
+            let hasSession = await ShellService.runAsync("tmux has-session -t '\(escaped)' 2>/dev/null && echo YES || echo NO")
             if hasSession.contains("YES") { anySessionExists = true }
-            let windowNames = await ShellService.runAsync("tmux list-windows -t '\(sname.replacingOccurrences(of: "'", with: "'\\''"))' -F '#{window_name}' 2>/dev/null")
-            let windows = windowNames.components(separatedBy: "\n").filter { !$0.isEmpty && $0 != "monitor" }
-            for win in windows {
-                let paneInfo = await ShellService.runAsync(
-                    "tmux display-message -t \(shellq("\(sname):\(win)")) -p '#{pane_tty}' 2>/dev/null"
-                ).trimmingCharacters(in: .whitespacesAndNewlines)
-                let ttyBase = paneInfo.replacingOccurrences(of: "/dev/", with: "")
+            // BUG#32 fix: display-message -t session:window.name → tmux parses '.' as pane sep
+            // → list-windows combined query (index|name|pane_tty) — same fix as BUG#28 in TPiTermRestoreApp
+            let windowInfo = await ShellService.runAsync(
+                "tmux list-windows -t '\(escaped)' -F '#{window_index}\u{01}#{window_name}\u{01}#{pane_tty}' 2>/dev/null"
+            )
+            for line in windowInfo.components(separatedBy: "\n").filter({ !$0.isEmpty }) {
+                let parts = line.components(separatedBy: "\u{01}")
+                guard parts.count >= 3 else { continue }
+                let winName = parts[1]
+                guard winName != "monitor" && winName != "_init_" else { continue }
+                let paneTty = parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
+                let ttyBase = paneTty.replacingOccurrences(of: "/dev/", with: "")
                 guard !ttyBase.isEmpty else { continue }
                 let procs = await ShellService.runAsync("ps -o command -t \(shellq(ttyBase)) 2>/dev/null | grep '[c]laude' | head -1")
                 if !procs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { count += 1 }
