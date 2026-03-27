@@ -178,16 +178,36 @@ print('no|claude-work')
                     continue
                 fi
 
-                # 해당 tmux 세션이 존재하는지 확인
+                # 해당 tmux 세션이 존재하는지 확인 — 없으면 자동 생성
+                SESSION_JUST_CREATED=false
                 if ! tmux has-session -t "$TARGET_SESSION" 2>/dev/null; then
-                    log "SKIP restart: $TARGET_SESSION tmux session not found"
-                    continue
+                    log "AUTO-CREATE: $TARGET_SESSION tmux 세션 없음 → 신규 생성"
+                    tmux new-session -d -s "$TARGET_SESSION" -n _init_ -c "$HOME/claude" 2>/dev/null || true
+                    SESSION_JUST_CREATED=true
+                    sleep 0.5
                 fi
 
-                # 해당 윈도우가 타겟 세션에 없으면 재시작 스킵 (비활성 세션)
+                # 해당 윈도우가 타겟 세션에 없으면: 세션 방금 생성된 경우 창도 신규 생성, 아니면 skip
                 if ! tmux list-windows -t "$TARGET_SESSION" -F '#{window_name}' 2>/dev/null | grep -qx "$WINDOW_NAME"; then
-                    log "SKIP restart: $WINDOW_NAME — $TARGET_SESSION에 창 없음"
-                    continue
+                    if [ "$SESSION_JUST_CREATED" = "true" ]; then
+                        # activated-sessions.json에서 root 경로 조회
+                        PROJ_ROOT=$(python3 -c "
+import json, os, sys
+p = os.path.expanduser('~/.claude/activated-sessions.json')
+d = json.load(open(p)) if os.path.exists(p) else {}
+for path in d.get('activated', []):
+    if os.path.basename(path) == sys.argv[1]:
+        print(path); sys.exit(0)
+" "$WINDOW_NAME" 2>/dev/null)
+                        [ -z "$PROJ_ROOT" ] && PROJ_ROOT="$HOME/claude"
+                        log "AUTO-CREATE-WIN: $TARGET_SESSION:$WINDOW_NAME (root: $PROJ_ROOT)"
+                        tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_ROOT" 'bash' 2>/dev/null
+                        tmux kill-window -t "$TARGET_SESSION:_init_" 2>/dev/null || true
+                        sleep 0.3
+                    else
+                        log "SKIP restart: $WINDOW_NAME — $TARGET_SESSION에 창 없음"
+                        continue
+                    fi
                 fi
                 # 보호 PID 체크: 창에 살아있는 protected PID가 있으면 kill 금지 (활성 Claude Code 세션 보호)
                 PROTECTED_PIDS_FILE="$HOME/.claude/protected-claude-pids"

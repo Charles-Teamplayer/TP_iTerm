@@ -886,6 +886,15 @@ final class SessionMonitor: ObservableObject {
             )
         }
 
+        // startGroup() = 사용자 명시 재시작 → intentional-stops 해제 (watchdog crash recovery 복원)
+        for profileName in group.profileNames {
+            intentionallyStoppedProfiles.remove(profileName)
+        }
+        let profilesPipeDelim = group.profileNames.map { $0.replacingOccurrences(of: "'", with: "'\\''") }.joined(separator: "|")
+        await ShellService.runAsync(
+            "STOPS_PROFILES='\(profilesPipeDelim)' python3 -c 'import json,os; p=os.path.expanduser(\"~/.claude/intentional-stops.json\"); c=set(os.environ[\"STOPS_PROFILES\"].split(\"|\") if os.environ.get(\"STOPS_PROFILES\") else []); d=json.load(open(p)) if os.path.exists(p) else {\"stops\":[]}; d[\"stops\"]=[s for s in d.get(\"stops\",[]) if s.get(\"project\",\"\") not in c]; json.dump(d,open(p,\"w\"))' 2>/dev/null; true"
+        )
+
         // 꺼진 세션만 기동 (실행 중이면 유지)
         let allProfiles = profileService.profiles
         let runningSessions = Set(sessions.filter { $0.isRunning }.map { $0.projectName })
