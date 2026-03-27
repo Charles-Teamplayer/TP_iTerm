@@ -14,6 +14,10 @@ log() {
 
 log "=== Auto-Restore 시작 ==="
 
+# BUG-FLAG-STALE fix: 시작 즉시 이전 부팅 플래그 삭제 (auto-attach의 오래된 플래그 재사용 방지)
+FLAG_FILE_STALE="$HOME/.claude/logs/.auto-restore-done"
+[ -f "$FLAG_FILE_STALE" ] && rm -f "$FLAG_FILE_STALE" && log "기존 auto-restore-done 플래그 삭제"
+
 # 중복 실행 방지 (PID 파일 기반 — LaunchAgent 동시 트리거 방어, macOS flock 없음)
 LOCK_FILE="/tmp/.auto-restore.lock"
 if [ -f "$LOCK_FILE" ]; then

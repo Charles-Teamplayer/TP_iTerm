@@ -22,16 +22,24 @@ trap 'rm -f "$ATTACH_LOCK"' EXIT
 
 FLAG_FILE="$HOME/.claude/logs/.auto-restore-done"
 
+# BUG-FLAG-STALE fix: 현재 부팅 이후에 생성된 플래그만 유효 (이전 부팅 플래그 재사용 방지)
+BOOT_TS=$(sysctl -n kern.boottime 2>/dev/null | awk '{print $4}' | tr -d ',')
+BOOT_TS=${BOOT_TS:-0}
+
 # auto-restore.sh 완료 플래그를 기다림 (최대 3분)
-log "auto-restore 플래그 대기 시작 (최대 180초)"
+log "auto-restore 플래그 대기 시작 (최대 180초, 부팅 이후=${BOOT_TS})"
 WAITED=0
 while [ $WAITED -lt 180 ]; do
     if [ -f "$FLAG_FILE" ]; then
         FLAG_TIME=$(cat "$FLAG_FILE" 2>/dev/null)
         NOW=$(date +%s)
         AGE=$((NOW - ${FLAG_TIME:-0}))
-        if [ "$AGE" -lt 1800 ]; then  # 30분 이내 플래그만 유효
-            log "auto-restore 완료 플래그 확인 (${AGE}초 전) — attach 시작"
+        # 플래그가 현재 부팅 이후에 생성된 것인지 확인 (이전 부팅 플래그 무시)
+        if [ "${FLAG_TIME:-0}" -le "${BOOT_TS}" ]; then
+            log "이전 부팅 플래그 감지 (FLAG=${FLAG_TIME}, BOOT=${BOOT_TS}) — 대기 계속"
+            rm -f "$FLAG_FILE"  # 오래된 플래그 삭제 후 대기
+        elif [ "$AGE" -lt 1800 ]; then
+            log "auto-restore 완료 플래그 확인 (${AGE}초 전, 부팅 후 ${FLAG_TIME:-0}>${BOOT_TS}) — attach 시작"
             rm -f "$FLAG_FILE"
             break
         else
