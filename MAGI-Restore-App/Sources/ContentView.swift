@@ -106,7 +106,16 @@ struct ContentView: View {
         }
         .sheet(item: $renamingPane) { pane in
             RenamePaneSheet(pane: pane) { newName, newSession in
+                let oldSession = pane.sessionName
                 monitor.windowGroupService.updateGroup(pane, name: newName, sessionName: newSession)
+                // tmux 세션 이름도 실제 rename (세션명이 바뀐 경우만)
+                if oldSession != newSession && !pane.isWaitingList {
+                    Task {
+                        await ShellService.runAsync(
+                            "tmux rename-session -t '\(ShellService.shellq(oldSession))' '\(ShellService.shellq(newSession))' 2>/dev/null; true"
+                        )
+                    }
+                }
             }
         }
         .sheet(item: $importingToPane) { pane in
@@ -368,17 +377,16 @@ struct ContentView: View {
             VStack(spacing: 4) {
                 if allRestorable > 0 || allRunning > 0 || allLaunchable > 0 {
                     HStack(spacing: 6) {
-                        // 즉시 적용: 창에 배정된 중단 세션 모두 시작
-                        let totalPending = allLaunchable + allRestorable
-                        if totalPending > 0 {
+                        // 즉시 적용: 프로필 기반 미시작 세션만 (allLaunchable만, allRestorable은 Clean Up 대상)
+                        if allLaunchable > 0 {
                             Button {
                                 Task { await monitor.applyNow() }
                             } label: {
-                                Label("Apply Now (\(totalPending))", systemImage: "bolt.circle.fill")
+                                Label("Apply Now (\(allLaunchable))", systemImage: "bolt.circle.fill")
                                     .font(.caption).frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent).tint(.green)
-                            .help("Start all stopped/idle sessions assigned to a group")
+                            .help("Start all profile-based idle sessions assigned to a group")
                         }
                         if allRunning > 0 {
                             Button { Task { await monitor.stopAllRunning() } } label: {
