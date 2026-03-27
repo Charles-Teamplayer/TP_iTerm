@@ -520,6 +520,7 @@ final class SessionMonitor: ObservableObject {
         }
         for session in toKill { intentionallyStoppedIds.insert(session.id) }
         for session in toKill {
+            intentionallyStoppedProfiles.insert(session.projectName)  // checkAutoSync 방지
             let dir = session.directory.isEmpty ? session.projectName : session.directory
             await ShellService.intentionalStopAsync(projectDir: dir)
             if session.pid > 0 {
