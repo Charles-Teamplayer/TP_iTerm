@@ -690,12 +690,13 @@ final class SessionMonitor: ObservableObject {
 
     func launchProfile(name: String, root: String, delay: Int, sessionName: String = "claude-work", createDir: Bool = false) async {
         let safeSession = sessionName.isEmpty ? "claude-work" : sessionName
-        // tmux 세션 없으면 자동 생성
+        let escapedSafeSession = shellEscape(safeSession)
+        // tmux 세션 없으면 자동 생성 (BUG#13: shellEscape 적용)
         let sessionExists = await ShellService.runAsync(
-            "tmux has-session -t '\(safeSession)' 2>/dev/null && echo yes || echo no"
+            "tmux has-session -t '\(escapedSafeSession)' 2>/dev/null && echo yes || echo no"
         )
         if sessionExists.trimmingCharacters(in: .whitespacesAndNewlines) == "no" {
-            await ShellService.runAsync("tmux new-session -s '\(safeSession)' -d 2>/dev/null; true")
+            await ShellService.runAsync("tmux new-session -s '\(escapedSafeSession)' -d 2>/dev/null; true")
         }
 
         let safeRoot = root.hasPrefix("~") ? NSHomeDirectory() + root.dropFirst() : root
