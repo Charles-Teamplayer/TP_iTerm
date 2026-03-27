@@ -37,53 +37,70 @@ for SVC in auto-restore auto-attach magi-restore watchdog tab-focus-monitor sess
     fi
 done
 
-# 2. tmux 세션 상태 + 좀비 윈도우 감지
+# 2. tmux 세션 상태 + 좀비 윈도우 감지 (BUG#17 fix: 멀티세션 지원)
 echo -e "\n${BOLD}[2] tmux 세션 상태${NC}"
-# activated-sessions.json 기반 기대 창 수 동적 계산 (monitor 창 포함 +1)
-ACTIVATED_CNT=$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/activated-sessions.json'))); print(len(d.get('activated',[])) + 1)" 2>/dev/null || echo "15")
-if tmux has-session -t claude-work 2>/dev/null; then
-    WIN_COUNT=$(tmux list-windows -t claude-work 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$WIN_COUNT" -ge "$ACTIVATED_CNT" ]; then
-        ok "claude-work 세션 활성 (윈도우 ${WIN_COUNT}개)"
-    else
-        warn "claude-work 세션 활성 (윈도우 ${WIN_COUNT}개 — 기대: ${ACTIVATED_CNT}개)"
-    fi
+# window-groups.json에서 활성 세션 목록 동적 조회
+ACTIVE_SESSIONS=$(python3 -c "
+import json, os
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    seen = set()
+    result = []
+    for g in groups:
+        sn = g.get('sessionName','')
+        if sn and sn != '__waiting__' and not g.get('isWaitingList', False) and sn not in seen:
+            seen.add(sn)
+            result.append(sn)
+    print('\n'.join(result) if result else 'claude-work')
+except:
+    print('claude-work')
+" 2>/dev/null)
+[ -z "$ACTIVE_SESSIONS" ] && ACTIVE_SESSIONS="claude-work"
 
-    # 좀비/orphan 윈도우 검사 (pane PID가 0이거나 프로세스 없는 경우)
-    ZOMBIE_WINS=0
-    ZOMBIE_LIST=""
-    while IFS='|' read -r wname pid; do
-        if [ -z "$pid" ] || [ "$pid" = "0" ] || ! kill -0 "$pid" 2>/dev/null; then
-            ZOMBIE_WINS=$((ZOMBIE_WINS + 1))
-            ZOMBIE_LIST="$ZOMBIE_LIST
-    - $wname (PID: $pid)"
+TOTAL_WIN_COUNT=0
+ZOMBIE_WINS=0
+ZOMBIE_LIST=""
+while IFS= read -r sname; do
+    [ -z "$sname" ] && continue
+    if tmux has-session -t "$sname" 2>/dev/null; then
+        WIN_COUNT=$(tmux list-windows -t "$sname" 2>/dev/null | wc -l | tr -d ' ')
+        TOTAL_WIN_COUNT=$((TOTAL_WIN_COUNT + WIN_COUNT))
+        ok "$sname 세션 활성 (윈도우 ${WIN_COUNT}개)"
+
+        # 좀비/orphan 윈도우 검사
+        while IFS='|' read -r wname pid; do
+            if [ -z "$pid" ] || [ "$pid" = "0" ] || ! kill -0 "$pid" 2>/dev/null; then
+                ZOMBIE_WINS=$((ZOMBIE_WINS + 1))
+                ZOMBIE_LIST="$ZOMBIE_LIST
+    - [$sname] $wname (PID: $pid)"
+            fi
+        done < <(tmux list-windows -t "$sname" -F "#{window_name}|#{pane_pid}" 2>/dev/null)
+
+        # monitor 창 존재 확인 (메인 세션에서만)
+        if [ "$sname" = "claude-work" ]; then
+            if tmux list-windows -t "$sname" -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
+                ok "monitor 창 존재 (claude-work)"
+            else
+                fail "monitor 창 없음 — 수동 복구: tmux new-window -t claude-work -n monitor -c \"\$HOME/claude\""
+            fi
         fi
-    done < <(tmux list-windows -t claude-work -F "#{window_name}|#{pane_pid}" 2>/dev/null)
 
-    if [ "$ZOMBIE_WINS" -gt 5 ]; then
-        warn "좀비 윈도우: ${ZOMBIE_WINS}개 (정리 권장 — tmux kill-window 사용)"
-        echo "$ZOMBIE_LIST" | head -5 | awk '{print "    " $0}'
-        if [ "$ZOMBIE_WINS" -gt 5 ]; then
-            info "    ... (외 $((ZOMBIE_WINS - 5))개)"
+        # 윈도우 목록 (처음 10개만 표시)
+        tmux list-windows -t "$sname" 2>/dev/null | head -10 | awk '{print "    " $0}'
+        if [ "$WIN_COUNT" -gt 10 ]; then
+            info "    ... (총 ${WIN_COUNT}개 윈도우 중 처음 10개만 표시)"
         fi
-    elif [ "$ZOMBIE_WINS" -gt 0 ]; then
-        info "좀비 윈도우: ${ZOMBIE_WINS}개"
-    fi
-
-    # monitor 창 존재 확인
-    if tmux list-windows -t claude-work -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
-        ok "monitor 창 존재"
     else
-        fail "monitor 창 없음 — 수동 복구: tmux new-window -t claude-work -n monitor -c \"\$HOME/claude\""
+        fail "$sname 세션 없음 — 복원 필요"
     fi
+done <<< "$ACTIVE_SESSIONS"
 
-    # 윈도우 목록 (처음 20개만 표시)
-    tmux list-windows -t claude-work 2>/dev/null | head -20 | awk '{print "    " $0}'
-    if [ "$WIN_COUNT" -gt 20 ]; then
-        info "    ... (총 ${WIN_COUNT}개 윈도우 중 처음 20개만 표시)"
-    fi
-else
-    fail "claude-work tmux 세션 없음 — 복원 필요"
+if [ "$ZOMBIE_WINS" -gt 5 ]; then
+    warn "좀비 윈도우 합계: ${ZOMBIE_WINS}개 (정리 권장)"
+    echo "$ZOMBIE_LIST" | head -5 | awk '{print "    " $0}'
+    if [ "$ZOMBIE_WINS" -gt 5 ]; then info "    ... (외 $((ZOMBIE_WINS - 5))개)"; fi
+elif [ "$ZOMBIE_WINS" -gt 0 ]; then
+    info "좀비 윈도우: ${ZOMBIE_WINS}개"
 fi
 
 # 3. Claude 프로세스 상태
@@ -185,28 +202,31 @@ else
     ok "크래시 기록 없음 ($CRASH_DIR 비어있음)"
 fi
 
-# 9. tmux 클라이언트 연결 상태 + %extended-output 위험도
+# 9. tmux 클라이언트 연결 상태 + %extended-output 위험도 (BUG#17 fix: 멀티세션)
 echo -e "\n${BOLD}[9] tmux 클라이언트 연결 상태 (%extended-output)${NC}"
-if tmux has-session -t claude-work 2>/dev/null; then
-    CLIENT_COUNT=$(tmux list-clients -t claude-work 2>/dev/null | wc -l | tr -d ' ')
-    # control-mode = CC 클라이언트 연결 (tmux 3.x에서 extended-output 대신 control-mode 사용)
-    EXTENDED_CHK=$(tmux list-clients -t claude-work 2>/dev/null | grep -c "control-mode\|extended-output" || echo "0")
-
-    if [ "$CLIENT_COUNT" -ge 1 ]; then
-        ok "연결된 클라이언트: ${CLIENT_COUNT}개"
-        tmux list-clients -t claude-work 2>/dev/null | awk '{print "    " $0}'
-        if [ "$EXTENDED_CHK" -gt 0 ]; then
-            ok "iTerm CC 모드 연결됨 (control-mode 확인)"
+CLIENT_COUNT=0
+EXTENDED_CHK=0
+while IFS= read -r sname; do
+    [ -z "$sname" ] && continue
+    if tmux has-session -t "$sname" 2>/dev/null; then
+        CNT=$(tmux list-clients -t "$sname" 2>/dev/null | wc -l | tr -d ' ')
+        EXT=$(tmux list-clients -t "$sname" 2>/dev/null | grep -c "control-mode\|extended-output" 2>/dev/null || echo "0")
+        CLIENT_COUNT=$((CLIENT_COUNT + CNT))
+        EXTENDED_CHK=$((EXTENDED_CHK + EXT))
+        if [ "$CNT" -ge 1 ]; then
+            ok "$sname: 클라이언트 ${CNT}개"
+            tmux list-clients -t "$sname" 2>/dev/null | awk '{print "    " $0}'
         else
-            warn "CC 모드 미감지 — iTerm이 tmux -CC 모드로 연결되지 않았을 수 있음"
-            info "필요 시: tmux -CC attach -t claude-work (iTerm2에서 실행)"
+            warn "$sname: 클라이언트 0개 (iTerm CC 미연결)"
         fi
-    else
-        fail "클라이언트 0개 — %extended-output 위험! (iTerm CC 모드 미연결)"
-        warn "해결: iTerm2에서 tmux -CC attach -t claude-work 실행"
     fi
+done <<< "$ACTIVE_SESSIONS"
+if [ "$EXTENDED_CHK" -gt 0 ]; then
+    ok "iTerm CC 모드 연결됨 (control-mode 확인)"
+elif [ "$CLIENT_COUNT" -gt 0 ]; then
+    warn "CC 모드 미감지 — iTerm이 tmux -CC 모드로 연결되지 않았을 수 있음"
 else
-    fail "claude-work 세션 없음 — 클라이언트 확인 불가"
+    fail "전체 세션 클라이언트 0개 — %extended-output 위험! (iTerm CC 모드 미연결)"
 fi
 
 # 10. Orphan tab-states 현황 (강화된 검사)

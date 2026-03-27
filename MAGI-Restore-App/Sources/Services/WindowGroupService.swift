@@ -66,10 +66,14 @@ final class WindowGroupService: ObservableObject {
 
     // 새 창(그룹) 추가
     func addGroup(name: String) {
-        let sessionName = "claude-" + name
-            .lowercased()
-            .components(separatedBy: .whitespaces).joined(separator: "-")
-        groups.append(WindowPane(name: name, sessionName: sessionName, profileNames: []))
+        // BUG#16 fix: . : { } 등 tmux target 파싱 특수문자 제거 — alphanumeric + 하이픈만 허용
+        let raw = "claude-" + name.lowercased().unicodeScalars.map {
+            CharacterSet.alphanumerics.contains($0) ? String($0) : "-"
+        }.joined()
+        let sessionName = raw.components(separatedBy: "-").filter { !$0.isEmpty }.joined(separator: "-")
+        groups.append(WindowPane(name: name,
+            sessionName: sessionName.isEmpty ? "claude-group" : sessionName,
+            profileNames: []))
         save()
     }
 
