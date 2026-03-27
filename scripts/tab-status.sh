@@ -4,6 +4,12 @@
 
 STATE="${1:-}"
 
+# debug log rotation (iter56: 5000줄 초과 시 마지막 2500줄 유지)
+_DEBUG_LOG="$HOME/.claude/logs/tab-status-debug.log"
+if [ -f "$_DEBUG_LOG" ] && [ "$(wc -l < "$_DEBUG_LOG" 2>/dev/null)" -gt 5000 ] 2>/dev/null; then
+    tail -2500 "$_DEBUG_LOG" > "${_DEBUG_LOG}.tmp" && mv "${_DEBUG_LOG}.tmp" "$_DEBUG_LOG" 2>/dev/null || true
+fi
+
 # 사용자가 탭에 있을 때 working/waiting은 무시
 if [ "$STATE" = "working" ] || [ "$STATE" = "waiting" ] || [ "$STATE" = "attention" ]; then
     STATE_DIR="$HOME/.claude/tab-color/states"
