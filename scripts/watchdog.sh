@@ -173,6 +173,10 @@ while true; do
 
             # 크래시된 세션 자동 재시작 (P0 수정: watchdog이 직접 복구)
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] $CRASHED" >> "$RESTART_LOG"
+            # iter59: restart-history.log 로테이션 (10000줄 초과 시 5000줄 유지)
+            if [ "$(wc -l < "$RESTART_LOG" 2>/dev/null)" -gt 10000 ] 2>/dev/null; then
+                tail -5000 "$RESTART_LOG" > "${RESTART_LOG}.tmp" && mv "${RESTART_LOG}.tmp" "$RESTART_LOG" 2>/dev/null || true
+            fi
 
             # BUG-D fix: pipe → heredoc (subshell 변수 손실 방지, SESSION_JUST_CREATED 공유)
             # BUG-C fix: 세션별 REORDER 추적 (루프 내 중복 REORDER → 루프 후 1회 실행)

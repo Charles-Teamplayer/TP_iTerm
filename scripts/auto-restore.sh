@@ -12,6 +12,11 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
 }
 
+# iter59: auto-restore.log 로테이션 (10000줄 초과 시 5000줄 유지)
+if [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE" 2>/dev/null)" -gt 10000 ] 2>/dev/null; then
+    tail -5000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null || true
+fi
+
 log "=== Auto-Restore 시작 ==="
 
 # BUG-FLAG-STALE fix: 시작 즉시 이전 부팅 플래그 삭제 (auto-attach의 오래된 플래그 재사용 방지)

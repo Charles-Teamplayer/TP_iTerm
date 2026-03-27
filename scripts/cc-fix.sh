@@ -7,6 +7,11 @@ SESSION="${TMUX_SESSION:-claude-work}"
 
 log() { echo "[$(date '+%H:%M:%S')] [$SESSION] $1" >> "$LOG"; }
 
+# iter59: cc-fix.log 로테이션 (5000줄 초과 시 2500줄 유지)
+if [ -f "$LOG" ] && [ "$(wc -l < "$LOG" 2>/dev/null)" -gt 5000 ] 2>/dev/null; then
+    tail -2500 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG" 2>/dev/null || true
+fi
+
 # 세션별 프로세스 lock
 LOCK_FILE="/tmp/.cc-fix-lock-${SESSION//[^a-zA-Z0-9]/_}"
 if [ -f "$LOCK_FILE" ]; then
