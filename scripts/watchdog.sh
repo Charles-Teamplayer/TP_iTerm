@@ -81,7 +81,16 @@ if [ "${1:-}" = "--health-check" ]; then
     WPID=$(ps -A -o pid=,args= | grep watchdog.sh | grep -v grep | grep -v health-check | awk '{print $1}' | head -1)
     echo "[health-check] watchdog PID: ${WPID:-없음}"
     echo "[health-check] 보호 PIDs: $(cat "$HOME/.claude/protected-claude-pids" 2>/dev/null | tr '\n' ',')"
-    echo "[health-check] window-groups: $(python3 -c "import json; g=[x for x in json.load(open('$HOME/.claude/window-groups.json')) if not x.get('isWaitingList')]; print([x['sessionName'] for x in g])" 2>/dev/null)"
+    echo "[health-check] window-groups: $(python3 -c "
+import json,os
+p=os.path.expanduser('~/.claude/window-groups.json')
+if os.path.exists(p):
+    with open(p) as _f: raw=json.load(_f)
+else:
+    raw=[]
+g=[x for x in raw if not x.get('isWaitingList')]
+print([x['sessionName'] for x in g])
+" 2>/dev/null)"
     echo "[health-check] 마지막 로그: $(tail -1 "$LOG_FILE" 2>/dev/null)"
     exit 0
 fi
@@ -216,7 +225,8 @@ norm = normalize(name)
 path = os.path.expanduser('~/.claude/activated-sessions.json')
 for candidate in [path, path + '.bak']:
     try:
-        data = json.load(open(candidate))
+        with open(candidate) as _cf:
+            data = json.load(_cf)
         for p in data.get('activated', []):
             bn = os.path.basename(p)
             # 정확 매칭 우선, 그 다음 공백↔밑줄 정규화 비교
@@ -237,11 +247,12 @@ for candidate in [path, path + '.bak']:
                 # MAGI 앱에서 Stop 시 graceful exit이 실패해 레지스트리에 남아 있어도 watchdog이 재시작하지 않도록
                 INTENTIONAL_STOPS_FILE="$HOME/.claude/intentional-stops.json"
                 if [ -f "$INTENTIONAL_STOPS_FILE" ]; then
-                    IS_INTENTIONAL=$(python3 -c "
-import json, sys
+                    IS_INTENTIONAL=$(_WD_ISTOPS="$INTENTIONAL_STOPS_FILE" python3 -c "
+import json, sys, os
 from datetime import datetime, timezone, timedelta
 try:
-    d = json.load(open('$INTENTIONAL_STOPS_FILE'))
+    with open(os.environ['_WD_ISTOPS']) as _f:
+        d = json.load(_f)
     wn = sys.argv[1]
     TTL_HOURS = 48
     now = datetime.now(timezone.utc)
@@ -272,7 +283,8 @@ import json, os, sys
 name = sys.argv[1]
 path = os.path.expanduser('~/.claude/window-groups.json')
 try:
-    groups = json.load(open(path))
+    with open(path) as _gf:
+        groups = json.load(_gf)
     for g in groups:
         if name in g.get('profileNames', []):
             waiting = 'yes' if g.get('isWaitingList') or g.get('sessionName','') == '__waiting__' else 'no'
@@ -306,7 +318,11 @@ print('no|claude-work')
                     PROJ_ROOT=$(python3 -c "
 import json, os, sys
 p = os.path.expanduser('~/.claude/activated-sessions.json')
-d = json.load(open(p)) if os.path.exists(p) else {}
+if os.path.exists(p):
+    with open(p) as _af:
+        d = json.load(_af)
+else:
+    d = {}
 for path in d.get('activated', []):
     if os.path.basename(path) == sys.argv[1]:
         print(path); sys.exit(0)
@@ -446,7 +462,8 @@ for path in d.get('activated', []):
 import json, os, sys
 path = os.path.expanduser('~/.claude/window-groups.json')
 try:
-    groups = json.load(open(path))
+    with open(path) as _gf2:
+        groups = json.load(_gf2)
     for g in groups:
         if g.get('sessionName','') == sys.argv[1] and not g.get('isWaitingList', False):
             print('|'.join(g.get('profileNames', [])))
@@ -504,10 +521,12 @@ print('')
 
             # BUG#5 fix: 4회 파일 읽기 → 1회 통합 (race condition 제거)
             # BUG-PID-NONE fix: pid:null JSON → Python None → "None" 문자열 방지 (int coerce)
-            _AGING_DATA=$(python3 -c "
-import json
+            # iter59: with open() 파일핸들 누수 수정 + env var 방식
+            _AGING_DATA=$(WD_STATE_F="$STATE_FILE" python3 -c "
+import json, os
 try:
-    d=json.load(open('$STATE_FILE'))
+    with open(os.environ['WD_STATE_F']) as f:
+        d=json.load(f)
     print(d.get('project',''))
     print(d.get('timestamp',''))
     print(d.get('type',''))
@@ -561,7 +580,12 @@ except:
     if [ -d "$LEGACY_STATE_DIR" ]; then
         ACTIVE_TTYS=$(python3 -c "
 import json, os
-d = json.load(open(os.path.expanduser('~/.claude/active-sessions.json'))) if os.path.exists(os.path.expanduser('~/.claude/active-sessions.json')) else {}
+_asp = os.path.expanduser('~/.claude/active-sessions.json')
+if os.path.exists(_asp):
+    with open(_asp) as _asf:
+        d = json.load(_asf)
+else:
+    d = {}
 print(' '.join(s.get('tty','') for s in d.get('sessions',[]) if s.get('tty','')))
 " 2>/dev/null || echo "")
         LEGACY_CLEANED=0
@@ -598,7 +622,8 @@ print(' '.join(s.get('tty','') for s in d.get('sessions',[]) if s.get('tty',''))
     ACTIVE_SESSIONS_MON=$(python3 -c "
 import json, os
 try:
-    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    with open(os.path.expanduser('~/.claude/window-groups.json')) as _wgf:
+        groups = json.load(_wgf)
     for g in groups:
         sn = g.get('sessionName','')
         if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
