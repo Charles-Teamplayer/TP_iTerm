@@ -73,15 +73,17 @@ else:
             exit 1
         fi
         init_stops
-        python3 -c "
+        # iter59: BUG-INJECT-01 fix — 환경변수로 전달 (window name에 ' 또는 \ 포함 시 injection 방지)
+        _REMOVE_WINDOW="$WINDOW" _STOPS_FILE="$STOPS_FILE" python3 -c "
 import json, os, tempfile
-stops_path = '$STOPS_FILE'
-window = '$WINDOW'
-d = json.load(open(stops_path))
+stops_path = os.environ['_STOPS_FILE']
+window = os.environ['_REMOVE_WINDOW']
+with open(stops_path) as f:
+    d = json.load(f)
 before = len(d.get('stops', []))
 d['stops'] = [s for s in d.get('stops', []) if s.get('window_name') != window]
 after = len(d['stops'])
-d['last_updated'] = '$(date -u '+%Y-%m-%dT%H:%M:%SZ')'
+import datetime; d['last_updated'] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
 tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(stops_path))
 with os.fdopen(tmp_fd, 'w') as f:
     json.dump(d, f, indent=2, ensure_ascii=False)
@@ -113,13 +115,14 @@ else:
             exit 1
         fi
         init_stops
-        TS=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-        python3 -c "
-import json, os, tempfile
-stops_path = '$STOPS_FILE'
-window = '$WINDOW'
-ts = '$TS'
-d = json.load(open(stops_path))
+        # iter59: BUG-INJECT-02 fix — 환경변수 방식으로 injection 방지
+        _STOP_WINDOW="$WINDOW" _STOPS_FILE="$STOPS_FILE" python3 -c "
+import json, os, tempfile, datetime
+stops_path = os.environ['_STOPS_FILE']
+window = os.environ['_STOP_WINDOW']
+ts = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+with open(stops_path) as f:
+    d = json.load(f)
 d['stops'] = [s for s in d.get('stops', []) if s.get('window_name') != window]
 d['stops'].append({'project': window, 'window_name': window, 'stopped_at': ts})
 d['last_updated'] = ts
