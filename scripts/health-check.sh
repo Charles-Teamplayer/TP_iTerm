@@ -104,11 +104,20 @@ fi
 # 3. Claude 프로세스 상태
 echo -e "\n${BOLD}[3] Claude Code 프로세스${NC}"
 CLAUDE_PROCS=$(ps aux | grep "[c]laude" | grep -v "Claude.app\|Helper\|ShipIt\|watchdog\|auto-restore\|tab-focus\|session-registry\|health-check\|MAGI" | grep -v "??" | wc -l | tr -d ' ')
-ACTIVATED_PROCS=$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/activated-sessions.json'))); print(len(d.get('activated',[])))" 2>/dev/null || echo "14")
-if [ "$CLAUDE_PROCS" -ge "$ACTIVATED_PROCS" ]; then
+# 기대값: activated-sessions 전체가 아닌 활성 그룹(non-waiting)의 profileNames 합산
+EXPECTED_PROCS=$(python3 -c "
+import json, os
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    total = sum(len(g.get('profileNames',[])) for g in groups if not g.get('isWaitingList', False) and g.get('sessionName','') not in ('', '__waiting__'))
+    print(total)
+except:
+    print(8)
+" 2>/dev/null || echo "8")
+if [ "$CLAUDE_PROCS" -ge "$EXPECTED_PROCS" ]; then
     ok "Claude Code ${CLAUDE_PROCS}개 실행 중"
 elif [ "$CLAUDE_PROCS" -gt 0 ]; then
-    warn "Claude Code ${CLAUDE_PROCS}개 실행 중 (기대: ${ACTIVATED_PROCS}개)"
+    warn "Claude Code ${CLAUDE_PROCS}개 실행 중 (기대: ${EXPECTED_PROCS}개 — 활성 그룹 기준)"
 else
     fail "Claude Code 프로세스 없음"
 fi
@@ -133,11 +142,19 @@ fi
 echo -e "\n${BOLD}[6] 세션 레지스트리${NC}"
 if [ -f "$HOME/.claude/active-sessions.json" ]; then
     SESSION_CNT=$(python3 -c "import json; d=json.load(open('$HOME/.claude/active-sessions.json')); print(len(d['sessions']))" 2>/dev/null || echo "?")
-    EXPECTED_SESSIONS=$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/activated-sessions.json'))); print(len(d.get('activated',[])))" 2>/dev/null || echo "14")
+    EXPECTED_SESSIONS=$(python3 -c "
+import json, os
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    total = sum(len(g.get('profileNames',[])) for g in groups if not g.get('isWaitingList', False) and g.get('sessionName','') not in ('', '__waiting__'))
+    print(total)
+except:
+    print(8)
+" 2>/dev/null || echo "8")
     if [ "$SESSION_CNT" != "?" ] && [ "$SESSION_CNT" -ge "$EXPECTED_SESSIONS" ]; then
         ok "등록된 세션: ${SESSION_CNT}개"
     else
-        warn "등록된 세션: ${SESSION_CNT}개 (기대: ${EXPECTED_SESSIONS}개)"
+        warn "등록된 세션: ${SESSION_CNT}개 (기대: ${EXPECTED_SESSIONS}개 — 활성 그룹 기준)"
     fi
 else
     warn "active-sessions.json 없음"
