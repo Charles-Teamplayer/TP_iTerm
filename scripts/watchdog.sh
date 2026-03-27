@@ -117,6 +117,13 @@ for cf in "$CRASH_COUNT_DIR"/*; do
 done
 log "Crash-count 정리 완료 (24h+ 만료)"
 
+# iter59: orphan tab_focus_status.py 프로세스 정리 (disabled 스크립트 잔재, tab-focus-monitor.sh로 대체됨)
+ORPHAN_TFP=$(pgrep -f "tab_focus_status.py" 2>/dev/null | tr '\n' ' ' | xargs)
+if [ -n "$ORPHAN_TFP" ]; then
+    echo "$ORPHAN_TFP" | tr ' ' '\n' | xargs -I{} kill -15 {} 2>/dev/null || true
+    log "orphan tab_focus_status.py 정리: PIDs $ORPHAN_TFP"
+fi
+
 # BUG-003 fix: watchdog 시작 시 고아 linked sessions 초기 정리 (15분 이상 + 클라이언트 없음)
 # 부팅/재시작 후 이전 linked sessions 누적 방지
 log "linked session 초기 정리 시작 (15분+ 클라이언트 없음)"
