@@ -155,7 +155,11 @@ while true; do
             # 크래시된 세션 자동 재시작 (P0 수정: watchdog이 직접 복구)
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] $CRASHED" >> "$RESTART_LOG"
 
-            echo "$CRASHED" | while IFS= read -r line; do
+            # BUG-D fix: pipe → heredoc (subshell 변수 손실 방지, SESSION_JUST_CREATED 공유)
+            # BUG-C fix: 세션별 REORDER 추적 (루프 내 중복 REORDER → 루프 후 1회 실행)
+            SESSIONS_TO_REORDER=""
+            while IFS= read -r line; do
+                SESSION_JUST_CREATED=false  # 매 이터레이션 초기화 (early-continue 후 carryover 방지)
                 RESTART_PROJECT=$(echo "$line" | sed -n 's/.*CRASH DETECTED: \(.*\) (PID:.*/\1/p')
                 [ -z "$RESTART_PROJECT" ] && continue
 
@@ -224,7 +228,6 @@ print('no|claude-work')
                 fi
 
                 # 해당 tmux 세션이 존재하는지 확인 — 없으면 자동 생성
-                SESSION_JUST_CREATED=false
                 if ! tmux has-session -t "$TARGET_SESSION" 2>/dev/null; then
                     log "AUTO-CREATE: $TARGET_SESSION tmux 세션 없음 → 신규 생성"
                     tmux new-session -d -s "$TARGET_SESSION" -n _init_ -c "$HOME/claude" 2>/dev/null || true
@@ -247,7 +250,12 @@ for path in d.get('activated', []):
                     [ -z "$PROJ_ROOT" ] && PROJ_ROOT="$HOME/claude"
                     log "AUTO-CREATE-WIN: $TARGET_SESSION:$WINDOW_NAME (root: $PROJ_ROOT)"
                     # login shell로 생성해야 PATH에 claude 포함됨
-                    tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_ROOT" '/bin/bash -l' 2>/dev/null
+                    # BUG-B fix: -P -F로 window_id 즉시 캡처 → automatic-rename 비활성화 (자동 "bash" 이름변경 방지)
+                    INIT_WIN_ID=$(tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_ROOT" '/bin/bash -l' -P -F '#{window_id}' 2>/dev/null || true)
+                    if [ -n "$INIT_WIN_ID" ]; then
+                        tmux set-window-option -t "$INIT_WIN_ID" automatic-rename off 2>/dev/null || true
+                        tmux rename-window -t "$INIT_WIN_ID" "$WINDOW_NAME" 2>/dev/null || true
+                    fi
                     tmux kill-window -t "$TARGET_SESSION:_init_" 2>/dev/null || true
                     sleep 0.5  # 창 안정화 대기
                     SESSION_JUST_CREATED=true  # 창이 방금 생성됨 → kill 단계 스킵
@@ -320,7 +328,12 @@ for path in d.get('activated', []):
 
                 # BUG-AUTOCREATE-KILL fix: SESSION_JUST_CREATED=true면 창 이미 있음 — new-window 스킵
                 if [ "$SESSION_JUST_CREATED" = "false" ]; then
-                    tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_PATH" 2>/dev/null
+                    # BUG-B fix: window_id 캡처 → automatic-rename 즉시 비활성화
+                    RESTART_WIN_ID=$(tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_PATH" -P -F '#{window_id}' 2>/dev/null || true)
+                    if [ -n "$RESTART_WIN_ID" ]; then
+                        tmux set-window-option -t "$RESTART_WIN_ID" automatic-rename off 2>/dev/null || true
+                        tmux rename-window -t "$RESTART_WIN_ID" "$WINDOW_NAME" 2>/dev/null || true
+                    fi
                 fi
                 # BUG#25+BUG-01 fix: window_id(@N) 기반 조회 → dot 이름 파싱 오류 완전 방지
                 # index 조회 실패 시 window_id로 fallback (name 직접 사용 금지)
@@ -347,9 +360,14 @@ for path in d.get('activated', []):
                 log "AUTO-RESTART: $RESTART_PROJECT → $TARGET_SESSION:$WINDOW_NAME (연속 ${NEW_COUNT}/${CRASH_MAX}회)"
                 notify "세션 자동 복구: $RESTART_PROJECT"
 
-                # BUG-REORDER: crash restart 후 window 순서 복원
-                # window-groups.json의 profileNames 순서대로 index 재배열 (monitor는 999 유지)
-                DESIRED_ORDER=$(python3 -c "
+                # BUG-C fix: REORDER를 루프 밖으로 이동 — 세션별 1회만 실행 (중복 재배열 방지)
+                SESSIONS_TO_REORDER="$SESSIONS_TO_REORDER $TARGET_SESSION"
+
+            done <<< "$CRASHED"
+
+            # BUG-REORDER fix: 모든 크래시 처리 후 영향받은 세션별 1회만 순서 복원
+            for _rsess in $(echo "$SESSIONS_TO_REORDER" | tr ' ' '\n' | sort -u | grep -v '^$'); do
+                DESIRED_ORDER_R=$(python3 -c "
 import json, os, sys
 path = os.path.expanduser('~/.claude/window-groups.json')
 try:
@@ -360,28 +378,25 @@ try:
             sys.exit(0)
 except: pass
 print('')
-" "$TARGET_SESSION" 2>/dev/null)
-
-                if [ -n "$DESIRED_ORDER" ]; then
-                    # temp 인덱스(500+)로 먼저 이동, 그 다음 최종 순서 배치
+" "$_rsess" 2>/dev/null)
+                if [ -n "$DESIRED_ORDER_R" ]; then
                     IDX=0
-                    IFS='|' read -ra PROFILES_ORD <<< "$DESIRED_ORDER"
+                    IFS='|' read -ra PROFILES_ORD <<< "$DESIRED_ORDER_R"
                     for pname in "${PROFILES_ORD[@]}"; do
-                        WIN_ID_ORD=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$pname" '$2==w{print $1;exit}')
+                        WIN_ID_ORD=$(tmux list-windows -t "$_rsess" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$pname" '$2==w{print $1;exit}')
                         [ -z "$WIN_ID_ORD" ] && continue
-                        tmux move-window -s "$WIN_ID_ORD" -t "$TARGET_SESSION:$((500 + IDX))" 2>/dev/null
+                        tmux move-window -s "$WIN_ID_ORD" -t "$_rsess:$((500 + IDX))" 2>/dev/null
                         IDX=$((IDX + 1))
                     done
                     IDX=0
                     for pname in "${PROFILES_ORD[@]}"; do
-                        tmux move-window -s "$TARGET_SESSION:$((500 + IDX))" -t "$TARGET_SESSION:$((IDX + 1))" 2>/dev/null
+                        tmux move-window -s "$_rsess:$((500 + IDX))" -t "$_rsess:$((IDX + 1))" 2>/dev/null
                         IDX=$((IDX + 1))
                     done
-                    log "REORDER: $TARGET_SESSION 순서 복원 완료"
-                    # BUG-REORDER-MONITOR fix: reorder 후 monitor:999 재확인 — 다른 창이 999에 있으면 먼저 이동
-                    WIN_AT_999=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' '$1=="999" && $2!="monitor"{print $2;exit}')
-                    [ -n "$WIN_AT_999" ] && tmux move-window -s "$TARGET_SESSION:999" -t "$TARGET_SESSION:900" 2>/dev/null || true
-                    tmux move-window -s "$TARGET_SESSION:monitor" -t "$TARGET_SESSION:999" 2>/dev/null || true
+                    log "REORDER: $_rsess 순서 복원 완료"
+                    WIN_AT_999=$(tmux list-windows -t "$_rsess" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' '$1=="999" && $2!="monitor"{print $2;exit}')
+                    [ -n "$WIN_AT_999" ] && tmux move-window -s "$_rsess:999" -t "$_rsess:900" 2>/dev/null || true
+                    tmux move-window -s "$_rsess:monitor" -t "$_rsess:999" 2>/dev/null || true
                 fi
             done
         fi
