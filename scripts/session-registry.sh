@@ -172,8 +172,8 @@ DIR_TO_WINDOW = {
     os.path.expanduser("~/claude/TP_iTerm"): "session-mgr",
 }
 
-window_name = DIR_TO_WINDOW.get(project_dir)
-
+# BUG#27 fix: 하드코딩 맵에 없는 dir은 basename을 window_name으로 사용 (새 프로젝트 지원)
+window_name = DIR_TO_WINDOW.get(project_dir) or os.path.basename(project_dir)
 if not window_name:
     print(f"[URD] SKIP intentional-stop: unknown dir {project_dir}", file=sys.stderr)
     sys.exit(0)

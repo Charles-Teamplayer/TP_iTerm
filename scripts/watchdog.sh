@@ -185,7 +185,13 @@ print('no|claude-work')
                     continue
                 fi
                 # 기존 창 kill 후 재생성
-                tmux kill-window -t "$TARGET_SESSION:$WINDOW_NAME" 2>/dev/null
+                # BUG#24 fix: window name에 '.'이 있으면 tmux가 pane 구분자로 오인 → window_id(@N) 기반 kill
+                WIN_ID_KILL=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
+                if [ -n "$WIN_ID_KILL" ]; then
+                    tmux kill-window -t "$WIN_ID_KILL" 2>/dev/null
+                else
+                    tmux kill-window -t "$TARGET_SESSION:$WINDOW_NAME" 2>/dev/null
+                fi
                 sleep 1
 
                 # 연속 크래시 카운터 증가 (COUNT|TIMESTAMP 형식, 24h 만료)
@@ -215,8 +221,15 @@ print('no|claude-work')
                 fi
 
                 tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_PATH" 2>/dev/null
-                tmux set-window-option -t "$TARGET_SESSION:$WINDOW_NAME" automatic-rename off 2>/dev/null
-                tmux send-keys -t "$TARGET_SESSION:$WINDOW_NAME" "bash ~/.claude/scripts/tab-status.sh starting $WINDOW_NAME && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
+                # BUG#25 fix: 새 창 index 조회 후 index 기반 set-window-option/send-keys (dot 이름 안전)
+                WIN_IDX_NEW=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
+                if [ -n "$WIN_IDX_NEW" ]; then
+                    tmux set-window-option -t "$TARGET_SESSION:$WIN_IDX_NEW" automatic-rename off 2>/dev/null
+                    tmux send-keys -t "$TARGET_SESSION:$WIN_IDX_NEW" "bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
+                else
+                    tmux set-window-option -t "$TARGET_SESSION:$WINDOW_NAME" automatic-rename off 2>/dev/null
+                    tmux send-keys -t "$TARGET_SESSION:$WINDOW_NAME" "bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
+                fi
 
                 log "AUTO-RESTART: $RESTART_PROJECT → $TARGET_SESSION:$WINDOW_NAME (연속 ${NEW_COUNT}/${CRASH_MAX}회)"
                 notify "세션 자동 복구: $RESTART_PROJECT"

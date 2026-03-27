@@ -76,13 +76,11 @@ while IFS= read -r sname; do
             fi
         done < <(tmux list-windows -t "$sname" -F "#{window_name}|#{pane_pid}" 2>/dev/null)
 
-        # monitor 창 존재 확인 (메인 세션에서만)
-        if [ "$sname" = "claude-work" ]; then
-            if tmux list-windows -t "$sname" -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
-                ok "monitor 창 존재 (claude-work)"
-            else
-                fail "monitor 창 없음 — 수동 복구: tmux new-window -t claude-work -n monitor -c \"\$HOME/claude\""
-            fi
+        # monitor 창 존재 확인 (BUG#26 fix: 모든 활성 세션 검사, claude-work 하드코딩 제거)
+        if tmux list-windows -t "$sname" -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
+            ok "monitor 창 존재 ($sname)"
+        else
+            fail "monitor 창 없음 ($sname) — 수동 복구: tmux new-window -t '$sname' -n monitor -c \"\$HOME/claude\""
         fi
 
         # 윈도우 목록 (처음 10개만 표시)
