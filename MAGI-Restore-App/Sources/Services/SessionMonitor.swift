@@ -540,6 +540,9 @@ final class SessionMonitor: ObservableObject {
                     "tmux kill-window -t '\(group.sessionName):\(session.windowIndex)' 2>/dev/null; true"
                 )
             }
+            // checkAutoSync 재시작 방지: deactivate 호출 (doStop과 동일 패턴)
+            let root = session.profileRoot ?? session.directory
+            ActivationService.shared.deactivate(root: root)
         }
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh(showBanner: true)
@@ -560,6 +563,9 @@ final class SessionMonitor: ObservableObject {
                     "tmux kill-window -t '\(session.tmuxSession):\(session.windowIndex)' 2>/dev/null; true"
                 )
             }
+            // checkAutoSync 재시작 방지: deactivate 호출
+            let root = session.profileRoot ?? session.directory
+            ActivationService.shared.deactivate(root: root)
         }
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh(showBanner: true)
@@ -749,7 +755,11 @@ final class SessionMonitor: ObservableObject {
             var anyChange = false
 
             // 추가: desired에 있는데 tmux에 없는 탭
-            let activatedPathList = ActivationService.shared.loadActivated()  // fallback용
+            let activatedPathList = ActivationService.shared.loadActivated()
+            // activated 경로를 정규화된 Set으로 변환 (activation gate용)
+            let activatedSet = Set(activatedPathList.map { p in
+                p.hasPrefix("~") ? NSHomeDirectory() + p.dropFirst() : p
+            })
             for profileName in desiredProfiles where !currentSet.contains(profileName) {
                 // ProfileService 우선, 없으면 activated-sessions.json에서 경로 추론
                 var rootToUse: String
@@ -761,6 +771,8 @@ final class SessionMonitor: ObservableObject {
                     continue
                 }
                 let safeRoot = rootToUse.hasPrefix("~") ? NSHomeDirectory() + rootToUse.dropFirst() : rootToUse
+                // Activation gate: deactivated 세션(stopGroup/doStop 후)은 자동 재시작 안 함
+                guard activatedSet.contains(safeRoot) else { continue }
                 let dirOk = await ShellService.runAsync("[ -d '\(shellEscape(safeRoot))' ] && echo yes || echo no")
                 guard dirOk.trimmingCharacters(in: .whitespacesAndNewlines) == "yes" else { continue }
                 await launchProfile(name: profileName, root: rootToUse, delay: 0, sessionName: sname)

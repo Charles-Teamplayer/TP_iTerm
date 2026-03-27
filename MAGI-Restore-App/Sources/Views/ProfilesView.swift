@@ -71,8 +71,9 @@ struct ProfilesView: View {
         .sheet(isPresented: $showAddSheet) {
             ProfileFormSheet(title: "Add Profile") { newProfile in
                 monitor.profileService.add(newProfile)
-                if let first = monitor.windowGroupService.groups.first {
-                    monitor.windowGroupService.moveProfile(newProfile.name, to: first)
+                // Waiting List(groups.first)가 아닌 첫 번째 활성 그룹에 배정
+                if let active = monitor.windowGroupService.groups.first(where: { !$0.isWaitingList }) {
+                    monitor.windowGroupService.moveProfile(newProfile.name, to: active)
                 }
             }
         }
@@ -94,7 +95,17 @@ struct ProfilesView: View {
             isPresented: $showDeleteConfirm, titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                if let p = profileToDelete { monitor.profileService.delete(p) }
+                if let p = profileToDelete {
+                    // ProfileService YAML에서 제거
+                    monitor.profileService.delete(p)
+                    // window-groups.json에서도 제거 (Sessions 탭 가상 항목 방지)
+                    for i in monitor.windowGroupService.groups.indices {
+                        monitor.windowGroupService.groups[i].profileNames.removeAll { $0 == p.name }
+                    }
+                    monitor.windowGroupService.save()
+                    // activated-sessions에서도 제거
+                    ActivationService.shared.deactivate(root: p.root)
+                }
             }
             Button("Cancel", role: .cancel) {}
         }
