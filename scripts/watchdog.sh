@@ -179,6 +179,7 @@ while true; do
             SESSIONS_TO_REORDER=""
             while IFS= read -r line; do
                 SESSION_JUST_CREATED=false  # 매 이터레이션 초기화 (early-continue 후 carryover 방지)
+                INIT_WIN_ID=""              # iter56: 매 이터레이션 초기화 (carryover 방지)
                 RESTART_PROJECT=$(echo "$line" | sed -n 's/.*CRASH DETECTED: \(.*\) (PID:.*/\1/p')
                 [ -z "$RESTART_PROJECT" ] && continue
 
@@ -379,6 +380,7 @@ for path in d.get('activated', []):
                 fi
 
                 # BUG-AUTOCREATE-KILL fix: SESSION_JUST_CREATED=true면 창 이미 있음 — new-window 스킵
+                RESTART_WIN_ID=""
                 if [ "$SESSION_JUST_CREATED" = "false" ]; then
                     # BUG-B fix: window_id 캡처 → automatic-rename 즉시 비활성화
                     RESTART_WIN_ID=$(tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_PATH" -P -F '#{window_id}' 2>/dev/null || true)
@@ -386,18 +388,28 @@ for path in d.get('activated', []):
                         tmux set-window-option -t "$RESTART_WIN_ID" automatic-rename off 2>/dev/null || true
                         tmux rename-window -t "$RESTART_WIN_ID" "$WINDOW_NAME" 2>/dev/null || true
                     fi
+                else
+                    # iter56: SESSION_JUST_CREATED=true → AUTO-CREATE에서 얻은 INIT_WIN_ID 재활용
+                    RESTART_WIN_ID="$INIT_WIN_ID"
                 fi
                 # BUG#25+BUG-01 fix: window_id(@N) 기반 조회 → dot 이름 파싱 오류 완전 방지
                 # index 조회 실패 시 window_id로 fallback (name 직접 사용 금지)
                 # BUG-WINRACE fix: new-window 직후 list-windows에 없을 수 있음 → 최대 1.5s retry
+                # iter56: RESTART_WIN_ID 직접 활용 — automatic-rename 타이밍 경쟁 조건 방지
                 WIN_ID_NEW=""
                 WIN_IDX_NEW=""
-                for _retry in 1 2 3; do
-                    WIN_ID_NEW=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
-                    WIN_IDX_NEW=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
-                    [ -n "$WIN_ID_NEW" ] && break
-                    sleep 0.5
-                done
+                if [ -n "$RESTART_WIN_ID" ]; then
+                    # new-window에서 직접 캡처한 window_id 우선 사용 → name 조회 불필요
+                    WIN_ID_NEW="$RESTART_WIN_ID"
+                    WIN_IDX_NEW=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_index}|#{window_id}' 2>/dev/null | awk -F'|' -v id="$RESTART_WIN_ID" '$2==id{print $1; exit}')
+                else
+                    for _retry in 1 2 3; do
+                        WIN_ID_NEW=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
+                        WIN_IDX_NEW=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
+                        [ -n "$WIN_ID_NEW" ] || [ -n "$WIN_IDX_NEW" ] && break
+                        sleep 0.5
+                    done
+                fi
                 if [ -n "$WIN_IDX_NEW" ]; then
                     tmux set-window-option -t "$TARGET_SESSION:$WIN_IDX_NEW" automatic-rename off 2>/dev/null
                     tmux send-keys -t "$TARGET_SESSION:$WIN_IDX_NEW" "(bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter

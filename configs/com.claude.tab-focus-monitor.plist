@@ -6,7 +6,7 @@
     <string>com.claude.tab-focus-monitor</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/bash</string>
+        <string>/opt/homebrew/bin/bash</string>
         <string>/Users/teample.casper/.claude/scripts/tab-focus-monitor.sh</string>
     </array>
     <key>KeepAlive</key>

@@ -103,7 +103,7 @@ fi
 
 # 3. Claude 프로세스 상태
 echo -e "\n${BOLD}[3] Claude Code 프로세스${NC}"
-CLAUDE_PROCS=$(ps aux | grep "[c]laude" | grep -v "Claude.app\|Helper\|ShipIt\|watchdog\|auto-restore\|tab-focus\|session-registry\|health-check\|MAGI" | grep -v "??" | wc -l | tr -d ' ')
+CLAUDE_PROCS=$(ps aux | grep "[c]laude" | grep -v "Claude.app\|Helper\|ShipIt\|watchdog\|auto-restore\|tab-focus\|session-registry\|health-check\|cc-fix\|MAGI" | grep -v "??" | wc -l | tr -d ' ')
 # 기대값: activated-sessions 전체가 아닌 활성 그룹(non-waiting)의 profileNames 합산
 EXPECTED_PROCS=$(python3 -c "
 import json, os
