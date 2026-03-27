@@ -577,6 +577,9 @@ final class SessionMonitor: ObservableObject {
         }
         windowGroupService.save()
         ActivationService.shared.deactivate(root: session.profileRoot ?? session.directory)
+        // BUG-008 fix: purge 완료 후 in-memory stop 집합에서 제거 → 동일 이름 재생성 시 auto-sync 가능
+        intentionallyStoppedProfiles.remove(projectName)
+        intentionallyStoppedIds.remove(session.id)
         try? await Task.sleep(nanoseconds: 1_500_000_000)
         await refresh(showBanner: true)
     }
@@ -1267,9 +1270,12 @@ except: pass
                 let parts = line.components(separatedBy: "\u{01}")
                 guard parts.count >= 4 else { continue }
                 guard let idx = Int(parts[0]), let pid = Int(parts[2]) else { continue }
+                let wname = parts[1]
+                // BUG-004 fix: monitor/_init_ 창은 UI에 노출하지 않음
+                guard wname != "monitor" && wname != "_init_" && !wname.isEmpty else { continue }
                 result.append(TmuxWindow(
                     windowIndex: idx,
-                    windowName: parts[1],
+                    windowName: wname,
                     panePid: pid,
                     paneTty: parts[3],
                     rootDir: parts.count >= 5 ? parts[4] : "",
