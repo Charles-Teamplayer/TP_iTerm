@@ -88,16 +88,16 @@ final class WindowGroupService: ObservableObject {
         return wl
     }
 
-    // 그룹 삭제 (프로필은 Waiting List으로 이동, Waiting List 자체는 삭제 불가)
+    // 그룹 삭제 (프로필은 첫 번째 남은 활성 그룹으로 이동, Waiting List 자체는 삭제 불가)
     func deleteGroup(_ group: WindowPane) {
         guard !group.isWaitingList,
               groups.filter({ !$0.isWaitingList }).count > 1,
               let idx = groups.firstIndex(where: { $0.id == group.id }) else { return }
         let orphans = groups[idx].profileNames
         groups.remove(at: idx)
-        let wl = ensureWaitingList()
-        if let wi = groups.firstIndex(where: { $0.id == wl.id }) {
-            groups[wi].profileNames.append(contentsOf: orphans)
+        // Waiting List이 아닌 첫 번째 그룹으로 이동 (checkAutoSync 오작동 방지)
+        if let firstActive = groups.firstIndex(where: { !$0.isWaitingList }) {
+            groups[firstActive].profileNames.append(contentsOf: orphans)
         }
         save()
     }

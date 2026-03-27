@@ -230,6 +230,8 @@ print('no|claude-work')
     STATE_DIR="$HOME/.claude/tab-color/states"
     LEGACY_STATE_DIR="$HOME/.claude/tab-states"
     if [ -d "$STATE_DIR" ]; then
+        # Claude Code 보호: tmux 패인에 실제로 속한 TTY만 처리 (s008 등 자체 터미널 보호)
+        TMUX_PANE_TTYS=$(tmux list-panes -a -F "#{pane_tty}" 2>/dev/null | sort -u)
         for STATE_FILE in "$STATE_DIR"/*.json; do
             [ ! -f "$STATE_FILE" ] && continue
             TTY_NAME=$(basename "$STATE_FILE" .json)
@@ -240,6 +242,12 @@ print('no|claude-work')
                 continue
             fi
             [ ! -w "$TTY_PATH" ] && continue
+            # tmux 패인에 없는 TTY는 건드리지 않음 (Claude Code 자체 터미널 보호)
+            if ! echo "$TMUX_PANE_TTYS" | grep -qF "$TTY_PATH"; then
+                rm -f "$STATE_FILE"
+                log "CLEANUP: non-tmux TTY state removed (self-protection): $TTY_NAME"
+                continue
+            fi
 
             if command -v jq &>/dev/null; then
                 TAB_PROJECT=$(jq -r '.project // ""' "$STATE_FILE" 2>/dev/null)

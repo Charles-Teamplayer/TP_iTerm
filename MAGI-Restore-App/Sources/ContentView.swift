@@ -1068,13 +1068,13 @@ struct NewSessionSheet: View {
                 Button("Create") {
                     Task {
                         isCreating = true
-                        let targetSession = selectedGroup?.sessionName
-                        await monitor.createSession(name: derivedName, directory: directory,
-                                                    sessionName: targetSession)
-                        // 그룹에 프로필 추가 (window-groups.json 동기화)
+                        // window-groups.json 먼저 등록 (checkAutoSync가 새 창을 kill하지 않도록)
                         if let group = selectedGroup {
                             monitor.windowGroupService.moveProfile(derivedName, to: group)
                         }
+                        let targetSession = selectedGroup?.sessionName
+                        await monitor.createSession(name: derivedName, directory: directory,
+                                                    sessionName: targetSession)
                         isCreating = false
                         isPresented = false
                     }

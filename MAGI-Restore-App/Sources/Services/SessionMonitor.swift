@@ -481,6 +481,13 @@ final class SessionMonitor: ObservableObject {
             tty: session.tty,
             projectDir: projectDir
         )
+        // window-groups.json과 activated-sessions에서도 제거 (checkAutoSync 재시작 방지)
+        let projectName = session.projectName
+        for i in windowGroupService.groups.indices {
+            windowGroupService.groups[i].profileNames.removeAll { $0 == projectName }
+        }
+        windowGroupService.save()
+        ActivationService.shared.deactivate(root: session.profileRoot ?? session.directory)
         try? await Task.sleep(nanoseconds: 1_500_000_000)
         await refresh(showBanner: true)
     }
@@ -679,15 +686,6 @@ final class SessionMonitor: ObservableObject {
             ? "claude --dangerously-skip-permissions --continue"
             : "claude --dangerously-skip-permissions"
 
-        // 이미 동일 이름 창 존재하면 중복 생성 방지
-        let existingNames = await ShellService.runAsync(
-            "tmux list-windows -t '\(safeSession)' -F '#{window_name}' 2>/dev/null"
-        )
-        if existingNames.components(separatedBy: "\n").contains(name) {
-            await refresh(showBanner: true)
-            return
-        }
-
         let escapedName = shellEscape(name)
         let escapedRoot = shellEscape(safeRoot)
         let escapedSession = shellEscape(safeSession)
@@ -695,9 +693,12 @@ final class SessionMonitor: ObservableObject {
         let sleepPart = delay > 0 ? "sleep \(delay) && " : ""
         let winNameForStatus = name.replacingOccurrences(of: "\"", with: "\\\"")
                                    .replacingOccurrences(of: "'", with: "'\\''")
+        // 중복 생성 방지: check+create를 단일 shell 명령으로 atomic하게 처리
         let cmd = """
-        tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedRoot)' \\; \
-        send-keys "\(mkdirPart)\(sleepPart)bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
+        if ! tmux list-windows -t '\(escapedSession)' -F '#{window_name}' 2>/dev/null | grep -qxF '\(escapedName)'; then \
+          tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedRoot)' \\; \
+          send-keys "\(mkdirPart)\(sleepPart)bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
+        fi; \
         true
         """
         ActivationService.shared.activate(root: safeRoot)
