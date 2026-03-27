@@ -1042,18 +1042,27 @@ final class SessionMonitor: ObservableObject {
 
     // 이 tmux 세션에 붙어있는 기존 iTerm2 창 모두 닫기 (TTY 기반 매칭)
     func closeExistingITermWindows(for sessionName: String) async {
-        // main session + linked view sessions(-v*)에서 클라이언트 TTY 수집
+        // BUG-CLOSEWIN fix: linked session TTY만 보면 linked session 없을 때 early return →
+        // tmux 세션 pane TTY도 함께 수집하여 plain-attach 창까지 감지
         let ttysRaw = await ShellService.runAsync("""
-            { tmux list-clients -t '\(shellEscape(sessionName))' -F '#{client_tty}' 2>/dev/null; \
+            { \
+              tmux list-clients -t '\(shellEscape(sessionName))' -F '#{client_tty}' 2>/dev/null; \
               SNAME=\(ShellService.shellq(sessionName)) tmux list-sessions -F '#{session_name}' 2>/dev/null \
                 | python3 -c "import sys,os,re; sn=os.environ['SNAME']; [print(l.strip()) for l in sys.stdin if re.fullmatch(re.escape(sn)+r'-v[0-9]+', l.strip())]" \
                 | while read s; do tmux list-clients -t "$s" -F '#{client_tty}' 2>/dev/null; done; \
-            } | sort -u
+              tmux list-windows -t '\(shellEscape(sessionName))' -F '#{window_name}' 2>/dev/null \
+                | while read w; do tmux list-panes -t '\(shellEscape(sessionName)):'"$w"' -F '"'"'#{pane_tty}'"'"' 2>/dev/null; done; \
+            } | sort -u | grep -v '^$'
             """
         )
         let ttys = ttysRaw.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         guard !ttys.isEmpty else { return }
 
+        // BUG-CLOSEWIN-TTY fix: iTerm2 tmux 통합 탭은 tty = missing value → TTY 비교 불가
+        // 두 가지 전략 병행:
+        // 1. 클라이언트 TTY 직접 매칭 (plain attach 또는 control 탭)
+        // 2. 모든 탭이 missing value인 창 → orphaned tmux 통합 창 → 닫기
+        // 단, 현재 Claude Code 세션 TTY (/dev/ttysXXX)를 가진 창은 절대 닫지 않음
         let ttyList = ttys.map { "\"\($0)\"" }.joined(separator: ", ")
         let script = """
         osascript << '__APPLES__'
@@ -1061,17 +1070,33 @@ final class SessionMonitor: ObservableObject {
             set ttySet to {\(ttyList)}
             set toClose to {}
             repeat with w in every window
+                set hasMatch to false
+                set allMissingTTY to true
+                set tabCnt to count tabs of w
                 repeat with t in every tab of w
                     try
-                        if tty of current session of t is in ttySet then
-                            set end of toClose to w
-                            exit repeat
+                        set st to current session of t
+                        set wTTY to tty of st
+                        if wTTY is not missing value and wTTY is not "" then
+                            set allMissingTTY to false
+                            if wTTY is in ttySet then
+                                set hasMatch to true
+                            end if
                         end if
                     end try
                 end repeat
+                -- 전략 1: TTY 직접 매칭
+                if hasMatch then
+                    set end of toClose to w
+                -- 전략 2: 모든 탭이 missing value = orphaned tmux 통합 창
+                else if allMissingTTY and tabCnt > 0 then
+                    set end of toClose to w
+                end if
             end repeat
             repeat with w in toClose
-                close w
+                try
+                    close w
+                end try
             end repeat
         end tell
         __APPLES__
