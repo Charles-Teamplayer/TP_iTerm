@@ -180,11 +180,21 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
             continue
         fi
         tmux new-window -t "$SESSION_NAME" -n "$PROFILE_NAME" -c "$PROJ_PATH" 2>/dev/null
-        # 방금 생성된 창의 인덱스 조회 (창 이름에 '.'이 있으면 pane 구분자 오해 방지)
-        WIN_IDX=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_index}' 2>/dev/null | sort -n | tail -1)
-        tmux set-window-option -t "$SESSION_NAME:$WIN_IDX" automatic-rename off 2>/dev/null
-        tmux send-keys -t "$SESSION_NAME:$WIN_IDX" \
-            "sleep $DELAY && bash ~/.claude/scripts/tab-status.sh starting '$PROFILE_NAME' && unset CLAUDECODE && $CLAUDE_CMD" Enter
+        # BUG#4 fix: sort|tail 대신 창 이름으로 직접 인덱스 조회 (인덱스 재사용 방어)
+        # BUG#2 fix: 창 이름에 '.'이 있으면 tmux target 파싱 오류 → window_id 기반 조회
+        WIN_ID_AR=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$PROFILE_NAME" '$2==w{print $1; exit}')
+        WIN_IDX=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$PROFILE_NAME" '$2==w{print $1; exit}')
+        if [ -n "$WIN_ID_AR" ]; then
+            tmux set-window-option -t "$WIN_ID_AR" automatic-rename off 2>/dev/null
+            tmux send-keys -t "$WIN_ID_AR" \
+                "sleep $DELAY && bash ~/.claude/scripts/tab-status.sh starting '$PROFILE_NAME' && unset CLAUDECODE && $CLAUDE_CMD" Enter
+        elif [ -n "$WIN_IDX" ]; then
+            tmux set-window-option -t "$SESSION_NAME:$WIN_IDX" automatic-rename off 2>/dev/null
+            tmux send-keys -t "$SESSION_NAME:$WIN_IDX" \
+                "sleep $DELAY && bash ~/.claude/scripts/tab-status.sh starting '$PROFILE_NAME' && unset CLAUDECODE && $CLAUDE_CMD" Enter
+        else
+            log "WARN: $PROFILE_NAME 창 index/id 조회 실패 — send-keys 스킵"
+        fi
 
         TOTAL_CREATED=$((TOTAL_CREATED + 1))
         DELAY=$((DELAY + 3))

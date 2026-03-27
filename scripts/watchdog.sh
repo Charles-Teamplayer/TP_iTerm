@@ -260,7 +260,8 @@ for path in d.get('activated', []):
                     fi
                 fi
                 NEW_COUNT=$((CURRENT_COUNT + 1))
-                echo "${NEW_COUNT}|${CC_NOW}" > "$CRASH_COUNT_FILE"
+                # BUG-ATOMIC: 원자적 쓰기 (동시 watchdog 두 인스턴스 대비)
+                echo "${NEW_COUNT}|${CC_NOW}" > "${CRASH_COUNT_FILE}.$$" && mv "${CRASH_COUNT_FILE}.$$" "$CRASH_COUNT_FILE" 2>/dev/null || echo "${NEW_COUNT}|${CC_NOW}" > "$CRASH_COUNT_FILE"
 
                 # 연속 크래시 임계값 초과 시 intentional-stop 등록 (무한 루프 방지)
                 if [ "$NEW_COUNT" -gt "$CRASH_MAX" ]; then
@@ -273,8 +274,15 @@ for path in d.get('activated', []):
                 tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_PATH" 2>/dev/null
                 # BUG#25+BUG-01 fix: window_id(@N) 기반 조회 → dot 이름 파싱 오류 완전 방지
                 # index 조회 실패 시 window_id로 fallback (name 직접 사용 금지)
-                WIN_ID_NEW=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
-                WIN_IDX_NEW=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
+                # BUG-WINRACE fix: new-window 직후 list-windows에 없을 수 있음 → 최대 1.5s retry
+                WIN_ID_NEW=""
+                WIN_IDX_NEW=""
+                for _retry in 1 2 3; do
+                    WIN_ID_NEW=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
+                    WIN_IDX_NEW=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
+                    [ -n "$WIN_ID_NEW" ] && break
+                    sleep 0.5
+                done
                 if [ -n "$WIN_IDX_NEW" ]; then
                     tmux set-window-option -t "$TARGET_SESSION:$WIN_IDX_NEW" automatic-rename off 2>/dev/null
                     tmux send-keys -t "$TARGET_SESSION:$WIN_IDX_NEW" "bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
@@ -360,8 +368,9 @@ print('')
                 TAB_TYPE=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('type',''))" 2>/dev/null)
             fi
             [ -z "$LAST_TS_ISO" ] && continue
-            # active/working: PID가 살아있을 때만 aging 스킵 (죽은 세션은 aging 진행)
-            if [ "$TAB_TYPE" = "active" ] || [ "$TAB_TYPE" = "working" ]; then
+            # active/working/starting: PID가 살아있을 때만 aging 스킵 (죽은 세션은 aging 진행)
+            # BUG#5 fix: starting 상태도 스킵 (새 세션 생성 직후 2초 이내 aging 방지)
+            if [ "$TAB_TYPE" = "active" ] || [ "$TAB_TYPE" = "working" ] || [ "$TAB_TYPE" = "starting" ]; then
                 TAB_PID=$(jq -r '.pid // "0"' "$STATE_FILE" 2>/dev/null || echo "0")
                 if [ "$TAB_PID" -gt 0 ] && kill -0 "$TAB_PID" 2>/dev/null; then
                     continue  # PID 살아있음 → aging 스킵
