@@ -286,7 +286,8 @@ def get_tmux_windows():
         _groups_path = _os.path.expanduser('~/.claude/window-groups.json')
         _active_sessions = []
         try:
-            _groups = _json.load(open(_groups_path))
+            with open(_groups_path) as _f:
+                _groups = _json.load(_f)
             for _g in _groups:
                 _sn = _g.get('sessionName','')
                 if not _g.get('isWaitingList', False) and _sn and _sn != '__waiting__':
