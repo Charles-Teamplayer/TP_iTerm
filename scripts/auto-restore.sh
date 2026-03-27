@@ -154,6 +154,8 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
 
     # _init_ 임시 창으로 세션 생성 (profile 창들을 먼저 만들고 monitor를 맨 뒤에 배치)
     tmux new-session -d -s "$SESSION_NAME" -n _init_ -c "$HOME/claude" 2>/dev/null
+    # BUG-INIT-RENAME fix: auto-rename 방지 → kill 시 이름 불일치 예방
+    tmux set-window-option -t "$SESSION_NAME:_init_" automatic-rename off 2>/dev/null || true
     log "$SESSION_NAME 세션 생성"
 
     # 각 profileName으로 창 생성
@@ -250,7 +252,17 @@ except:
         tmux set-window-option -t "$SESSION_NAME:monitor" automatic-rename off 2>/dev/null
         tmux move-window -s "$SESSION_NAME:monitor" -t "$SESSION_NAME:999" 2>/dev/null || true
     fi
-    tmux kill-window -t "$SESSION_NAME:_init_" 2>/dev/null || true
+    # BUG-INIT-RENAME fix: 이름 기반 kill 실패 대비 → window_id 기반 fallback
+    INIT_WIN_ID=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' '$2=="_init_"{print $1; exit}')
+    if [ -n "$INIT_WIN_ID" ]; then
+        tmux kill-window -t "$INIT_WIN_ID" 2>/dev/null || true
+    else
+        # 이름 기반 fallback (renamed to zsh 등)
+        tmux kill-window -t "$SESSION_NAME:_init_" 2>/dev/null || true
+        # index 0 창이 "zsh"면 profile/monitor 창만 남기고 제거
+        STALE_ID=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}|#{window_index}' 2>/dev/null | awk -F'|' '$3=="0" && $2!="monitor" && $2!="_init_"{print $1; exit}')
+        [ -n "$STALE_ID" ] && tmux kill-window -t "$STALE_ID" 2>/dev/null || true
+    fi
     log "$SESSION_NAME monitor 창 index 999에 배치 완료"
 
 done <<< "$GROUPS_JSON"

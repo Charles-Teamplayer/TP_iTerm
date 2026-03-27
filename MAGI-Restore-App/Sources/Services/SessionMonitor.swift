@@ -735,10 +735,12 @@ final class SessionMonitor: ObservableObject {
         let winNameForStatus = name.replacingOccurrences(of: "\"", with: "\\\"")
                                    .replacingOccurrences(of: "'", with: "'\\''")
         // 중복 생성 방지: check+create를 단일 shell 명령으로 atomic하게 처리
+        // BUG-SENDKEYS-NOTARGET fix: \; 체인에서 send-keys -t 없으면 외부 실행 시 pane 못 찾음
+        // → new-window -P -F '#{window_index}'로 index 캡처 후 명시적 -t로 send-keys
         let cmd = """
         if ! tmux list-windows -t '\(escapedSession)' -F '#{window_name}' 2>/dev/null | grep -qxF '\(escapedName)'; then \
-          tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedRoot)' \\; \
-          send-keys "\(mkdirPart)\(sleepPart)bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
+          _WIDX=$(tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedRoot)' -P -F '#{window_index}' 2>/dev/null); \
+          [ -n "$_WIDX" ] && tmux send-keys -t '\(escapedSession)':$_WIDX "\(mkdirPart)\(sleepPart)bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
         fi; \
         true
         """
@@ -889,8 +891,9 @@ final class SessionMonitor: ObservableObject {
             "tmux has-session -t '\(escapedSession)' 2>/dev/null && echo yes || echo no"
         )
         if exists.trimmingCharacters(in: .whitespacesAndNewlines) == "no" {
+            // BUG-INIT-RENAME fix: _init_ auto-rename 방지 → kill 시 이름 불일치 예방
             await ShellService.runAsync(
-                "tmux new-session -d -s '\(escapedSession)' -n _init_ -c '\(NSHomeDirectory())/claude' 2>/dev/null; true"
+                "tmux new-session -d -s '\(escapedSession)' -n _init_ -c '\(NSHomeDirectory())/claude' 2>/dev/null; tmux set-window-option -t '\(escapedSession):_init_' automatic-rename off 2>/dev/null; true"
             )
         }
 
@@ -1084,10 +1087,11 @@ final class SessionMonitor: ObservableObject {
         let nameForStatus = safeName.replacingOccurrences(of: "\"", with: "\\\"")
                                      .replacingOccurrences(of: "'", with: "'\\''")
         // 중복 방지: check+create 단일 shell 명령
+        // BUG-SENDKEYS-NOTARGET fix: index 캡처 후 명시적 -t send-keys
         let cmd = """
         if ! tmux list-windows -t '\(escapedSession)' -F '#{window_name}' 2>/dev/null | grep -qxF '\(escapedName)'; then \
-          tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedDir)' \\; \
-          send-keys "bash ~/.claude/scripts/tab-status.sh starting '\(nameForStatus)' && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; \
+          _WIDX=$(tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedDir)' -P -F '#{window_index}' 2>/dev/null); \
+          [ -n "$_WIDX" ] && tmux send-keys -t '\(escapedSession)':$_WIDX "bash ~/.claude/scripts/tab-status.sh starting '\(nameForStatus)' && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; \
         fi; true
         """
         await ShellService.runAsync(cmd)
