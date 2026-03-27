@@ -83,6 +83,12 @@ TTY_PATH=$(find_tty)
 [ -z "$TTY_PATH" ] && { _log "TTY not found for state=$STATE"; exit 0; }
 TTY_NAME="${TTY_PATH#/dev/}"
 
+# TTY 쓰기 권한 체크 (Operation not permitted 방지 — set -e 환경에서 즉시 exit 방어)
+if [ ! -w "$TTY_PATH" ]; then
+    _log "SKIP: $TTY_NAME not writable (permission denied)"
+    exit 0
+fi
+
 # tmux pane 보호: tmux에 속하지 않는 TTY (= Claude Code 자체 터미널 등)에는 색상 쓰지 않음
 if ! tmux list-panes -a -F "#{pane_tty}" 2>/dev/null | grep -qxF "$TTY_PATH"; then
     _log "SKIP: $TTY_NAME is not a tmux pane (self-protection)"
