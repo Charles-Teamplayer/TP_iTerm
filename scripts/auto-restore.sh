@@ -14,11 +14,10 @@ log() {
 
 log "=== Auto-Restore 시작 ==="
 
-# 환경변수 로드
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-if [ -f "$HOME/.zshrc" ]; then
-    source "$HOME/.zshrc" 2>/dev/null || true
-fi
+# 환경변수 로드 (LaunchAgent 비-TTY 환경 — .zshrc source 금지: iTerm2 integration 오류 발생)
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/opt/homebrew/sbin:$PATH"
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" --no-use 2>/dev/null || true
 unset CLAUDECODE
 
 # 이미 claude CLI 프로세스가 다수 실행 중이면 스킵 (--force 옵션으로 우회)
