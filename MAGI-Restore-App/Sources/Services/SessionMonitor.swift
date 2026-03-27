@@ -349,7 +349,8 @@ final class SessionMonitor: ObservableObject {
         if session.windowIndex >= 0 && session.windowIndex != Int.max {
             // 창 존재 여부 확인
             let paneCmd = await ShellService.runAsync(
-                "tmux list-panes -t '\(session.tmuxSession):\(session.windowIndex)' -F '#{pane_current_command}' 2>/dev/null | head -1"
+                // BUG#30 fix: shellEscape tmuxSession in list-panes target
+                "tmux list-panes -t '\(shellEscape(session.tmuxSession)):\(session.windowIndex)' -F '#{pane_current_command}' 2>/dev/null | head -1"
             )
             if paneCmd.isEmpty {
                 // 창이 없어진 경우 → 새로 생성 (-P -F로 실제 index 획득 후 send-keys)
@@ -359,9 +360,11 @@ final class SessionMonitor: ObservableObject {
                 let newIdxRaw = await ShellService.runAsync("tmux new-window -t '\(shellEscape(session.tmuxSession))' -n '\(escapedName)' -c '\(escapedDir)' -P -F '#{window_index}'")
                 let newIdx = newIdxRaw.trimmingCharacters(in: .whitespacesAndNewlines)
                 let winTarget = newIdx.isEmpty ? escapedName : newIdx
-                await ShellService.runAsync("tmux send-keys -t '\(session.tmuxSession):\(winTarget)' '\(claudeEntry)' Enter 2>/dev/null")
+                // BUG#30 fix: tmuxSession shellEscape 일관 적용 (send-keys -t 타겟)
+                await ShellService.runAsync("tmux send-keys -t '\(shellEscape(session.tmuxSession)):\(winTarget)' '\(claudeEntry)' Enter 2>/dev/null")
             } else {
-                await ShellService.runAsync("tmux send-keys -t '\(session.tmuxSession):\(session.windowIndex)' '\(claudeEntry)' Enter 2>/dev/null")
+                // BUG#30 fix: tmuxSession shellEscape 일관 적용
+                await ShellService.runAsync("tmux send-keys -t '\(shellEscape(session.tmuxSession)):\(session.windowIndex)' '\(claudeEntry)' Enter 2>/dev/null")
             }
         } else if let root = session.profileRoot {
             let group = windowGroupService.group(for: session.projectName)
@@ -376,7 +379,8 @@ final class SessionMonitor: ObservableObject {
     func forceResetSession(_ session: ClaudeSession) async {
         // 기존 창 kill
         if session.windowIndex >= 0 && session.windowIndex != Int.max {
-            await ShellService.runAsync("tmux kill-window -t '\(session.tmuxSession):\(session.windowIndex)' 2>/dev/null; true")
+            // BUG#30 fix: tmuxSession shellEscape (forceResetSession kill-window)
+            await ShellService.runAsync("tmux kill-window -t '\(shellEscape(session.tmuxSession)):\(session.windowIndex)' 2>/dev/null; true")
         }
         // crash 상태 초기화
         if let idx = sessions.firstIndex(where: { $0.id == session.id }) {
@@ -441,7 +445,8 @@ final class SessionMonitor: ObservableObject {
             // 창 존재 여부 먼저 확인 — windowIndex 기반 (이모지/특수문자 안전)
             let winIdx = session.windowIndex
             let paneCmd = await ShellService.runAsync(
-                "tmux list-panes -t '\(session.tmuxSession):\(winIdx)' -F '#{pane_current_command}' 2>/dev/null | head -1"
+                // BUG#30 fix: shellEscape tmuxSession in list-panes target
+                "tmux list-panes -t '\(shellEscape(session.tmuxSession)):\(winIdx)' -F '#{pane_current_command}' 2>/dev/null | head -1"
             )
 
             if paneCmd.isEmpty {
@@ -452,13 +457,15 @@ final class SessionMonitor: ObservableObject {
                 )
                 let newIdx2 = newIdxRaw.trimmingCharacters(in: .whitespacesAndNewlines)
                 let winTarget2 = newIdx2.isEmpty ? winName : newIdx2
+                // BUG#30 fix: tmuxSession shellEscape 일관 적용
                 await ShellService.runAsync(
-                    "tmux send-keys -t '\(session.tmuxSession):\(winTarget2)' '\(claudeEntry)' Enter 2>/dev/null"
+                    "tmux send-keys -t '\(shellEscape(session.tmuxSession)):\(winTarget2)' '\(claudeEntry)' Enter 2>/dev/null"
                 )
             } else {
                 // 창이 있음 — windowIndex로 targeting (특수문자 무관)
+                // BUG#30 fix: tmuxSession shellEscape 일관 적용
                 await ShellService.runAsync(
-                    "tmux send-keys -t '\(session.tmuxSession):\(winIdx)' '\(claudeEntry)' Enter 2>/dev/null"
+                    "tmux send-keys -t '\(shellEscape(session.tmuxSession)):\(winIdx)' '\(claudeEntry)' Enter 2>/dev/null"
                 )
             }
 
@@ -530,8 +537,9 @@ final class SessionMonitor: ObservableObject {
             if session.pid > 0 {
                 await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
             }
+            // BUG#30 fix: shellEscape tmuxSession in kill-window target
             await ShellService.runAsync(
-                "tmux kill-window -t '\(session.tmuxSession):\(session.windowIndex)' 2>/dev/null; true"
+                "tmux kill-window -t '\(shellEscape(session.tmuxSession)):\(session.windowIndex)' 2>/dev/null; true"
             )
         }
         if !toKill.isEmpty {
@@ -552,8 +560,9 @@ final class SessionMonitor: ObservableObject {
                 await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
             }
             if session.windowIndex >= 0 {
+                // BUG#30 fix: shellEscape group.sessionName in kill-window target
                 await ShellService.runAsync(
-                    "tmux kill-window -t '\(group.sessionName):\(session.windowIndex)' 2>/dev/null; true"
+                    "tmux kill-window -t '\(shellEscape(group.sessionName)):\(session.windowIndex)' 2>/dev/null; true"
                 )
             }
             // checkAutoSync 재시작 방지: 인메모리 셋 + deactivate (watchdog 보호 포함)
@@ -576,8 +585,9 @@ final class SessionMonitor: ObservableObject {
             }
             // windowIndex 기반 tmux kill-window (이름 특수문자 무관, json-* 세션 -1 방어)
             if session.windowIndex >= 0 {
+                // BUG#30 fix: shellEscape tmuxSession in kill-window target
                 await ShellService.runAsync(
-                    "tmux kill-window -t '\(session.tmuxSession):\(session.windowIndex)' 2>/dev/null; true"
+                    "tmux kill-window -t '\(shellEscape(session.tmuxSession)):\(session.windowIndex)' 2>/dev/null; true"
                 )
             }
             // checkAutoSync 재시작 방지: 인메모리 셋 + deactivate (watchdog 보호 포함)
@@ -599,15 +609,17 @@ final class SessionMonitor: ObservableObject {
             intentionallyStoppedProfiles.insert(session.projectName)  // BUG#14 fix: checkAutoSync 즉시 재시작 방지
             let winIdx = session.windowIndex
             let paneCmd = await ShellService.runAsync(
-                "tmux list-panes -t '\(session.tmuxSession):\(winIdx)' -F '#{pane_current_command}' 2>/dev/null | head -1"
+                // BUG#30 fix: shellEscape tmuxSession in list-panes target
+                "tmux list-panes -t '\(shellEscape(session.tmuxSession)):\(winIdx)' -F '#{pane_current_command}' 2>/dev/null | head -1"
             )
             guard paneCmd == "zsh" || paneCmd == "bash" || paneCmd.isEmpty else {
                 continue
             }
             let dir = session.directory.isEmpty ? session.projectName : session.directory
             await ShellService.intentionalStopAsync(projectDir: dir)
+            // BUG#30 fix: shellEscape tmuxSession in kill-window target
             await ShellService.runAsync(
-                "tmux kill-window -t '\(session.tmuxSession):\(winIdx)' 2>/dev/null; true"
+                "tmux kill-window -t '\(shellEscape(session.tmuxSession)):\(winIdx)' 2>/dev/null; true"
             )
         }
         try? await Task.sleep(nanoseconds: 1_500_000_000)
