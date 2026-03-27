@@ -25,8 +25,9 @@ declare -A LAST_WIN_MAP
 
 # 활성 세션 목록 읽기 (window-groups.json 기반, 30초마다 갱신)
 get_active_sessions() {
+    local _out
     if [ -f "$WINDOW_GROUPS" ]; then
-        python3 -c "
+        _out=$(python3 -c "
 import json, os
 try:
     groups = json.load(open('$WINDOW_GROUPS'))
@@ -35,10 +36,14 @@ try:
         if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
             print(sn)
 except: pass
-" 2>/dev/null
+" 2>/dev/null)
     fi
-    # fallback
-    echo "claude-work"
+    # fallback: json 파싱 실패 시에만 claude-work 보장
+    if [ -z "$_out" ]; then
+        echo "claude-work"
+    else
+        echo "$_out"
+    fi
 }
 
 SESSIONS_CACHE=""
@@ -81,13 +86,18 @@ while true; do
             STATE_FILE="${STATE_DIR}/${TTY_NAME}.json"
             [ ! -f "$STATE_FILE" ] && continue
 
-            TAB_STATUS=$(python3 -c "
+            # BUG#5 fix: state file 2회 읽기 → 1회 통합 (race condition 제거)
+            _TAB_DATA=$(python3 -c "
 import json
 try:
     d=json.load(open('$STATE_FILE'))
     print(d.get('type',''))
-except: print('')
+    print(d.get('project',''))
+except:
+    print(''); print('')
 " 2>/dev/null)
+            TAB_STATUS=$(printf '%s' "$_TAB_DATA" | sed -n '1p')
+            TAB_PROJECT=$(printf '%s' "$_TAB_DATA" | sed -n '2p')
 
             case "$TAB_STATUS" in
                 waiting|attention|idle_10m|idle_1h|idle_1d|idle_3d|starting)
@@ -100,13 +110,6 @@ except: print('')
                             rm -f "$FLASH_PID_FILE"
                         fi
                         # active 복원
-                        TAB_PROJECT=$(python3 -c "
-import json
-try:
-    d=json.load(open('$STATE_FILE'))
-    print(d.get('project',''))
-except: print('')
-" 2>/dev/null)
                         TAB_TTY="$PANE_TTY" bash "$HOME/.claude/tab-color/engine/set-color.sh" active "$TAB_PROJECT"
                         log "${TAB_STATUS} → active ($TAB_PROJECT, $TTY_NAME, $TMUX_SESSION:$CUR_WIN)"
                     fi
