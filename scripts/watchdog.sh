@@ -553,9 +553,11 @@ except: pass
         if tmux has-session -t "$MON_SESSION" 2>/dev/null; then
             if ! tmux list-windows -t "$MON_SESSION" -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
                 log "MONITOR 창 없음 ($MON_SESSION) — 자동 복구"
-                if tmux new-window -t "$MON_SESSION" -n monitor -c "$HOME/claude" 2>/dev/null; then
-                    tmux set-window-option -t "$MON_SESSION:monitor" automatic-rename off 2>/dev/null
-                    tmux move-window -s "$MON_SESSION:monitor" -t "$MON_SESSION:999" 2>/dev/null || true
+                _MON_WID=$(tmux new-window -t "$MON_SESSION" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" -P -F '#{window_id}' 2>/dev/null || true)
+                if [ -n "$_MON_WID" ]; then
+                    tmux set-window-option -t "$_MON_WID" automatic-rename off 2>/dev/null || true
+                    tmux rename-window -t "$_MON_WID" monitor 2>/dev/null || true
+                    tmux move-window -s "$_MON_WID" -t "$MON_SESSION:999" 2>/dev/null || true
                     log "MONITOR 창 복구 완료 ($MON_SESSION)"
                 else
                     log "ERROR: MONITOR 창 복구 실패 ($MON_SESSION)"
