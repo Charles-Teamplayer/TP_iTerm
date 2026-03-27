@@ -105,7 +105,8 @@ norm_name = normalize(name)
 path = os.path.expanduser('~/.claude/activated-sessions.json')
 for candidate in [path, path + '.bak']:
     try:
-        data = json.load(open(candidate))
+        with open(candidate) as f:
+            data = json.load(f)
         for p in data.get('activated', []):
             bname = os.path.basename(p)
             # 정확 매칭 우선, 그 다음 정규화 비교
@@ -273,17 +274,21 @@ with open(path, 'w') as f:
 # intentional-stops.json — 48시간 이상 된 항목만 제거 (최근 의도적 중지는 보존)
 if [ -f "$STOPS_FILE" ]; then
     python3 -c "
-import json, os
+import json, os, tempfile
 from datetime import datetime, timezone, timedelta
 path = os.path.expanduser('$STOPS_FILE')
 try:
-    data = json.load(open(path))
+    with open(path) as f:
+        data = json.load(f)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
     stops = data.get('stops', [])
     kept = [s for s in stops if datetime.fromisoformat(s.get('stopped_at','1970-01-01T00:00:00Z').replace('Z','+00:00')) > cutoff]
     data['stops'] = kept
     data['last_updated'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    json.dump(data, open(path, 'w'), indent=2)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix='.tmp')
+    with os.fdopen(fd, 'w') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
 except:
     pass
 " 2>/dev/null || true

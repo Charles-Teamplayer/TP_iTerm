@@ -671,6 +671,8 @@ except: pass
     if [ $((NOW_CLEANUP - LAST_CLEANUP)) -gt 21600 ]; then  # 6시간마다 정리 (BUG-003 fix: 24h → 6h)
         echo "$NOW_CLEANUP" > "$LINKED_CLEANUP_LOCK"
         tmux list-sessions -F '#{session_name}|#{session_created}' 2>/dev/null | grep -E '.*-v[0-9]+\|' | while IFS='|' read -r lsname lscreated; do
+            # iter57: 세션 존재 재확인 (list-sessions 이후 kill 가능성 방어)
+            tmux has-session -t "$lsname" 2>/dev/null || continue
             CLIENT_COUNT_LS=$(tmux list-clients -t "$lsname" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
             AGE_LS=$(( NOW_CLEANUP - ${lscreated:-0} ))
             if [ "${CLIENT_COUNT_LS:-0}" -eq 0 ] && [ "$AGE_LS" -gt 3600 ]; then  # 1시간 이상 클라이언트 없음

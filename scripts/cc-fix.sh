@@ -147,16 +147,25 @@ fi
 TAB_COUNT=$(echo "$RAW_WINS" | grep -v '^$' | grep -cv 'monitor' || echo 0)
 log "linked session 기반 iTerm 창+탭 생성 시작 (${TAB_COUNT}개 탭)"
 
-OSASCRIPT_ERR=$(osascript << __APPLES__ 2>&1
+# iter57: osascript 실패 시 최대 3회 retry (AppleEvent 시간 초과 -1712 대응)
+OSASCRIPT_EXIT=1
+for _retry in 1 2 3; do
+    OSASCRIPT_ERR=$(osascript << __APPLES__ 2>&1
 $APPLE_SCRIPT
 __APPLES__
 )
-OSASCRIPT_EXIT=$?
+    OSASCRIPT_EXIT=$?
+    if [ $OSASCRIPT_EXIT -eq 0 ]; then
+        break
+    fi
+    log "osascript 실패 (시도 ${_retry}/3, exit=${OSASCRIPT_EXIT}): ${OSASCRIPT_ERR:0:80}"
+    [ $_retry -lt 3 ] && sleep 3
+done
 
 if [ $OSASCRIPT_EXIT -eq 0 ]; then
     log "iTerm 창+탭 생성 완료"
 else
-    log "ERROR: osascript 실패 (exit=$OSASCRIPT_EXIT): $OSASCRIPT_ERR"
+    log "ERROR: osascript 3회 실패 — iTerm2 응답 없음 또는 권한 문제"
 fi
 
 log "=== cc-fix 완료 ==="
