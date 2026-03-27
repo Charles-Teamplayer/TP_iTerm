@@ -216,7 +216,9 @@ struct SessionDetailView: View {
     private func doKill(_ session: ClaudeSession) {
         Task {
             monitor.markIntentionallyStopped(session)  // checkAutoSync 재시작 방지
-            await ShellService.intentionalStopAsync(projectDir: session.projectName)
+            // BUG#18 fix: doStop과 동일하게 directory 우선 사용 (projectName 하드코딩 제거)
+            let dir = session.directory.isEmpty ? session.projectName : session.directory
+            await ShellService.intentionalStopAsync(projectDir: dir)
             await ShellService.killAsync(pid: session.pid)
             // 강제종료 → 활성화 해제
             let root = session.profileRoot ?? session.directory

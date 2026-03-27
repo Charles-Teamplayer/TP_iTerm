@@ -101,10 +101,11 @@ if [ -z "$GROUPS_JSON" ]; then
 fi
 
 TOTAL_CREATED=0
-DELAY=0
 
 while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
     [ -z "$SESSION_NAME" ] && continue
+    # BUG#20 fix: 그룹별 DELAY 리셋 (이전 그룹 delay가 다음 그룹으로 누적되는 문제 방지)
+    DELAY=0
     log "--- 그룹 처리: $SESSION_NAME ---"
 
     # 기존 tmux 세션 종료 (claude 프로세스가 새 창 만드는 것 방지: kill-server 전 약간 대기)
