@@ -184,6 +184,25 @@ print('no|claude-work')
                     log "SKIP restart: $WINDOW_NAME — $TARGET_SESSION에 창 없음"
                     continue
                 fi
+                # 보호 PID 체크: 창에 살아있는 protected PID가 있으면 kill 금지 (활성 Claude Code 세션 보호)
+                PROTECTED_PIDS_FILE="$HOME/.claude/protected-claude-pids"
+                PANE_PIDS_RAW=$(tmux list-panes -t "$TARGET_SESSION:$WINDOW_NAME" -F '#{pane_pid}' 2>/dev/null || true)
+                SKIP_KILL=false
+                if [ -f "$PROTECTED_PIDS_FILE" ] && [ -n "$PANE_PIDS_RAW" ]; then
+                    while IFS= read -r ppid; do
+                        [ -z "$ppid" ] && continue
+                        kill -0 "$ppid" 2>/dev/null || continue
+                        CHILD_PIDS=$(pgrep -P "$ppid" 2>/dev/null | tr '\n' ' ')
+                        for cpid in $ppid $CHILD_PIDS; do
+                            if grep -qF "$cpid" "$PROTECTED_PIDS_FILE" 2>/dev/null; then
+                                log "SKIP kill-window: $WINDOW_NAME — 보호 PID $cpid 활성 중"
+                                SKIP_KILL=true
+                                break 2
+                            fi
+                        done
+                    done <<< "$PANE_PIDS_RAW"
+                fi
+                [ "$SKIP_KILL" = "true" ] && continue
                 # 기존 창 kill 후 재생성
                 # BUG#24 fix: window name에 '.'이 있으면 tmux가 pane 구분자로 오인 → window_id(@N) 기반 kill
                 WIN_ID_KILL=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
@@ -221,14 +240,19 @@ print('no|claude-work')
                 fi
 
                 tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_PATH" 2>/dev/null
-                # BUG#25 fix: 새 창 index 조회 후 index 기반 set-window-option/send-keys (dot 이름 안전)
+                # BUG#25+BUG-01 fix: window_id(@N) 기반 조회 → dot 이름 파싱 오류 완전 방지
+                # index 조회 실패 시 window_id로 fallback (name 직접 사용 금지)
+                WIN_ID_NEW=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
                 WIN_IDX_NEW=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
                 if [ -n "$WIN_IDX_NEW" ]; then
                     tmux set-window-option -t "$TARGET_SESSION:$WIN_IDX_NEW" automatic-rename off 2>/dev/null
                     tmux send-keys -t "$TARGET_SESSION:$WIN_IDX_NEW" "bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
+                elif [ -n "$WIN_ID_NEW" ]; then
+                    # window_id(@N) 기반 fallback — dot 이름 포함 세션 안전 처리
+                    tmux set-window-option -t "$WIN_ID_NEW" automatic-rename off 2>/dev/null
+                    tmux send-keys -t "$WIN_ID_NEW" "bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
                 else
-                    tmux set-window-option -t "$TARGET_SESSION:$WINDOW_NAME" automatic-rename off 2>/dev/null
-                    tmux send-keys -t "$TARGET_SESSION:$WINDOW_NAME" "bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
+                    log "WARN: $WINDOW_NAME 창 index/id 조회 실패 — 재시작 명령 스킵"
                 fi
 
                 log "AUTO-RESTART: $RESTART_PROJECT → $TARGET_SESSION:$WINDOW_NAME (연속 ${NEW_COUNT}/${CRASH_MAX}회)"

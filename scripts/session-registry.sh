@@ -76,6 +76,17 @@ with open(registry_path, 'w') as f:
 
 print(f"[URD] Session registered: {project_name} (PID: {pid})")
 PYEOF
+        # 보호 PID 파일 업데이트: 활성 세션 PID를 ~/.claude/protected-claude-pids 에 기록
+        # auto-restore.sh 가 이 PID를 kill하지 않도록 보호 (CEO 요구: 활성 Claude Code 세션 보호)
+        if [ -n "$PID" ] && [ "$PID" != "unknown" ]; then
+            PROTECTED_FILE="$HOME/.claude/protected-claude-pids"
+            {
+                [ -f "$PROTECTED_FILE" ] && grep -v '^$' "$PROTECTED_FILE"
+                echo "$PID"
+            } | sort -u | while read -r pp; do
+                kill -0 "$pp" 2>/dev/null && echo "$pp"
+            done > "${PROTECTED_FILE}.tmp" 2>/dev/null && mv "${PROTECTED_FILE}.tmp" "$PROTECTED_FILE" 2>/dev/null || true
+        fi
         # 크래시 카운터: 등록 후 5분 이상 경과해야 리셋 (빠른 크래시 루프 방지)
         CRASH_COUNT_FILE="$HOME/.claude/crash-counts/${PROJECT_NAME//[^a-zA-Z0-9_-]/_}"
         if [ -f "$CRASH_COUNT_FILE" ]; then
@@ -283,9 +294,10 @@ def tmux_window_exists(session_dir, project_name):
     window_name = DIR_TO_WINDOW.get(session_dir)
     if window_name and window_name in clean_windows:
         return True
-    # fallback: 프로젝트명 fuzzy 매칭
+    # fallback: 프로젝트명 정확 매칭 (BUG-03 fix: 부분 문자열 fuzzy 매칭 → 오탐 방지)
+    # "imsms" in "minimal-imsms-agent" 같은 false positive 제거
     proj_base = os.path.basename(project_name) if project_name else ''
-    if proj_base and any(proj_base.lower() in w.lower() or w.lower() in proj_base.lower() for w in clean_windows if w):
+    if proj_base and proj_base.lower() in [w.lower() for w in clean_windows if w]:
         return True
     return False
 

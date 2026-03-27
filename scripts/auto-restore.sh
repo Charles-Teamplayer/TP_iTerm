@@ -31,14 +31,35 @@ UPTIME_SEC=$(( NOW_TS - ${BOOT_TS:-0} ))
 EXISTING=$(ps -A -o comm= 2>/dev/null | grep -c "^claude$" | tr -d ' ')
 if [ "$UPTIME_SEC" -lt 300 ]; then
     log "부팅 직후 감지 (uptime=${UPTIME_SEC}s) — EXISTING 체크 스킵 (현재 claude ${EXISTING}개)"
-elif [ "$EXISTING" -gt 30 ] && [ "$FORCE_MODE" != "--force" ]; then
-    log "이미 claude CLI 프로세스 ${EXISTING}개 실행 중, 스킵 (강제 실행: bash auto-restore.sh --force)"
+elif [ "${EXISTING:-0}" -gt 0 ] && [ "$FORCE_MODE" != "--force" ]; then
+    log "활성 claude CLI 프로세스 ${EXISTING}개 실행 중 — auto-restore 스킵 (강제: bash auto-restore.sh --force)"
     exit 0
 fi
 
 # 기존 claude 프로세스 모두 종료 (새 세션 생성 전, 신규 tmux 창 생성 방지)
-log "기존 claude 프로세스 종료 중..."
-pkill -x "claude" 2>/dev/null || true
+# 기존 claude 프로세스 종료 (새 세션 생성 전 — 단, 보호 PID는 절대 kill 금지)
+# 보호 PID: ~/.claude/protected-claude-pids 에 등록된 PID (현재 활성 Claude Code 세션 PID)
+PROTECTED_PIDS_FILE="$HOME/.claude/protected-claude-pids"
+PROTECTED_PIDS=""
+if [ -f "$PROTECTED_PIDS_FILE" ]; then
+    # 살아있는 PID만 유효 (stale 항목 무시)
+    while IFS= read -r ppid; do
+        [ -z "$ppid" ] && continue
+        if kill -0 "$ppid" 2>/dev/null; then
+            PROTECTED_PIDS="$PROTECTED_PIDS $ppid"
+        fi
+    done < "$PROTECTED_PIDS_FILE"
+    [ -n "$PROTECTED_PIDS" ] && log "보호 PID 목록:$PROTECTED_PIDS"
+fi
+
+log "기존 claude 프로세스 종료 중 (보호 PID 제외)..."
+ps -A -o pid=,comm= 2>/dev/null | awk '/[[:space:]]claude$/{print $1}' | while read -r cpid; do
+    if echo " $PROTECTED_PIDS " | grep -qF " $cpid "; then
+        log "보호 PID 스킵: $cpid (활성 Claude Code 세션)"
+        continue
+    fi
+    kill "$cpid" 2>/dev/null || true
+done
 sleep 2
 
 # 스테일 tmux 소켓 파일 정리 (부팅 후 재실행 시 서버가 없는데 소켓 파일이 남아있는 경우 대비)
