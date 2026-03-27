@@ -7,11 +7,41 @@ final class ProfileService: ObservableObject {
     private let ymlPath = NSHomeDirectory() + "/.config/smug/claude-work.yml"
 
     func load() {
-        guard let contents = try? String(contentsOfFile: ymlPath, encoding: .utf8) else {
-            profiles = []
-            return
+        // 1. smug YAML에서 로드 (name + root + delay 정보 포함)
+        let fromYml: [SmugProfile]
+        if let contents = try? String(contentsOfFile: ymlPath, encoding: .utf8) {
+            fromYml = parseYml(contents)
+        } else {
+            fromYml = []
         }
-        profiles = parseYml(contents)
+
+        // 2. activated-sessions.json에서 merge (YAML에 없는 경로만 추가)
+        let ymlNames = Set(fromYml.map { $0.name })
+        let activatedPaths = loadActivatedPaths()
+        var merged = fromYml
+        for path in activatedPaths {
+            let name = (path as NSString).lastPathComponent
+            guard !name.isEmpty, !ymlNames.contains(name) else { continue }
+            merged.append(SmugProfile(
+                id: stableID(for: name),
+                name: name,
+                root: path,
+                delay: 0,
+                enabled: true
+            ))
+        }
+        profiles = merged
+    }
+
+    private func loadActivatedPaths() -> [String] {
+        let path = NSHomeDirectory() + "/.claude/activated-sessions.json"
+        for candidate in [path, path + ".bak"] {
+            guard let data = FileManager.default.contents(atPath: candidate),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let list = obj["activated"] as? [String] else { continue }
+            return list
+        }
+        return []
     }
 
     func save(_ profiles: [SmugProfile]) {

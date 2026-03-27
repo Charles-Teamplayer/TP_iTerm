@@ -978,13 +978,13 @@ final class SessionMonitor: ObservableObject {
         )
     }
 
-    func createSession(name: String, directory: String) async {
+    func createSession(name: String, directory: String, sessionName: String? = nil) async {
         let safeName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let safeDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !safeName.isEmpty, !safeDir.isEmpty else { return }
 
-        // 첫 번째 active 세션 사용 (없으면 claude-work)
-        let targetSession = windowGroupService.groups
+        // 호출자가 sessionName 지정하면 사용, 없으면 첫 번째 active 세션 (없으면 claude-work)
+        let targetSession = sessionName ?? windowGroupService.groups
             .first(where: { !$0.isWaitingList })?.sessionName ?? "claude-work"
         let escapedName = shellEscape(safeName)
         let escapedDir = shellEscape(safeDir)

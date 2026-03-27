@@ -358,7 +358,7 @@ struct ContentView: View {
                     if !searchText.isEmpty && totalVisible == 0 {
                         VStack(spacing: 8) {
                             Image(systemName: "magnifyingglass").font(.system(size: 24)).foregroundStyle(.secondary)
-                            Text("'\(searchText)' 결과 없음").font(.callout).foregroundStyle(.secondary)
+                            Text("No results for '\(searchText)'").font(.callout).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -996,9 +996,18 @@ struct NewSessionSheet: View {
     @Binding var isPresented: Bool
     @State private var directory = ""
     @State private var isCreating = false
+    @State private var selectedGroupId: UUID? = nil
 
     var derivedName: String {
         (directory as NSString).lastPathComponent
+    }
+
+    var activeGroups: [WindowPane] {
+        monitor.windowGroupService.groups.filter { !$0.isWaitingList }
+    }
+
+    var selectedGroup: WindowPane? {
+        activeGroups.first { $0.id == selectedGroupId } ?? activeGroups.first
     }
 
     var canCreate: Bool {
@@ -1038,6 +1047,20 @@ struct NewSessionSheet: View {
                 .padding(4)
             }
 
+            if activeGroups.count > 1 {
+                GroupBox("Group") {
+                    Picker("Group", selection: $selectedGroupId) {
+                        ForEach(activeGroups) { group in
+                            Text("\(group.name) (\(group.sessionName))").tag(Optional(group.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(4)
+                }
+                .onAppear { selectedGroupId = activeGroups.first?.id }
+            }
+
             HStack {
                 Spacer()
                 Button("Cancel") { isPresented = false }
@@ -1045,7 +1068,13 @@ struct NewSessionSheet: View {
                 Button("Create") {
                     Task {
                         isCreating = true
-                        await monitor.createSession(name: derivedName, directory: directory)
+                        let targetSession = selectedGroup?.sessionName
+                        await monitor.createSession(name: derivedName, directory: directory,
+                                                    sessionName: targetSession)
+                        // 그룹에 프로필 추가 (window-groups.json 동기화)
+                        if let group = selectedGroup {
+                            monitor.windowGroupService.moveProfile(derivedName, to: group)
+                        }
                         isCreating = false
                         isPresented = false
                     }

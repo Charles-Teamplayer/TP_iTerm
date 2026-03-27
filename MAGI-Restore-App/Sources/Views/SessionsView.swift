@@ -114,6 +114,7 @@ struct SessionDetailView: View {
                                                     name: session.projectName,
                                                     root: root,
                                                     delay: session.profileDelay,
+                                                    sessionName: session.tmuxSession,
                                                     createDir: !dirExists
                                                 )
                                                 isRestoring = false
