@@ -455,20 +455,27 @@ print('')
                 continue
             fi
 
-            if command -v jq &>/dev/null; then
-                TAB_PROJECT=$(jq -r '.project // ""' "$STATE_FILE" 2>/dev/null)
-                LAST_TS_ISO=$(jq -r '.timestamp // ""' "$STATE_FILE" 2>/dev/null)
-                TAB_TYPE=$(jq -r '.type // ""' "$STATE_FILE" 2>/dev/null)
-            else
-                TAB_PROJECT=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('project',''))" 2>/dev/null)
-                LAST_TS_ISO=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('timestamp',''))" 2>/dev/null)
-                TAB_TYPE=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('type',''))" 2>/dev/null)
-            fi
+            # BUG#5 fix: 4회 파일 읽기 → 1회 통합 (race condition 제거)
+            _AGING_DATA=$(python3 -c "
+import json
+try:
+    d=json.load(open('$STATE_FILE'))
+    print(d.get('project',''))
+    print(d.get('timestamp',''))
+    print(d.get('type',''))
+    print(d.get('pid',0))
+except:
+    print(''); print(''); print(''); print(0)
+" 2>/dev/null)
+            TAB_PROJECT=$(printf '%s' "$_AGING_DATA" | sed -n '1p')
+            LAST_TS_ISO=$(printf '%s' "$_AGING_DATA" | sed -n '2p')
+            TAB_TYPE=$(printf '%s' "$_AGING_DATA" | sed -n '3p')
+            TAB_PID_READ=$(printf '%s' "$_AGING_DATA" | sed -n '4p')
             [ -z "$LAST_TS_ISO" ] && continue
             # active/working/starting: PID가 살아있을 때만 aging 스킵 (죽은 세션은 aging 진행)
             # BUG#5 fix: starting 상태도 스킵 (새 세션 생성 직후 2초 이내 aging 방지)
             if [ "$TAB_TYPE" = "active" ] || [ "$TAB_TYPE" = "working" ] || [ "$TAB_TYPE" = "starting" ]; then
-                TAB_PID=$(jq -r '.pid // "0"' "$STATE_FILE" 2>/dev/null || echo "0")
+                TAB_PID="${TAB_PID_READ:-0}"
                 if [ "$TAB_PID" -gt 0 ] && kill -0 "$TAB_PID" 2>/dev/null; then
                     continue  # PID 살아있음 → aging 스킵
                 fi
