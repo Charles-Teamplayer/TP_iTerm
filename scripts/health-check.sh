@@ -225,23 +225,25 @@ while IFS= read -r sname; do
     [ -z "$sname" ] && continue
     if tmux has-session -t "$sname" 2>/dev/null; then
         CNT=$(tmux list-clients -t "$sname" 2>/dev/null | wc -l | tr -d ' ')
+        # linked session(-vN)도 포함하여 실제 클라이언트 수 확인 (BUG-HEALTH-LINKED fix)
+        LINKED_CNT=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${sname}-v" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' ')
+        TOTAL_CNT=$((CNT + LINKED_CNT))
         EXT=$(tmux list-clients -t "$sname" 2>/dev/null | grep -c "control-mode\|extended-output" 2>/dev/null || echo "0")
-        CLIENT_COUNT=$((CLIENT_COUNT + CNT))
+        CLIENT_COUNT=$((CLIENT_COUNT + TOTAL_CNT))
         EXTENDED_CHK=$((EXTENDED_CHK + EXT))
-        if [ "$CNT" -ge 1 ]; then
-            ok "$sname: 클라이언트 ${CNT}개"
-            tmux list-clients -t "$sname" 2>/dev/null | awk '{print "    " $0}'
+        if [ "$TOTAL_CNT" -ge 1 ]; then
+            ok "$sname: 클라이언트 ${TOTAL_CNT}개 (main=${CNT}, linked=${LINKED_CNT})"
         else
-            warn "$sname: 클라이언트 0개 (iTerm CC 미연결)"
+            warn "$sname: 클라이언트 0개 (iTerm 미연결)"
         fi
     fi
 done <<< "$ACTIVE_SESSIONS"
 if [ "$EXTENDED_CHK" -gt 0 ]; then
     ok "iTerm CC 모드 연결됨 (control-mode 확인)"
 elif [ "$CLIENT_COUNT" -gt 0 ]; then
-    warn "CC 모드 미감지 — iTerm이 tmux -CC 모드로 연결되지 않았을 수 있음"
+    ok "iTerm 연결됨 (linked session 방식)"
 else
-    fail "전체 세션 클라이언트 0개 — %extended-output 위험! (iTerm CC 모드 미연결)"
+    fail "전체 세션 클라이언트 0개 — iTerm 미연결"
 fi
 
 # 10. Orphan tab-states 현황 (강화된 검사)
@@ -291,13 +293,21 @@ echo -e "\n${BOLD}[12] 실시간 상태 점검 요약${NC}"
 HEALTH_SCORE=0
 HEALTH_MAX=10
 
+# BUG-HEALTH-SCORE fix: linked session 아키텍처 반영 + 부팅 초기 크래시 정상 처리
 # 각 항목별 점수 계산
 if [ -n "$TOTAL_WIN_COUNT" ] && [ "$TOTAL_WIN_COUNT" -gt 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 2)); fi
 if [ -n "$ZOMBIE_WINS" ] && [ "$ZOMBIE_WINS" -eq 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 1)); fi
-if [ -z "$RECENT_CRASHES" ] || [ "$RECENT_CRASHES" -eq 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 2)); fi
+# 크래시: 부팅 1시간 내 크래시는 초기 시작 경쟁 조건으로 정상 처리
+BOOT_TS_HC=$(sysctl -n kern.boottime 2>/dev/null | awk '{print $4}' | tr -d ',')
+UPTIME_HC=$(( $(date +%s) - ${BOOT_TS_HC:-0} ))
+if [ -z "$RECENT_CRASHES" ] || [ "$RECENT_CRASHES" -eq 0 ]; then
+    HEALTH_SCORE=$((HEALTH_SCORE + 2))
+elif [ "$UPTIME_HC" -lt 3600 ]; then
+    HEALTH_SCORE=$((HEALTH_SCORE + 1))  # 부팅 1h 내 크래시는 경고만
+fi
 if [ -n "$ORPHAN_COUNT" ] && [ "$ORPHAN_COUNT" -eq 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 1)); fi
-if [ -n "$CLIENT_COUNT" ] && [ "$CLIENT_COUNT" -ge 1 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 2)); fi
-if [ -n "$EXTENDED_CHK" ] && [ "$EXTENDED_CHK" -gt 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 2)); fi
+# 클라이언트: main + linked 통합 (CC mode 별도 점수 제거 → linked 방식 동등 처리)
+if [ -n "$CLIENT_COUNT" ] && [ "$CLIENT_COUNT" -ge 1 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 4)); fi
 
 if [ "$HEALTH_SCORE" -ge 9 ]; then
     ok "종합 상태: ${HEALTH_SCORE}/${HEALTH_MAX} (정상)"
