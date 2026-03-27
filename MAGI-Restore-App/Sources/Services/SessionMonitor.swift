@@ -355,7 +355,8 @@ final class SessionMonitor: ObservableObject {
                 // 창이 없어진 경우 → 새로 생성 (-P -F로 실제 index 획득 후 send-keys)
                 let escapedName = shellEscape(session.windowName)
                 let escapedDir  = shellEscape(safeDir)
-                let newIdxRaw = await ShellService.runAsync("tmux new-window -t \(session.tmuxSession) -n '\(escapedName)' -c '\(escapedDir)' -P -F '#{window_index}'")
+                // BUG#21 fix: tmuxSession 이스케이프 (공백/특수문자 안전)
+                let newIdxRaw = await ShellService.runAsync("tmux new-window -t '\(shellEscape(session.tmuxSession))' -n '\(escapedName)' -c '\(escapedDir)' -P -F '#{window_index}'")
                 let newIdx = newIdxRaw.trimmingCharacters(in: .whitespacesAndNewlines)
                 let winTarget = newIdx.isEmpty ? escapedName : newIdx
                 await ShellService.runAsync("tmux send-keys -t '\(session.tmuxSession):\(winTarget)' '\(claudeEntry)' Enter 2>/dev/null")
@@ -445,8 +446,9 @@ final class SessionMonitor: ObservableObject {
 
             if paneCmd.isEmpty {
                 // 창이 사라진 경우 — 새로 생성 (-P -F로 실제 index 획득 후 send-keys)
+                // BUG#21 fix: tmuxSession 이스케이프
                 let newIdxRaw = await ShellService.runAsync(
-                    "tmux new-window -t \(session.tmuxSession) -n '\(winName)' -c '\(escapedDir)' -P -F '#{window_index}'"
+                    "tmux new-window -t '\(shellEscape(session.tmuxSession))' -n '\(winName)' -c '\(escapedDir)' -P -F '#{window_index}'"
                 )
                 let newIdx2 = newIdxRaw.trimmingCharacters(in: .whitespacesAndNewlines)
                 let winTarget2 = newIdx2.isEmpty ? winName : newIdx2

@@ -15,18 +15,31 @@ init_stops() {
     fi
 }
 
-# 윈도우 이름 → 프로젝트 경로 매핑 (auto-restore.sh와 동기화 유지)
-VALID_WINDOWS=(
-    "imsms" "imsms-agent" "mdm" "tesla-lvds" "tesla-dashboard"
-    "mindmap" "sj-mindmap" "imessage" "btt" "infra"
-    "skills" "appletv" "imsms-web" "auto-restart"
-)
+# BUG#22 fix: VALID_WINDOWS 하드코딩 제거 → window-groups.json + activated-sessions.json 동적 읽기
+get_valid_windows() {
+    python3 -c "
+import json, os
+result = set()
+# window-groups.json에서 profileNames 수집
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    for g in groups:
+        for p in g.get('profileNames', []):
+            result.add(p)
+except: pass
+# activated-sessions.json에서 basename 수집
+try:
+    d = json.load(open(os.path.expanduser('~/.claude/activated-sessions.json')))
+    for p in d.get('activated', []):
+        result.add(os.path.basename(p))
+except: pass
+for r in sorted(result):
+    print(r)
+" 2>/dev/null
+}
 
 is_valid_window() {
-    for w in "${VALID_WINDOWS[@]}"; do
-        [ "$w" = "$1" ] && return 0
-    done
-    return 1
+    get_valid_windows | grep -qxF "$1"
 }
 
 case "${1:-}" in
@@ -87,8 +100,8 @@ else:
         echo "  $(basename $0) --remove <name>  목록에서 제거"
         echo "  $(basename $0) --clear          전체 초기화"
         echo ""
-        echo "유효한 window 이름:"
-        for w in "${VALID_WINDOWS[@]}"; do echo "  $w"; done
+        echo "유효한 window 이름 (window-groups.json 기준):"
+        get_valid_windows | while read -r w; do echo "  $w"; done
         exit 0
         ;;
 
