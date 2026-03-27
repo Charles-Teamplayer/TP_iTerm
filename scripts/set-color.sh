@@ -83,6 +83,12 @@ TTY_PATH=$(find_tty)
 [ -z "$TTY_PATH" ] && { _log "TTY not found for state=$STATE"; exit 0; }
 TTY_NAME="${TTY_PATH#/dev/}"
 
+# tmux pane 보호: tmux에 속하지 않는 TTY (= Claude Code 자체 터미널 등)에는 색상 쓰지 않음
+if ! tmux list-panes -a -F "#{pane_tty}" 2>/dev/null | grep -qxF "$TTY_PATH"; then
+    _log "SKIP: $TTY_NAME is not a tmux pane (self-protection)"
+    exit 0
+fi
+
 # config에서 색상 읽기
 if command -v jq &>/dev/null; then
     READ_COLOR=$(jq -r ".states[\"$STATE\"] | \"\(.color[0])|\(.color[1])|\(.color[2])\"" "$CONFIG" 2>/dev/null)

@@ -83,6 +83,12 @@ TTY_PATH=$(find_tty)
 [ -z "$TTY_PATH" ] && { _log "TTY not found for state=$STATE"; exit 0; }
 TTY_NAME="${TTY_PATH#/dev/}"
 
+# tmux pane 보호: tmux에 속하지 않는 TTY (= Claude Code 자체 터미널 등)에는 색상 쓰지 않음
+if ! tmux list-panes -a -F "#{pane_tty}" 2>/dev/null | grep -qxF "$TTY_PATH"; then
+    _log "SKIP: $TTY_NAME is not a tmux pane (self-protection)"
+    exit 0
+fi
+
 # config에서 색상 읽기
 if command -v jq &>/dev/null; then
     READ_COLOR=$(jq -r ".states[\"$STATE\"] | \"\(.color[0])|\(.color[1])|\(.color[2])\"" "$CONFIG" 2>/dev/null)
@@ -97,7 +103,9 @@ fi
 R=$(echo "$READ_COLOR" | cut -d'|' -f1)
 G=$(echo "$READ_COLOR" | cut -d'|' -f2)
 B=$(echo "$READ_COLOR" | cut -d'|' -f3)
-R=${R:-128}; G=${G:-128}; B=${B:-128}
+[[ -z "$R" || "$R" == "null" ]] && R=128
+[[ -z "$G" || "$G" == "null" ]] && G=128
+[[ -z "$B" || "$B" == "null" ]] && B=128
 
 # 프로젝트명 매핑
 [ -z "$PROJECT" ] && PROJECT=$(basename "$PWD")
@@ -120,11 +128,8 @@ printf '\e]1;%s\a' "$TITLE" > "$TTY_PATH" 2>/dev/null
 printf '\e]6;1;bg;red;brightness;%s\a\e]6;1;bg;green;brightness;%s\a\e]6;1;bg;blue;brightness;%s\a' \
     "$R" "$G" "$B" > "$TTY_PATH" 2>/dev/null
 
-# tmux -CC 모드: 윈도우 이름으로 탭 제목 설정 (OSC 1은 tmux가 가로채므로)
-if [ -n "${TMUX:-}" ]; then
-    CURRENT_WINDOW=$(tmux display-message -p '#I' 2>/dev/null)
-    [ -n "$CURRENT_WINDOW" ] && tmux rename-window -t "$CURRENT_WINDOW" "$TITLE" 2>/dev/null || true
-fi
+# tmux rename-window 비활성화 — 창 이름이 원본 프로파일명으로 유지되어야 함
+# (탭 색상/배지는 escape sequence로만 처리)
 
 # badge
 BADGE_ENABLED=$(jq -r '.badge_enabled // false' "$CONFIG" 2>/dev/null || echo "false")
@@ -141,6 +146,10 @@ fi
 mkdir -p "$STATE_DIR"
 _save_state "$TTY_NAME" "$PROJECT" "$R" "$G" "$B"
 
+# 하위호환: pipe-delimited 상태 저장 (watchdog/tab-focus-monitor용)
+COMPAT_STATE_DIR="$HOME/.claude/tab-states"
+mkdir -p "$COMPAT_STATE_DIR"
+echo "${STATE}|${PROJECT}|$(date +%s)" > "$COMPAT_STATE_DIR/$TTY_NAME"
 
 # flash 처리
 FLASH=$(jq -r ".states[\"$STATE\"].flash // false" "$CONFIG" 2>/dev/null || echo "false")
