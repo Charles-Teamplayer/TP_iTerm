@@ -495,6 +495,12 @@ final class SessionMonitor: ObservableObject {
         await refresh(showBanner: true)
     }
 
+    /// 단일 세션 수동 중지 시 checkAutoSync 재시작 방지 (doStop/doKill 전 호출)
+    func markIntentionallyStopped(_ session: ClaudeSession) {
+        intentionallyStoppedIds.insert(session.id)
+        intentionallyStoppedProfiles.insert(session.projectName)
+    }
+
     func toggleSelection(_ id: String) {
         if selectedForRestore.contains(id) {
             selectedForRestore.remove(id)
