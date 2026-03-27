@@ -790,8 +790,20 @@ final class SessionMonitor: ObservableObject {
                 anyChange = true
             }
 
-            // 제거: tmux에 있는데 desired에 없는 탭 (해당 창만 kill)
+            // 제거: tmux에 있는데 desired에 없는 탭 (BUG#12: intentional stop 처리 후 kill)
             for windowName in currentWindows where !desiredSet.contains(windowName) {
+                intentionallyStoppedProfiles.insert(windowName)  // crash 감지 방지
+                // 실행 중인 세션은 intentional-stop 기록 + graceful TERM
+                if let runningSession = sessions.first(where: {
+                    $0.projectName == windowName && $0.tmuxSession == sname && $0.isRunning
+                }) {
+                    intentionallyStoppedIds.insert(runningSession.id)
+                    let dir = runningSession.directory.isEmpty ? windowName : runningSession.directory
+                    await ShellService.intentionalStopAsync(projectDir: dir)
+                    if runningSession.pid > 0 {
+                        await ShellService.runAsync("kill -TERM \(runningSession.pid) 2>/dev/null; true")
+                    }
+                }
                 await ShellService.runAsync(
                     "tmux kill-window -t '\(escaped):\(shellEscape(windowName))' 2>/dev/null; true"
                 )
