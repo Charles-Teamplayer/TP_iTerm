@@ -338,6 +338,10 @@ print('')
                         IDX=$((IDX + 1))
                     done
                     log "REORDER: $TARGET_SESSION 순서 복원 완료"
+                    # BUG-REORDER-MONITOR fix: reorder 후 monitor:999 재확인 — 다른 창이 999에 있으면 먼저 이동
+                    WIN_AT_999=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' '$1=="999" && $2!="monitor"{print $2;exit}')
+                    [ -n "$WIN_AT_999" ] && tmux move-window -s "$TARGET_SESSION:999" -t "$TARGET_SESSION:900" 2>/dev/null || true
+                    tmux move-window -s "$TARGET_SESSION:monitor" -t "$TARGET_SESSION:999" 2>/dev/null || true
                 fi
             done
         fi

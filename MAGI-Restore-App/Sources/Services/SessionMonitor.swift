@@ -810,10 +810,21 @@ final class SessionMonitor: ObservableObject {
         // 중복 생성 방지: check+create를 단일 shell 명령으로 atomic하게 처리
         // BUG-SENDKEYS-NOTARGET fix: \; 체인에서 send-keys -t 없으면 외부 실행 시 pane 못 찾음
         // → new-window -P -F '#{window_index}'로 index 캡처 후 명시적 -t로 send-keys
+        // BUG-NEW-006 fix: _WIDX 빈 경우(race) window_id 기반 retry (auto-restore.sh 방식 통일)
         let cmd = """
         if ! tmux list-windows -t '\(escapedSession)' -F '#{window_name}' 2>/dev/null | grep -qxF '\(escapedName)'; then \
           _WIDX=$(tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedRoot)' -P -F '#{window_index}' 2>/dev/null); \
-          [ -n "$_WIDX" ] && tmux send-keys -t '\(escapedSession)':$_WIDX "\(mkdirPart)\(sleepPart)(bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
+          _WID=""; \
+          for _r in 1 2 3; do \
+            _WID=$(tmux list-windows -t '\(escapedSession)' -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w='\(escapedName)' '$2==w{print $1;exit}'); \
+            [ -n "$_WID" ] && break; sleep 0.4; \
+          done; \
+          if [ -n "$_WID" ]; then \
+            tmux set-window-option -t "$_WID" automatic-rename off 2>/dev/null; \
+            tmux send-keys -t "$_WID" "\(mkdirPart)\(sleepPart)(bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
+          elif [ -n "$_WIDX" ]; then \
+            tmux send-keys -t '\(escapedSession)':$_WIDX "\(mkdirPart)\(sleepPart)(bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
+          fi; \
         fi; \
         true
         """

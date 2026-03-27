@@ -157,22 +157,27 @@ firstLinked = f"{session}-v{firstIdx}"
 firstCmd = f"/bin/bash -lc 'tmux has-session -t {firstLinked} 2>/dev/null || tmux new-session -d -s {firstLinked} -t {session} 2>/dev/null; tmux select-window -t {firstLinked}:{firstIdx} 2>/dev/null; tmux attach-session -t {firstLinked}; exec /bin/zsh -l'"
 
 # BUG-ITERM-GROUPTABS fix: 단일 tell newWin 블록 + delay 1 (레퍼런스 불안정 방지)
+# BUG-010 fix (auto-attach): try-on-error 추가 — 첫 창 실패 시 silent fail 방지
 lines = [
     'tell application "iTerm2"',
     '    activate',
-    f'    set newWin to (create window with default profile command "{firstCmd}")',
-    '    delay 1',
+    '    try',
+    f'        set newWin to (create window with default profile command "{firstCmd}")',
+    '        delay 1',
 ]
 
 if realPairs[1:]:
-    lines.append('    tell newWin')
+    lines.append('        tell newWin')
     for (winIdx, name) in realPairs[1:]:
         linkedName = f"{session}-v{winIdx}"
         cmd = f"/bin/bash -lc 'tmux has-session -t {linkedName} 2>/dev/null || tmux new-session -d -s {linkedName} -t {session} 2>/dev/null; tmux select-window -t {linkedName}:{winIdx} 2>/dev/null; tmux attach-session -t {linkedName}; exec /bin/zsh -l'"
-        lines.append('        delay 0.5')
-        lines.append(f'        create tab with default profile command "{cmd}"')
-    lines.append('    end tell')
+        lines.append('            delay 0.5')
+        lines.append(f'            create tab with default profile command "{cmd}"')
+    lines.append('        end tell')
 
+lines.append('    on error errMsg')
+lines.append('        -- 창 생성 실패 로그 (iTerm2 미준비 또는 권한 오류)')
+lines.append('    end try')
 lines.append('end tell')
 
 print('\n'.join(lines))
