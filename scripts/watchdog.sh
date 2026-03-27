@@ -51,7 +51,29 @@ rotate_stderr_log() {
 }
 
 notify() {
-    osascript -e "display notification \"$1\" with title \"MAGI+NORN Watchdog\" sound name \"Basso\"" 2>/dev/null || true
+    local msg="$1"
+    local is_critical="${2:-0}"
+    # 기본 배너 알림
+    osascript -e "display notification \"${msg//\"/\'}\" with title \"MAGI+NORN Watchdog\" sound name \"Basso\"" 2>/dev/null || true
+    # 최근 이벤트 파일 저장 (상세 확인용)
+    printf "[%s] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$msg" > /tmp/watchdog-latest-event.txt
+    tail -30 "$LOG_FILE" 2>/dev/null >> /tmp/watchdog-latest-event.txt
+    # 크리티컬 이벤트: 별도 다이얼로그 표시 (백그라운드, 버튼 포함)
+    if [ "$is_critical" = "1" ]; then
+        (
+            SAFE_MSG="${msg//\"/\'}"
+            TS=$(date '+%H:%M:%S')
+            LOGF="$LOG_FILE"
+            osascript -e "
+set logFile to \"$LOGF\"
+set logTail to do shell script \"tail -20 \" & quoted form of logFile
+set choice to button returned of (display dialog \"[${TS}] ${SAFE_MSG}\" & return & return & \"─── 최근 로그 (20줄) ───\" & return & logTail with title \"MAGI+NORN Watchdog 상세\" buttons {\"닫기\", \"전체 로그 열기\"} default button \"닫기\")
+if choice is \"전체 로그 열기\" then
+    do shell script \"open \" & quoted form of logFile
+end if" 2>/dev/null
+        ) &>/dev/null &
+        disown
+    fi
 }
 
 # --health-check 플래그: 상태 출력 후 즉시 종료 (무한루프 방지)
@@ -91,7 +113,7 @@ while true; do
 
         if [ -n "$CRASHED" ]; then
             log "CRASH DETECTED: $CRASHED"
-            notify "Claude Code 크래시 감지! 자동 재시작 중..."
+            notify "Claude Code 크래시 감지! 자동 재시작 중..." 1
 
             # Notion에 크래시 기록
             if [ -n "$NOTION_API_KEY" ]; then
@@ -276,7 +298,7 @@ for path in d.get('activated', []):
                 # 연속 크래시 임계값 초과 시 intentional-stop 등록 (무한 루프 방지)
                 if [ "$NEW_COUNT" -gt "$CRASH_MAX" ]; then
                     log "CRASH LOOP DETECTED: $RESTART_PROJECT (${NEW_COUNT}회) — intentional-stop 등록"
-                    notify "⚠️ $RESTART_PROJECT 연속 ${NEW_COUNT}회 크래시 — 자동 복원 중단"
+                    notify "⚠️ $RESTART_PROJECT 연속 ${NEW_COUNT}회 크래시 — 자동 복원 중단" 1
                     bash "$HOME/.claude/scripts/stop-session.sh" "$WINDOW_NAME" 2>/dev/null || true
                     continue
                 fi

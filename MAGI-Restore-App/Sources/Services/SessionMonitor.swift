@@ -1050,13 +1050,11 @@ final class SessionMonitor: ObservableObject {
               SNAME=\(ShellService.shellq(sessionName)) tmux list-sessions -F '#{session_name}' 2>/dev/null \
                 | python3 -c "import sys,os,re; sn=os.environ['SNAME']; [print(l.strip()) for l in sys.stdin if re.fullmatch(re.escape(sn)+r'-v[0-9]+', l.strip())]" \
                 | while read s; do tmux list-clients -t "$s" -F '#{client_tty}' 2>/dev/null; done; \
-              tmux list-windows -t '\(shellEscape(sessionName))' -F '#{window_name}' 2>/dev/null \
-                | while read w; do tmux list-panes -t '\(shellEscape(sessionName)):'"$w"' -F '"'"'#{pane_tty}'"'"' 2>/dev/null; done; \
             } | sort -u | grep -v '^$'
             """
         )
+        // ttys가 비어있어도 strategy-2 (allMissingTTY)는 동작하므로 guard 제거
         let ttys = ttysRaw.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        guard !ttys.isEmpty else { return }
 
         // BUG-CLOSEWIN-TTY fix: iTerm2 tmux 통합 탭은 tty = missing value → TTY 비교 불가
         // 두 가지 전략 병행:
