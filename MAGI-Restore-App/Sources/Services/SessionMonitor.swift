@@ -592,6 +592,7 @@ final class SessionMonitor: ObservableObject {
         }
         for session in idleZsh { intentionallyStoppedIds.insert(session.id) }
         for session in idleZsh {
+            intentionallyStoppedProfiles.insert(session.projectName)  // BUG#14 fix: checkAutoSync 즉시 재시작 방지
             let winIdx = session.windowIndex
             let paneCmd = await ShellService.runAsync(
                 "tmux list-panes -t '\(session.tmuxSession):\(winIdx)' -F '#{pane_current_command}' 2>/dev/null | head -1"

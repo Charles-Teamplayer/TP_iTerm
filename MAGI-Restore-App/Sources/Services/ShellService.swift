@@ -127,9 +127,19 @@ for sn in sessions:
             let pyRemoveYml = """
             WIN_NAME=\(shellEscapeArg(windowName)) \
             python3 -c "
-            import re, os
+            import re, os, json
             name = os.environ['WIN_NAME']
-            path = os.path.expanduser('~/.config/smug/claude-work.yml')
+            # BUG#15 fix: window-groups.json에서 실제 세션명 조회 (claude-work 하드코딩 제거)
+            _gp = os.path.expanduser('~/.claude/window-groups.json')
+            _sn = 'claude-work'
+            try:
+                for _g in json.load(open(_gp)):
+                    if name in _g.get('profileNames', []):
+                        _sn = _g.get('sessionName', 'claude-work') or 'claude-work'
+                        break
+            except Exception:
+                pass
+            path = os.path.expanduser(f'~/.config/smug/{_sn}.yml')
             try:
                 content = open(path).read()
                 pattern = r'  - name: ' + re.escape(name) + r'\\n(?:(?!  - name:).)*'
