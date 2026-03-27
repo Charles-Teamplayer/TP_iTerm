@@ -14,6 +14,18 @@ log() {
 
 log "=== Auto-Restore 시작 ==="
 
+# 중복 실행 방지 (PID 파일 기반 — LaunchAgent 동시 트리거 방어, macOS flock 없음)
+LOCK_FILE="/tmp/.auto-restore.lock"
+if [ -f "$LOCK_FILE" ]; then
+    OLD_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        log "이미 auto-restore 실행 중 (PID: $OLD_PID) — 스킵"
+        exit 0
+    fi
+fi
+echo $$ > "$LOCK_FILE"
+trap 'rm -f "$LOCK_FILE"' EXIT
+
 # 환경변수 로드 (LaunchAgent 비-TTY 환경 — .zshrc source 금지: iTerm2 integration 오류 발생)
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/opt/homebrew/sbin:$PATH"
 export NVM_DIR="$HOME/.nvm"

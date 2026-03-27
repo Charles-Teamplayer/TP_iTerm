@@ -111,7 +111,7 @@ while true; do
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] $CRASHED" >> "$RESTART_LOG"
 
             echo "$CRASHED" | while IFS= read -r line; do
-                RESTART_PROJECT=$(echo "$line" | sed -n 's/.*CRASH DETECTED: \([^ ]*\).*/\1/p')
+                RESTART_PROJECT=$(echo "$line" | sed -n 's/.*CRASH DETECTED: \(.*\) (PID:.*/\1/p')
                 [ -z "$RESTART_PROJECT" ] && continue
 
                 # cooldown 체크 (같은 프로젝트 60초 내 재시작 방지)
@@ -210,8 +210,14 @@ for path in d.get('activated', []):
                     fi
                 fi
                 # 보호 PID 체크: 창에 살아있는 protected PID가 있으면 kill 금지 (활성 Claude Code 세션 보호)
+                # BUG: window name에 '.' 포함 시 tmux가 pane 구분자 오해 → window_id(@N) 기반으로 list-panes
                 PROTECTED_PIDS_FILE="$HOME/.claude/protected-claude-pids"
-                PANE_PIDS_RAW=$(tmux list-panes -t "$TARGET_SESSION:$WINDOW_NAME" -F '#{pane_pid}' 2>/dev/null || true)
+                WIN_ID_PROT=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
+                if [ -n "$WIN_ID_PROT" ]; then
+                    PANE_PIDS_RAW=$(tmux list-panes -t "$WIN_ID_PROT" -F '#{pane_pid}' 2>/dev/null || true)
+                else
+                    PANE_PIDS_RAW=$(tmux list-panes -t "$TARGET_SESSION:$WINDOW_NAME" -F '#{pane_pid}' 2>/dev/null || true)
+                fi
                 SKIP_KILL=false
                 if [ -f "$PROTECTED_PIDS_FILE" ] && [ -n "$PANE_PIDS_RAW" ]; then
                     while IFS= read -r ppid; do
