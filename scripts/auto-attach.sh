@@ -70,9 +70,9 @@ fi
 log "iTerm2 시작/활성화 중..."
 open -a iTerm 2>/dev/null || true
 
-# iTerm2 프로세스가 올라올 때까지 최대 60초 대기
+# iTerm2 프로세스가 올라올 때까지 최대 90초 대기 (iter59: 60s→90s, 느린 부팅 대응)
 ITERM_READY=0
-for i in $(seq 1 12); do
+for i in $(seq 1 18); do
     if ps -A 2>/dev/null | grep -q "iTerm.app/Contents/MacOS/iTerm2"; then
         log "iTerm2 준비됨 (${i}번째 확인, $((i*5))초)"
         ITERM_READY=1
@@ -161,8 +161,13 @@ firstIdx, firstName = realPairs[0]
 # /bin/bash -lc: login shell → homebrew PATH 포함, tmux 실패해도 zsh가 탭 유지
 # linked session 방식: 각 탭이 독립적인 tmux 창 추적
 # tmux attach-session -t session:N은 session 전체 current window를 변경하므로 사용 불가
+# iter59 MEDIUM-05: AppleScript 문자열 이스케이프 (세션명에 \ 또는 " 포함 시 방어)
+def as_escape(s):
+    return s.replace('\\', '\\\\').replace('"', '\\"')
+safe_session = as_escape(session)
 firstLinked = f"{session}-v{firstIdx}"
-firstCmd = f"/bin/bash -lc 'tmux has-session -t {firstLinked} 2>/dev/null || tmux new-session -d -s {firstLinked} -t {session} 2>/dev/null; tmux select-window -t {firstLinked}:{firstIdx} 2>/dev/null; tmux attach-session -t {firstLinked}; exec /bin/zsh -l'"
+safe_firstLinked = as_escape(firstLinked)
+firstCmd = f"/bin/bash -lc 'tmux has-session -t {safe_firstLinked} 2>/dev/null || tmux new-session -d -s {safe_firstLinked} -t {safe_session} 2>/dev/null; tmux select-window -t {safe_firstLinked}:{firstIdx} 2>/dev/null; tmux attach-session -t {safe_firstLinked}; exec /bin/zsh -l'"
 
 # BUG-ITERM-GROUPTABS fix: 단일 tell newWin 블록 + delay 1 (레퍼런스 불안정 방지)
 # BUG-010 fix (auto-attach): try-on-error 추가 — 첫 창 실패 시 silent fail 방지
@@ -178,7 +183,8 @@ if realPairs[1:]:
     lines.append('        tell newWin')
     for (winIdx, name) in realPairs[1:]:
         linkedName = f"{session}-v{winIdx}"
-        cmd = f"/bin/bash -lc 'tmux has-session -t {linkedName} 2>/dev/null || tmux new-session -d -s {linkedName} -t {session} 2>/dev/null; tmux select-window -t {linkedName}:{winIdx} 2>/dev/null; tmux attach-session -t {linkedName}; exec /bin/zsh -l'"
+        safe_linkedName = as_escape(linkedName)
+        cmd = f"/bin/bash -lc 'tmux has-session -t {safe_linkedName} 2>/dev/null || tmux new-session -d -s {safe_linkedName} -t {safe_session} 2>/dev/null; tmux select-window -t {safe_linkedName}:{winIdx} 2>/dev/null; tmux attach-session -t {safe_linkedName}; exec /bin/zsh -l'"
         lines.append('            delay 0.5')
         lines.append(f'            create tab with default profile command "{cmd}"')
     lines.append('        end tell')
