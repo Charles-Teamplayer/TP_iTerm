@@ -165,22 +165,11 @@ with open(registry_path, 'w') as f:
 if before > after:
     print(f"[URD] Session unregistered: {project_name}")
 
-# dir → window_name 매핑
+# dir → window_name 매핑 (profile name = window-groups.json profileNames 기준)
+# BUG-REGMAP fix: basename과 다른 profile name만 명시 (나머지는 fallback basename 사용)
 DIR_TO_WINDOW = {
-    os.path.expanduser("~/claude/TP_newIMSMS"): "imsms",
-    os.path.expanduser("~/claude/TP_newIMSMS_Agent"): "imsms-agent",
-    os.path.expanduser("~/claude/TP_MDM"): "mdm",
-    os.path.expanduser("~/claude/TP_TESLA_LVDS"): "tesla-lvds",
-    os.path.expanduser("~/ralph-claude-code/TESLA_Status_Dashboard"): "tesla-dash",
-    os.path.expanduser("~/claude/TP_MindMap_AutoCC"): "mindmap",
-    os.path.expanduser("~/SJ_MindMap"): "sj-mindmap",
-    os.path.expanduser("~/claude/TP_A.iMessage_standalone_01067051080"): "imessage",
-    os.path.expanduser("~/claude/TP_BTT"): "btt",
-    os.path.expanduser("~/claude/TP_Infra_reduce_Project"): "infra",
-    os.path.expanduser("~/claude/TP_skills"): "skills",
+    os.path.expanduser("~/claude/TP_A.iMessage_standalone_01067051080"): "a.imessage",
     os.path.expanduser("~/claude/AppleTV_ScreenSaver.app"): "AppleTV_ScreenSaver.app",
-    os.path.expanduser("~/claude/imsms.im-website"): "imsms-web",
-    os.path.expanduser("~/claude/TP_iTerm"): "session-mgr",
 }
 
 # BUG#27 fix: 하드코딩 맵에 없는 dir은 basename을 window_name으로 사용 (새 프로젝트 지원)
@@ -230,23 +219,11 @@ with open(registry_path, 'r') as f:
 crashed = []
 alive = []
 
-# dir → tmux window_name 매핑 (2중 확인용)
+# dir → tmux window_name 매핑 (2중 확인용, profile name = window-groups.json 기준)
+# BUG-REGMAP fix: basename과 다른 profile name만 명시 (나머지는 fallback basename 사용)
 DIR_TO_WINDOW = {
-    os.path.expanduser("~/claude/TP_newIMSMS"): "imsms",
-    os.path.expanduser("~/claude/TP_newIMSMS_Agent"): "imsms-agent",
-    os.path.expanduser("~/claude/TP_MDM"): "mdm",
-    os.path.expanduser("~/claude/TP_TESLA_LVDS"): "tesla-lvds",
-    os.path.expanduser("~/ralph-claude-code/TESLA_Status_Dashboard"): "tesla-dash",
-    os.path.expanduser("~/claude/TP_MindMap_AutoCC"): "mindmap",
-    os.path.expanduser("~/SJ_MindMap"): "sj-mindmap",
-    os.path.expanduser("~/claude/TP_A.iMessage_standalone_01067051080"): "imessage",
-    os.path.expanduser("~/claude/TP_BTT"): "btt",
-    os.path.expanduser("~/claude/TP_Infra_reduce_Project"): "infra",
-    os.path.expanduser("~/claude/TP_skills"): "skills",
+    os.path.expanduser("~/claude/TP_A.iMessage_standalone_01067051080"): "a.imessage",
     os.path.expanduser("~/claude/AppleTV_ScreenSaver.app"): "AppleTV_ScreenSaver.app",
-    os.path.expanduser("~/claude/imsms.im-website"): "imsms-web",
-    os.path.expanduser("~/claude/TP_iTerm"): "session-mgr",
-    os.path.expanduser("~/claude/TP_MailSystem"): "mailsystem",
 }
 
 # tmux 윈도우 목록 1회 캐시 (반복 호출 방지) — 모든 세션 포함

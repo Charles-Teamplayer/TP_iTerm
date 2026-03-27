@@ -165,7 +165,7 @@ STOPS_FILE="$HOME/.claude/intentional-stops.json"
 if [ -f "$STOPS_FILE" ]; then
     STOP_CNT=$(python3 -c "import json; d=json.load(open('$STOPS_FILE')); print(len(d.get('stops',[])))" 2>/dev/null || echo "0")
     if [[ "$STOP_CNT" =~ ^[0-9]+$ ]] && [ "$STOP_CNT" -gt 0 ]; then
-        warn "의도적 정지: ${STOP_CNT}개 (watchdog 자동재시작 제외, reboot 복원은 activated-sessions 기준)"
+        warn "의도적 정지: ${STOP_CNT}개 (watchdog 자동재시작 + reboot auto-restore 제외, stop-session.sh --remove 로 해제)"
         python3 -c "
 import json
 d=json.load(open('$STOPS_FILE'))
@@ -292,7 +292,7 @@ HEALTH_SCORE=0
 HEALTH_MAX=10
 
 # 각 항목별 점수 계산
-if [ -n "$WIN_COUNT" ] && [ "$WIN_COUNT" -gt 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 2)); fi
+if [ -n "$TOTAL_WIN_COUNT" ] && [ "$TOTAL_WIN_COUNT" -gt 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 2)); fi
 if [ -n "$ZOMBIE_WINS" ] && [ "$ZOMBIE_WINS" -eq 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 1)); fi
 if [ -z "$RECENT_CRASHES" ] || [ "$RECENT_CRASHES" -eq 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 2)); fi
 if [ -n "$ORPHAN_COUNT" ] && [ "$ORPHAN_COUNT" -eq 0 ]; then HEALTH_SCORE=$((HEALTH_SCORE + 1)); fi

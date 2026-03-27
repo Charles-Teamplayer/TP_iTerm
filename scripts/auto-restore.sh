@@ -167,6 +167,32 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
             continue
         fi
 
+        # BUG-NOSTOPCHECK fix: intentional-stops.json 체크 — 의도적으로 중지된 프로파일 skip (48h TTL 적용)
+        if [ -f "$STOPS_FILE" ]; then
+            IS_STOPPED=$(python3 -c "
+import json, sys
+from datetime import datetime, timezone, timedelta
+try:
+    d = json.load(open('$STOPS_FILE'))
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+    for s in d.get('stops', []):
+        if s.get('window_name','') != '$PROFILE_NAME':
+            continue
+        ts_str = s.get('stopped_at','1970-01-01T00:00:00Z').replace('Z','+00:00')
+        ts = datetime.fromisoformat(ts_str)
+        if ts > cutoff:
+            print('yes')
+            sys.exit(0)
+    print('no')
+except:
+    print('no')
+" 2>/dev/null)
+            if [ "$IS_STOPPED" = "yes" ]; then
+                log "SKIP $PROFILE_NAME — intentional-stop 목록에 있음 (stop-session.sh --remove 로 재활성화 가능)"
+                continue
+            fi
+        fi
+
         # claude project 파일 있으면 --continue
         if [ -d "$PROJ_PATH/.claude/projects" ] && ls "$PROJ_PATH/.claude/projects"/*.jsonl 2>/dev/null | head -1 | grep -q .; then
             CLAUDE_CMD="claude --dangerously-skip-permissions --continue"
