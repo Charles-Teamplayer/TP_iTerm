@@ -379,8 +379,8 @@ for path in d.get('activated', []):
                     fi
                 fi
                 NEW_COUNT=$((CURRENT_COUNT + 1))
-                # BUG-ATOMIC: 원자적 쓰기 (동시 watchdog 두 인스턴스 대비)
-                echo "${NEW_COUNT}|${CC_NOW}" > "${CRASH_COUNT_FILE}.$$" && mv "${CRASH_COUNT_FILE}.$$" "$CRASH_COUNT_FILE" 2>/dev/null || echo "${NEW_COUNT}|${CC_NOW}" > "$CRASH_COUNT_FILE"
+                # iter59: atomic_write 함수 통일 (디스크 체크 포함)
+                atomic_write "$CRASH_COUNT_FILE" "${NEW_COUNT}|${CC_NOW}"
 
                 # 연속 크래시 임계값 초과 시 intentional-stop 등록 (무한 루프 방지)
                 if [ "$NEW_COUNT" -gt "$CRASH_MAX" ]; then
