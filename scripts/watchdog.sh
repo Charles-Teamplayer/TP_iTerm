@@ -456,6 +456,7 @@ print('')
             fi
 
             # BUG#5 fix: 4회 파일 읽기 → 1회 통합 (race condition 제거)
+            # BUG-PID-NONE fix: pid:null JSON → Python None → "None" 문자열 방지 (int coerce)
             _AGING_DATA=$(python3 -c "
 import json
 try:
@@ -463,7 +464,8 @@ try:
     print(d.get('project',''))
     print(d.get('timestamp',''))
     print(d.get('type',''))
-    print(d.get('pid',0))
+    _pid=d.get('pid',0)
+    print(int(_pid) if _pid is not None else 0)
 except:
     print(''); print(''); print(''); print(0)
 " 2>/dev/null)

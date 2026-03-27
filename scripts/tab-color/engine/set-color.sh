@@ -103,15 +103,17 @@ else
 import json
 d = json.load(open('$CONFIG'))
 c = d['states'].get('$STATE', {}).get('color', [128,128,128])
-print(f'{c[0]}|{c[1]}|{c[2]}')
+# None 값 방어 (BUG-NULL-COLOR: json null → Python None → 'None' 문자열 방지)
+print('|'.join(str(v) if v is not None else '128' for v in c[:3]))
 " 2>/dev/null)
 fi
 R=$(echo "$READ_COLOR" | cut -d'|' -f1)
 G=$(echo "$READ_COLOR" | cut -d'|' -f2)
 B=$(echo "$READ_COLOR" | cut -d'|' -f3)
-[[ -z "$R" || "$R" == "null" ]] && R=128
-[[ -z "$G" || "$G" == "null" ]] && G=128
-[[ -z "$B" || "$B" == "null" ]] && B=128
+# "null"(jq), "None"(python3), 빈 문자열 모두 128 fallback
+[[ -z "$R" || "$R" == "null" || "$R" == "None" ]] && R=128
+[[ -z "$G" || "$G" == "null" || "$G" == "None" ]] && G=128
+[[ -z "$B" || "$B" == "null" || "$B" == "None" ]] && B=128
 
 # 프로젝트명 매핑
 [ -z "$PROJECT" ] && PROJECT=$(basename "$PWD")
