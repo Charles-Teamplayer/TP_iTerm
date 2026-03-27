@@ -329,11 +329,20 @@ def tmux_window_exists(session_dir, project_name):
     return False
 
 def is_claude_process(pid):
-    """PID가 실제 claude 관련 프로세스인지 확인 (PID 재사용 오탐 방지)"""
+    """PID가 실제 claude CLI 프로세스인지 확인 (PID 재사용 오탐 방지)
+    iter59: 느슨한 'claude' in cmd → 정확한 경로/바이너리명 매칭으로 개선"""
     try:
         r = subprocess.run(['ps', '-o', 'command=', '-p', str(pid)], capture_output=True, text=True)
         cmd = r.stdout.strip()
-        return 'claude' in cmd.lower()
+        if not cmd:
+            return False
+        # claude CLI 바이너리 정확 매칭: /path/to/claude 또는 claude로 시작하는 명령
+        import re
+        # watchdog/auto-restore/tab-status 등 claude 관련 스크립트 제외
+        exclude = ['watchdog', 'auto-restore', 'tab-focus', 'session-registry', 'health-check', 'cc-fix', 'MAGI']
+        if any(x in cmd for x in exclude):
+            return False
+        return bool(re.search(r'(?:^|/)claude(?:\s|$|--)', cmd))
     except Exception:
         return False
 
@@ -345,8 +354,13 @@ for session in data['sessions']:
     if pid and pid != 'unknown':
         pid_alive = False
         try:
-            os.kill(int(pid), 0)
-            pid_alive = True
+            pid_int = int(pid)
+            # iter59: BUG-SR-01/02 fix — PID=0 또는 음수는 os.kill시 프로세스 그룹에 신호 전송 위험
+            if pid_int <= 0:
+                pid_alive = False
+            else:
+                os.kill(pid_int, 0)
+                pid_alive = True
         except PermissionError:
             pid_alive = True
         except (ProcessLookupError, ValueError):
