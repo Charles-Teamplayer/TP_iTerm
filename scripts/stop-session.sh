@@ -109,7 +109,7 @@ else:
         WINDOW="$1"
         if ! is_valid_window "$WINDOW"; then
             echo "⚠️  알 수 없는 window: $WINDOW"
-            echo "유효한 이름: ${VALID_WINDOWS[*]}"
+            echo "유효한 이름: $(get_valid_windows | tr '\n' ' ')"
             exit 1
         fi
         init_stops
@@ -121,7 +121,7 @@ window = '$WINDOW'
 ts = '$TS'
 d = json.load(open(stops_path))
 d['stops'] = [s for s in d.get('stops', []) if s.get('window_name') != window]
-d['stops'].append({'window_name': window, 'stopped_at': ts})
+d['stops'].append({'project': window, 'window_name': window, 'stopped_at': ts})
 d['last_updated'] = ts
 tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(stops_path))
 with os.fdopen(tmp_fd, 'w') as f:

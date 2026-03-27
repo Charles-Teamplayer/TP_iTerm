@@ -54,6 +54,16 @@ notify() {
     osascript -e "display notification \"$1\" with title \"MAGI+NORN Watchdog\" sound name \"Basso\"" 2>/dev/null || true
 }
 
+# --health-check 플래그: 상태 출력 후 즉시 종료 (무한루프 방지)
+if [ "${1:-}" = "--health-check" ]; then
+    WPID=$(ps -A -o pid=,args= | grep watchdog.sh | grep -v grep | grep -v health-check | awk '{print $1}' | head -1)
+    echo "[health-check] watchdog PID: ${WPID:-없음}"
+    echo "[health-check] 보호 PIDs: $(cat "$HOME/.claude/protected-claude-pids" 2>/dev/null | tr '\n' ',')"
+    echo "[health-check] window-groups: $(python3 -c "import json; g=[x for x in json.load(open('$HOME/.claude/window-groups.json')) if not x.get('isWaitingList')]; print([x['sessionName'] for x in g])" 2>/dev/null)"
+    echo "[health-check] 마지막 로그: $(tail -1 "$LOG_FILE" 2>/dev/null)"
+    exit 0
+fi
+
 # 환경변수 로드
 if [ -f "$HOME/.zshrc" ]; then
     source "$HOME/.zshrc" 2>/dev/null || true

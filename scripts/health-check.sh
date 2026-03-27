@@ -164,7 +164,7 @@ fi
 STOPS_FILE="$HOME/.claude/intentional-stops.json"
 if [ -f "$STOPS_FILE" ]; then
     STOP_CNT=$(python3 -c "import json; d=json.load(open('$STOPS_FILE')); print(len(d.get('stops',[])))" 2>/dev/null || echo "0")
-    if [ "$STOP_CNT" -gt 0 ] && [ "$STOP_CNT" != "0" ]; then
+    if [[ "$STOP_CNT" =~ ^[0-9]+$ ]] && [ "$STOP_CNT" -gt 0 ]; then
         warn "의도적 정지: ${STOP_CNT}개 (watchdog 자동재시작 제외, reboot 복원은 activated-sessions 기준)"
         python3 -c "
 import json
