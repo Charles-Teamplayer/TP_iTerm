@@ -299,7 +299,8 @@ for SNAME in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Ev '.
         log "$SNAME monitor 창 복구 (index 999)"
     else
         # monitor가 999번이 아니면 이동
-        MON_IDX=$(tmux list-windows -t "$SNAME" -F '#{window_index} #{window_name}' 2>/dev/null | awk '/monitor/{print $1}')
+        # BUG-DEDUP-REGEX fix: /monitor/ 정규식 → 정확 매칭 (terminal-mirror 등 오탐 방지)
+        MON_IDX=$(tmux list-windows -t "$SNAME" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' '$2=="monitor"{print $1}')
         if [ -n "$MON_IDX" ] && [ "$MON_IDX" != "999" ]; then
             tmux move-window -s "$SNAME:monitor" -t "$SNAME:999" 2>/dev/null || true
             log "$SNAME monitor $MON_IDX → 999 이동"

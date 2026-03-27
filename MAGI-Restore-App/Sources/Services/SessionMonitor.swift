@@ -755,7 +755,15 @@ final class SessionMonitor: ObservableObject {
     // - 순서 변경: reorderTabs로 move-window만 사용 (프로세스 재시작 없음)
     func checkAutoSync() async {
         guard restoreSettings.autoSync else { return }
-        // auto-restore.sh가 최근 5분 내 실행된 경우 충돌 방지 (부팅 직후 경쟁 방지)
+        // auto-restore.sh 실행 중이면 충돌 방지 — LOCK 파일 체크
+        let autoRestoreLock = "/tmp/.auto-restore.lock"
+        if FileManager.default.fileExists(atPath: autoRestoreLock),
+           let lockPid = try? String(contentsOfFile: autoRestoreLock, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+           !lockPid.isEmpty {
+            let alive = await ShellService.runAsync("kill -0 \(lockPid) 2>/dev/null && echo yes || echo no")
+            if alive.trimmingCharacters(in: .whitespacesAndNewlines) == "yes" { return }
+        }
+        // auto-restore.sh가 최근 5분 내 완료된 경우 충돌 방지 (부팅 직후 경쟁 방지)
         let restoreDoneFlag = NSHomeDirectory() + "/.claude/logs/.auto-restore-done"
         if let ts = try? String(contentsOfFile: restoreDoneFlag, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
            let flagTime = Double(ts), Date().timeIntervalSince1970 - flagTime < 300 {
