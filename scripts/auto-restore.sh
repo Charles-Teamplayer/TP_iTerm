@@ -182,8 +182,15 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
         tmux new-window -t "$SESSION_NAME" -n "$PROFILE_NAME" -c "$PROJ_PATH" 2>/dev/null
         # BUG#4 fix: sort|tail 대신 창 이름으로 직접 인덱스 조회 (인덱스 재사용 방어)
         # BUG#2 fix: 창 이름에 '.'이 있으면 tmux target 파싱 오류 → window_id 기반 조회
-        WIN_ID_AR=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$PROFILE_NAME" '$2==w{print $1; exit}')
-        WIN_IDX=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$PROFILE_NAME" '$2==w{print $1; exit}')
+        # BUG-ARRACE fix: new-window 직후 list-windows에 없을 수 있음 → 최대 1.5s retry
+        WIN_ID_AR=""
+        WIN_IDX=""
+        for _retry in 1 2 3; do
+            WIN_ID_AR=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$PROFILE_NAME" '$2==w{print $1; exit}')
+            WIN_IDX=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$PROFILE_NAME" '$2==w{print $1; exit}')
+            [ -n "$WIN_ID_AR" ] && break
+            sleep 0.5
+        done
         if [ -n "$WIN_ID_AR" ]; then
             tmux set-window-option -t "$WIN_ID_AR" automatic-rename off 2>/dev/null
             tmux send-keys -t "$WIN_ID_AR" \
@@ -203,8 +210,20 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
 
     # monitor 창을 맨 마지막에 추가 + _init_ 임시 창 제거
     tmux new-window -t "$SESSION_NAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" 2>/dev/null
-    tmux set-window-option -t "$SESSION_NAME:monitor" automatic-rename off 2>/dev/null
-    tmux move-window -s "$SESSION_NAME:monitor" -t "$SESSION_NAME:999" 2>/dev/null || true
+    # BUG-ARRACE: monitor도 retry 후 window_id 기반 set-option (이름 직접 사용 회피)
+    MON_WIN_ID=""
+    for _retry in 1 2 3; do
+        MON_WIN_ID=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' '$2=="monitor"{print $1; exit}')
+        [ -n "$MON_WIN_ID" ] && break
+        sleep 0.5
+    done
+    if [ -n "$MON_WIN_ID" ]; then
+        tmux set-window-option -t "$MON_WIN_ID" automatic-rename off 2>/dev/null
+        tmux move-window -s "$MON_WIN_ID" -t "$SESSION_NAME:999" 2>/dev/null || true
+    else
+        tmux set-window-option -t "$SESSION_NAME:monitor" automatic-rename off 2>/dev/null
+        tmux move-window -s "$SESSION_NAME:monitor" -t "$SESSION_NAME:999" 2>/dev/null || true
+    fi
     tmux kill-window -t "$SESSION_NAME:_init_" 2>/dev/null || true
     log "$SESSION_NAME monitor 창 index 999에 배치 완료"
 

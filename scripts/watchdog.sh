@@ -87,7 +87,7 @@ while true; do
             if [ -n "$NOTION_API_KEY" ]; then
                 # 크래시된 각 프로젝트에 대해 기록
                 echo "$CRASHED" | while IFS= read -r line; do
-                    PROJECT=$(echo "$line" | sed -n 's/.*CRASH DETECTED: \([^ ]*\).*/\1/p')
+                    PROJECT=$(echo "$line" | sed -n 's/.*CRASH DETECTED: \(.*\) (PID:.*/\1/p')
                     PROJECT="${PROJECT:-unknown}"
                     python3 "$HOME/claude/TP_skills/session-manager/notion-advanced.py" \
                         "$PROJECT" "Crash Recovery" "프로세스 비정상 종료 감지 - 자동 재시작" 2>/dev/null || true
@@ -96,7 +96,7 @@ while true; do
 
             # 크래시된 세션의 탭에 ⚪🔴 깜빡임 표시
             echo "$CRASHED" | while IFS= read -r line; do
-                CRASH_PROJECT=$(echo "$line" | sed -n 's/.*CRASH DETECTED: \([^ ]*\).*/\1/p')
+                CRASH_PROJECT=$(echo "$line" | sed -n 's/.*CRASH DETECTED: \(.*\) (PID:.*/\1/p')
                 CRASH_PROJECT="${CRASH_PROJECT:-unknown}"
                 CRASH_TTY=$(echo "$line" | sed -n 's/.*TTY: \([^ ,]*\).*/\1/p')
                 # TAB_TTY 주입으로 LaunchAgent 컨텍스트에서도 정확한 TTY에 색상 씀
@@ -115,7 +115,7 @@ while true; do
                 [ -z "$RESTART_PROJECT" ] && continue
 
                 # cooldown 체크 (같은 프로젝트 60초 내 재시작 방지)
-                LAST_RESTART=$(grep "$RESTART_PROJECT" "$RESTART_LOG" 2>/dev/null | tail -2 | head -1 | sed 's/\[//' | sed 's/\].*//')
+                LAST_RESTART=$(grep "$RESTART_PROJECT" "$RESTART_LOG" 2>/dev/null | tail -1 | sed 's/\[//' | sed 's/\].*//')
                 if [ -n "$LAST_RESTART" ]; then
                     LAST_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$LAST_RESTART" +%s 2>/dev/null || echo 0)
                     NOW_EPOCH=$(date +%s)
