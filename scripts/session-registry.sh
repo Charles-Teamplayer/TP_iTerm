@@ -84,15 +84,19 @@ except:
 print(f"[URD] Session registered: {project_name} (PID: {pid})")
 PYEOF
         # 보호 PID 파일 업데이트: 활성 세션 PID를 ~/.claude/protected-claude-pids 에 기록
-        # auto-restore.sh 가 이 PID를 kill하지 않도록 보호 (CEO 요구: 활성 Claude Code 세션 보호)
+        # flock 기반 원자적 업데이트 — 다중 세션 동시 register 시 race condition 방지
         if [ -n "$PID" ] && [ "$PID" != "unknown" ]; then
             PROTECTED_FILE="$HOME/.claude/protected-claude-pids"
-            {
-                [ -f "$PROTECTED_FILE" ] && grep -v '^$' "$PROTECTED_FILE"
-                echo "$PID"
-            } | sort -u | while read -r pp; do
-                kill -0 "$pp" 2>/dev/null && echo "$pp"
-            done > "${PROTECTED_FILE}.tmp" 2>/dev/null && mv "${PROTECTED_FILE}.tmp" "$PROTECTED_FILE" 2>/dev/null || true
+            PROTECTED_LOCK="/tmp/.protected-pids.lock"
+            (
+                flock -x 9
+                {
+                    [ -f "$PROTECTED_FILE" ] && grep -v '^$' "$PROTECTED_FILE"
+                    echo "$PID"
+                } | sort -u | while read -r pp; do
+                    kill -0 "$pp" 2>/dev/null && echo "$pp"
+                done > "${PROTECTED_FILE}.tmp" 2>/dev/null && mv "${PROTECTED_FILE}.tmp" "$PROTECTED_FILE" 2>/dev/null || true
+            ) 9>"$PROTECTED_LOCK" 2>/dev/null || true
         fi
         # BUG-INTENTIONAL-STOP-CLEAR fix: 세션 등록 시 intentional-stops.json에서 해당 프로젝트 제거
         # 사용자가 의도적으로 세션을 다시 열었으면, 이전 intentional-stop 기록은 무효화해야 함

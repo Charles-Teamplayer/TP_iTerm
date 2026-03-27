@@ -229,7 +229,14 @@ except:
 
     # monitor 창을 맨 마지막에 추가 + _init_ 임시 창 제거
     # BUG-B fix: -P -F '#{window_id}' 즉시 캡처 → auto-rename race 제거
-    MON_WIN_ID=$(tmux new-window -t "$SESSION_NAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" -P -F '#{window_id}' 2>/dev/null || true)
+    # BUG-MONITOR-DUP fix: 이미 monitor 창이 있으면 재생성 안 함 (--force 중복 방지)
+    EXISTING_MON_ID=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' '$2=="monitor"{print $1; exit}')
+    if [ -n "$EXISTING_MON_ID" ]; then
+        MON_WIN_ID="$EXISTING_MON_ID"
+        log "$SESSION_NAME monitor 창 이미 존재 ($MON_WIN_ID) — 재사용"
+    else
+        MON_WIN_ID=$(tmux new-window -t "$SESSION_NAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" -P -F '#{window_id}' 2>/dev/null || true)
+    fi
     if [ -n "$MON_WIN_ID" ]; then
         tmux set-window-option -t "$MON_WIN_ID" automatic-rename off 2>/dev/null || true
         tmux rename-window -t "$MON_WIN_ID" "monitor" 2>/dev/null || true
