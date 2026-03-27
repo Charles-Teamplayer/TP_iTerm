@@ -1083,7 +1083,7 @@ except: pass
 
         var result: [TmuxWindow] = []
         for sessionName in sessions {
-            let escaped = sessionName.replacingOccurrences(of: "'", with: "'\\''")
+            let escaped = shellEscape(sessionName)
             let output = await ShellService.runAsync(
                 "tmux list-windows -t '\(escaped)' -F '#{window_index}\u{01}#{window_name}\u{01}#{pane_pid}\u{01}#{pane_tty}\u{01}#{pane_current_path}' 2>/dev/null"
             )
