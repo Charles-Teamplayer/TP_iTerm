@@ -69,7 +69,8 @@ while IFS= read -r sname; do
 
         # 좀비/orphan 윈도우 검사
         while IFS='|' read -r wname pid; do
-            if [ -z "$pid" ] || [ "$pid" = "0" ] || ! kill -0 "$pid" 2>/dev/null; then
+            # iter59: PID≤0 가드 추가 (음수/0 PID는 kill -0 사용 불가 — 프로세스 그룹 영향)
+            if [ -z "$pid" ] || ! [[ "$pid" =~ ^[0-9]+$ ]] || [ "$pid" -le 0 ] || ! kill -0 "$pid" 2>/dev/null; then
                 ZOMBIE_WINS=$((ZOMBIE_WINS + 1))
                 ZOMBIE_LIST="$ZOMBIE_LIST
     - [$sname] $wname (PID: $pid)"

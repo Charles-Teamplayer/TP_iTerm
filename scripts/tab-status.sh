@@ -21,7 +21,8 @@ for _wi in $(seq 1 20); do
         break
     fi
     _WALK_PID=$(ps -o ppid= -p "$_WALK_PID" 2>/dev/null | tr -d ' ')
-    [ -z "$_WALK_PID" ] || [ "$_WALK_PID" = "1" ] || [ "$_WALK_PID" = "0" ] && break
+    # iter59 BUG-OP-PREC fix: && before || 우선순위 오류 → {} 그룹으로 명시
+    { [ -z "$_WALK_PID" ] || [ "$_WALK_PID" = "1" ] || [ "$_WALK_PID" = "0" ]; } && break
 done
 export CC_PROCESS_PID
 
@@ -38,7 +39,8 @@ if [ "$STATE" = "working" ] || [ "$STATE" = "waiting" ] || [ "$STATE" = "attenti
             break
         fi
         _PID=$(ps -o ppid= -p "$_PID" 2>/dev/null | tr -d ' ')
-        [ -z "$_PID" ] || [ "$_PID" = "1" ] || [ "$_PID" = "0" ] && break
+        # iter59 BUG-OP-PREC fix: 동일 패턴 수정
+        { [ -z "$_PID" ] || [ "$_PID" = "1" ] || [ "$_PID" = "0" ]; } && break
     done
     if [ -n "$CURRENT_TTY" ]; then
         STATE_FILE="$STATE_DIR/${CURRENT_TTY}.json"

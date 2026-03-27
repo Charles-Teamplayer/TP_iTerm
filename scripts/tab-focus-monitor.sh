@@ -105,8 +105,9 @@ except:
                         # flash 종료
                         FLASH_PID_FILE="/tmp/tab-flash-${TTY_NAME}.pid"
                         if [ -f "$FLASH_PID_FILE" ]; then
-                            FLASH_PID=$(cat "$FLASH_PID_FILE" 2>/dev/null)
-                            [ -n "$FLASH_PID" ] && kill "$FLASH_PID" 2>/dev/null
+                            FLASH_PID=$(cat "$FLASH_PID_FILE" 2>/dev/null | tr -d ' ')
+                            # iter59: FLASH_PID 숫자 검증 (음수/비숫자 방어)
+                            [[ "$FLASH_PID" =~ ^[0-9]+$ ]] && [ "$FLASH_PID" -gt 0 ] && kill "$FLASH_PID" 2>/dev/null
                             rm -f "$FLASH_PID_FILE"
                         fi
                         # active 복원
