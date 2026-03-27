@@ -185,7 +185,13 @@ PYEOF
 )
 
     if [ -z "$APPLE_SCRIPT" ]; then
-        log "$SESSION_NAME AppleScript 생성 실패 — 스킵"
+        # BUG-001 fix: monitor-only(실제 탭 없음)와 진짜 실패 구분
+        NON_MON=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_name}' 2>/dev/null | grep -vxF monitor | wc -l | tr -d ' ')
+        if [ "${NON_MON:-0}" -eq 0 ]; then
+            log "$SESSION_NAME monitor 전용 세션 — iTerm 탭 생성 스킵 (정상)"
+        else
+            log "$SESSION_NAME AppleScript 생성 실패 — 스킵"
+        fi
         continue
     fi
 

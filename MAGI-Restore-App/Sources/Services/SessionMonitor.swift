@@ -1024,9 +1024,10 @@ final class SessionMonitor: ObservableObject {
               | awk -F'|' '$2=="monitor"{print $1}' \
               | xargs -I{} tmux kill-window -t {} 2>/dev/null; \
             tmux kill-window -t '\(escapedSession):_init_' 2>/dev/null; \
-            tmux new-window -t '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' '/bin/bash -c \"while true; do sleep 86400; done\"' 2>/dev/null; \
-            tmux set-window-option -t '\(escapedSession):monitor' automatic-rename off 2>/dev/null; \
-            tmux move-window -s '\(escapedSession):monitor' -t '\(escapedSession):999' 2>/dev/null; \
+            _MON_ID=$(tmux new-window -t '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' -P -F '#{window_id}' '/bin/bash -c \"while true; do sleep 86400; done\"' 2>/dev/null || true); \
+            [ -n \"$_MON_ID\" ] && tmux set-window-option -t \"$_MON_ID\" automatic-rename off 2>/dev/null || true; \
+            [ -n \"$_MON_ID\" ] && tmux rename-window -t \"$_MON_ID\" monitor 2>/dev/null || true; \
+            [ -n \"$_MON_ID\" ] && tmux move-window -s \"$_MON_ID\" -t '\(escapedSession):999' 2>/dev/null || true; \
             SNAME=\(ShellService.shellq(sessionName)) tmux list-sessions -F '#{session_name}' 2>/dev/null \
               | python3 -c "import sys,os,re; sn=os.environ['SNAME']; [print(l.strip()) for l in sys.stdin if re.fullmatch(re.escape(sn)+r'-v[0-9]+', l.strip())]" \
               | xargs -I{} tmux kill-session -t {} 2>/dev/null; \
