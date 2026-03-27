@@ -86,13 +86,25 @@ if [ "${1:-}" = "--health-check" ]; then
     exit 0
 fi
 
+# Watchdog 중복실행 방지 (self-lock)
+WATCHDOG_LOCK="/tmp/.watchdog.lock"
+if [ -f "$WATCHDOG_LOCK" ]; then
+    OLD_WD_PID=$(cat "$WATCHDOG_LOCK" 2>/dev/null)
+    if [ -n "$OLD_WD_PID" ] && kill -0 "$OLD_WD_PID" 2>/dev/null; then
+        echo "[$(date '+%H:%M:%S')] Watchdog 이미 실행 중 (PID: $OLD_WD_PID) — 종료" >> "$LOG_FILE"
+        exit 0
+    fi
+fi
+echo $$ > "$WATCHDOG_LOCK"
+trap 'rm -f "$WATCHDOG_LOCK"' EXIT
+
 # 환경변수 로드
 if [ -f "$HOME/.zshrc" ]; then
     source "$HOME/.zshrc" 2>/dev/null || true
 fi
 unset CLAUDECODE
 
-log "=== Watchdog 시작 ==="
+log "=== Watchdog 시작 (PID: $$) ==="
 
 # Watchdog 재시작 시 오래된(24h+) crash-count만 정리 (최근 카운터는 보존 → 크래시 루프 방지)
 NOW_INIT=$(date +%s)
@@ -215,11 +227,23 @@ for candidate in [path, path + '.bak']:
                 if [ -f "$INTENTIONAL_STOPS_FILE" ]; then
                     IS_INTENTIONAL=$(python3 -c "
 import json, sys
+from datetime import datetime, timezone, timedelta
 try:
     d = json.load(open('$INTENTIONAL_STOPS_FILE'))
     wn = sys.argv[1]
+    TTL_HOURS = 48
+    now = datetime.now(timezone.utc)
     for s in d.get('stops', []):
         if s.get('window_name', s.get('project', '')) == wn:
+            # TTL 체크 — 48시간 초과 항목은 만료 처리 (auto-restore와 동일 정책)
+            stopped_at = s.get('stopped_at', '')
+            if stopped_at:
+                try:
+                    ts = datetime.fromisoformat(stopped_at.replace('Z', '+00:00'))
+                    if (now - ts) > timedelta(hours=TTL_HOURS):
+                        continue  # 만료됨
+                except Exception:
+                    pass
             print('yes'); sys.exit(0)
 except: pass
 print('no')
