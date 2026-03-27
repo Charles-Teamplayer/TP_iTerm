@@ -44,6 +44,8 @@ final class SessionMonitor: ObservableObject {
                 await self?.refresh()
                 await self?.checkAutoRestore()
                 await self?.cleanupStaleLinkedSessions()
+                // Problem-7/8 fix: TTL 만료된 intentional-stops 주기적 정리
+                self?.reloadIntentionalStopsTTL()
             }
         }
         setupStateWatcher()
@@ -60,6 +62,40 @@ final class SessionMonitor: ObservableObject {
             if let windowName = stop["window_name"] as? String, !windowName.isEmpty {
                 intentionallyStoppedProfiles.insert(windowName)
             }
+        }
+    }
+
+    // Problem-7/8 fix: 48h TTL 만료된 intentional-stops 파일 항목 → in-memory set에서도 제거
+    private func reloadIntentionalStopsTTL() {
+        let path = NSHomeDirectory() + "/.claude/intentional-stops.json"
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let stops = json["stops"] as? [[String: Any]] else { return }
+        let now = Date().timeIntervalSince1970
+        let ttl: TimeInterval = 48 * 3600
+        // 유효한 항목 (TTL 미만) 이름 집합 계산
+        var validNames = Set<String>()
+        let iso = ISO8601DateFormatter()
+        for stop in stops {
+            guard let windowName = stop["window_name"] as? String, !windowName.isEmpty else { continue }
+            if let stoppedAt = stop["stopped_at"] as? String,
+               let date = iso.date(from: stoppedAt) {
+                if now - date.timeIntervalSince1970 < ttl {
+                    validNames.insert(windowName)
+                }
+                // 만료된 항목은 validNames에 포함 안 됨 → in-memory에서도 제거
+            } else {
+                // 타임스탬프 없으면 유효로 간주
+                validNames.insert(windowName)
+            }
+        }
+        // in-memory set에서 파일에 없거나 TTL 만료된 항목 제거
+        // (runtime에 추가된 항목 — 아직 파일에 없을 수 있음 — 은 유지)
+        let fileNames = Set(stops.compactMap { $0["window_name"] as? String })
+        intentionallyStoppedProfiles = intentionallyStoppedProfiles.filter { name in
+            // 파일에 기록된 항목이면 TTL 기준, 아니면 runtime 추가이므로 유지
+            guard fileNames.contains(name) else { return true }
+            return validNames.contains(name)
         }
     }
 
@@ -304,6 +340,17 @@ final class SessionMonitor: ObservableObject {
         }
         detectChanges(old: sessions, new: &newSessions)
         sessions = newSessions
+        // Problem-10 fix: 실행 중인 claude PID → ~/.claude/protected-claude-pids 갱신
+        updateProtectedPids(from: newSessions)
+    }
+
+    // Problem-10 fix: 실행 중인 세션 PID를 protected-claude-pids에 등록 (auto-restore.sh가 kill 못 하도록)
+    private func updateProtectedPids(from sessions: [ClaudeSession]) {
+        let pidSet = sessions.filter { $0.isRunning && $0.pid > 0 }.map { "\($0.pid)" }
+        guard !pidSet.isEmpty else { return }
+        let content = pidSet.joined(separator: "\n") + "\n"
+        let path = NSHomeDirectory() + "/.claude/protected-claude-pids"
+        try? content.write(toFile: path, atomically: true, encoding: .utf8)
     }
 
     // crash 감지 + didCrash 플래그 반영 (의도적 중지는 crash로 처리하지 않음)
@@ -798,6 +845,8 @@ final class SessionMonitor: ObservableObject {
         let activeGroups = windowGroupService.groups.filter { !$0.isWaitingList }
         for group in activeGroups {
             let sname = group.sessionName
+            // Problem-9 fix: startGroup 진행 중인 세션은 checkAutoSync 스킵 (경쟁 조건 방지)
+            guard !startingGroups.contains(sname) else { continue }
             let escaped = shellEscape(sname)
 
             // tmux 세션 없으면 스킵 (startGroup으로 명시적 시작 필요)
