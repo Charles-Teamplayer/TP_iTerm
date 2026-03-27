@@ -10,6 +10,21 @@ if [ -f "$_DEBUG_LOG" ] && [ "$(wc -l < "$_DEBUG_LOG" 2>/dev/null)" -gt 5000 ] 2
     tail -2500 "$_DEBUG_LOG" > "${_DEBUG_LOG}.tmp" && mv "${_DEBUG_LOG}.tmp" "$_DEBUG_LOG" 2>/dev/null || true
 fi
 
+# iter57: PPID 체인으로 CC 실제 PID 캡처 → set-color.sh pid 필드 수정 (watchdog aging 방지)
+# CC_PROCESS_PID = claude 프로세스 PID (real TTY 가진 첫 ancestor)
+_WALK_PID=$$
+CC_PROCESS_PID=0
+for _wi in $(seq 1 20); do
+    _WALK_TTY=$(ps -o tty= -p "$_WALK_PID" 2>/dev/null | tr -d ' ')
+    if [ -n "$_WALK_TTY" ] && [ "$_WALK_TTY" != "??" ]; then
+        CC_PROCESS_PID="$_WALK_PID"
+        break
+    fi
+    _WALK_PID=$(ps -o ppid= -p "$_WALK_PID" 2>/dev/null | tr -d ' ')
+    [ -z "$_WALK_PID" ] || [ "$_WALK_PID" = "1" ] || [ "$_WALK_PID" = "0" ] && break
+done
+export CC_PROCESS_PID
+
 # 사용자가 탭에 있을 때 working/waiting은 무시
 if [ "$STATE" = "working" ] || [ "$STATE" = "waiting" ] || [ "$STATE" = "attention" ]; then
     STATE_DIR="$HOME/.claude/tab-color/states"
