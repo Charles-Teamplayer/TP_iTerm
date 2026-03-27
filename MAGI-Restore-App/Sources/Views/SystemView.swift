@@ -264,7 +264,7 @@ except: pass
             if parts.count >= 2 { projectSessionMap[parts[0]] = parts[1] }
         }
 
-        // 모든 active 세션의 창 목록 수집
+        // BUG#35 fix: 창 목록 + index 동시 수집 (dot-name display-message 방지)
         let allWindowsRaw = await ShellService.runAsync("""
             python3 -c "
 import json, os, subprocess
@@ -273,17 +273,24 @@ try:
     for g in groups:
         sn = g.get('sessionName','')
         if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
-            r = subprocess.run(['tmux','list-windows','-t',sn,'-F','#{window_name}'], capture_output=True, text=True)
+            r = subprocess.run(['tmux','list-windows','-t',sn,'-F','#{window_index}|#{window_name}'], capture_output=True, text=True)
             for w in r.stdout.strip().split('\\n'):
-                if w: print(sn + '|' + w)
+                if '|' in w: print(sn + '|' + w)
 except: pass
 " 2>/dev/null
 """)
-        // sessionName|windowName 형식 → windowName → sessionName 매핑
-        var windowSessionMap: [String: String] = [:]
+        // sessionName|index|windowName 형식 파싱
+        var windowSessionMap: [String: String] = [:]   // windowName → sessionName
+        var windowIndexMap: [String: Int] = [:]        // "sn:winName" → windowIndex (BUG#35 fix)
         for line in allWindowsRaw.components(separatedBy: "\n") where line.contains("|") {
             let parts = line.components(separatedBy: "|")
-            if parts.count >= 2 { windowSessionMap[parts[1]] = parts[0] }
+            guard parts.count >= 3 else { continue }
+            let sn = parts[0], idxStr = parts[1]
+            let winName = parts[2...].joined(separator: "|")  // name에 | 포함 가능성 방어
+            if let idx = Int(idxStr) {
+                windowSessionMap[winName] = sn
+                windowIndexMap["\(sn):\(winName)"] = idx
+            }
         }
         let windowSet = Set(windowSessionMap.keys)
 
@@ -304,10 +311,12 @@ except: pass
             let dirExists = await ShellService.runAsync("[ -d \(shellq(expandedPath)) ] && echo YES || echo NO")
             guard dirExists.contains("YES") else { continue }
 
-            if windowSet.contains(proj.name) {
-                // 창은 있지만 claude가 실행 중인지 확인 (TTY 기반 + pgrep fallback)
+            // BUG#35 fix: 이름 대신 index 기반 타겟 사용 (dot-name tmux 파싱 방지)
+            let winIdx = windowIndexMap["\(targetSession):\(proj.name)"]
+            if windowSet.contains(proj.name), let idx = winIdx {
+                // 창은 있지만 claude가 실행 중인지 확인 (index 기반 → dot 안전)
                 let paneInfo = await ShellService.runAsync(
-                    "tmux display-message -t \(shellq("\(targetSession):\(proj.name)")) -p '#{pane_tty}|#{pane_pid}' 2>/dev/null"
+                    "tmux list-panes -t '\(escapedSession):\(idx)' -F '#{pane_tty}|#{pane_pid}' 2>/dev/null | head -1"
                 ).trimmingCharacters(in: .whitespacesAndNewlines)
                 let infoParts = paneInfo.components(separatedBy: "|")
                 let paneTty = infoParts.count > 0 ? infoParts[0] : ""
@@ -331,19 +340,23 @@ except: pass
                     continue  // claude 실행 중 → 건너뜀
                 }
 
-                // claude 죽어있음 → 재시작 명령 전송
+                // claude 죽어있음 → index 기반 send-keys (dot 안전)
                 let cmd = "bash ~/.claude/scripts/tab-status.sh starting \(shellq(proj.name)) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)"
                 await ShellService.runAsync(
-                    "tmux send-keys -t \(shellq("\(targetSession):\(proj.name)")) \(shellq(cmd)) Enter"
+                    "tmux send-keys -t '\(escapedSession):\(idx)' \(shellq(cmd)) Enter"
                 )
                 restored += 1
             } else {
-                // 창 없음 → 새로 생성
-                await ShellService.runAsync("tmux new-window -t '\(escapedSession)' -n \(shellq(proj.name)) -c \(shellq(expandedPath))")
-                await ShellService.runAsync("tmux set-window-option -t \(shellq("\(targetSession):\(proj.name)")) automatic-rename off 2>/dev/null")
+                // 창 없음 → 새로 생성 (-P -F로 실제 index 획득, dot-name 방지)
+                let newIdxRaw = await ShellService.runAsync(
+                    "tmux new-window -t '\(escapedSession)' -n \(shellq(proj.name)) -c \(shellq(expandedPath)) -P -F '#{window_index}'"
+                )
+                let newIdx = newIdxRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !newIdx.isEmpty else { continue }
+                await ShellService.runAsync("tmux set-window-option -t '\(escapedSession):\(newIdx)' automatic-rename off 2>/dev/null")
                 let cmd = "bash ~/.claude/scripts/tab-status.sh starting \(shellq(proj.name)) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)"
                 await ShellService.runAsync(
-                    "tmux send-keys -t \(shellq("\(targetSession):\(proj.name)")) \(shellq(cmd)) Enter"
+                    "tmux send-keys -t '\(escapedSession):\(newIdx)' \(shellq(cmd)) Enter"
                 )
                 restored += 1
             }

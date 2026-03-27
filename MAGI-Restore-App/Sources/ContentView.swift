@@ -112,7 +112,8 @@ struct ContentView: View {
                 if oldSession != newSession && !pane.isWaitingList {
                     Task {
                         await ShellService.runAsync(
-                            "tmux rename-session -t '\(ShellService.shellq(oldSession))' '\(ShellService.shellq(newSession))' 2>/dev/null; true"
+                            // BUG#34 fix: shellq already wraps in '...' — no extra quotes
+                            "tmux rename-session -t \(ShellService.shellq(oldSession)) \(ShellService.shellq(newSession)) 2>/dev/null; true"
                         )
                     }
                 }
