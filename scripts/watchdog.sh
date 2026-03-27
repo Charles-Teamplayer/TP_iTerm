@@ -496,12 +496,14 @@ except:
             TAB_PROJECT=$(printf '%s' "$_AGING_DATA" | sed -n '1p')
             LAST_TS_ISO=$(printf '%s' "$_AGING_DATA" | sed -n '2p')
             TAB_TYPE=$(printf '%s' "$_AGING_DATA" | sed -n '3p')
-            TAB_PID_READ=$(printf '%s' "$_AGING_DATA" | sed -n '4p')
+            TAB_PID_READ=$(printf '%s' "$_AGING_DATA" | sed -n '4p' | tr -d '[:space:]')
             [ -z "$LAST_TS_ISO" ] && continue
             # active/working/starting: PID가 살아있을 때만 aging 스킵 (죽은 세션은 aging 진행)
             # BUG#5 fix: starting 상태도 스킵 (새 세션 생성 직후 2초 이내 aging 방지)
             if [ "$TAB_TYPE" = "active" ] || [ "$TAB_TYPE" = "working" ] || [ "$TAB_TYPE" = "starting" ]; then
                 TAB_PID="${TAB_PID_READ:-0}"
+                # BUG-PID-NONINT fix: 숫자가 아닌 값 방어 (개행/공백/None 포함 가능성)
+                [[ ! "$TAB_PID" =~ ^[0-9]+$ ]] && TAB_PID=0
                 if [ "$TAB_PID" -gt 0 ] && kill -0 "$TAB_PID" 2>/dev/null; then
                     continue  # PID 살아있음 → aging 스킵
                 fi

@@ -26,5 +26,7 @@
     <string>/Users/teample.casper/.claude/logs/tab-focus-monitor.log</string>
     <key>StandardErrorPath</key>
     <string>/Users/teample.casper/.claude/logs/tab-focus-monitor.log</string>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
 </dict>
 </plist>
