@@ -71,14 +71,18 @@ except: pass
 
         var count = 0
         for sessionName in checkSessions {
-            let windowNames = await ShellService.runAsync(
-                "tmux list-windows -t '\(sessionName)' -F '#{window_name}' 2>/dev/null"
+            // BUG#28 fix: window name 직접 -t 타겟 사용 금지 (dot 이름 tmux 오인 방지)
+            // list-windows에서 index|name|pane_tty 한번에 수집 → index 기반으로 처리
+            let windowInfo = await ShellService.runAsync(
+                "tmux list-windows -t '\(sessionName)' -F '#{window_index}\u{01}#{window_name}\u{01}#{pane_tty}' 2>/dev/null"
             )
-            for win in windowNames.components(separatedBy: "\n").filter({ !$0.isEmpty && $0 != "monitor" }) {
-                let paneInfo = await ShellService.runAsync(
-                    "tmux display-message -t \(ShellService.shellq("\(sessionName):\(win)")) -p '#{pane_tty}' 2>/dev/null"
-                ).trimmingCharacters(in: .whitespacesAndNewlines)
-                let ttyBase = paneInfo.replacingOccurrences(of: "/dev/", with: "")
+            for line in windowInfo.components(separatedBy: "\n").filter({ !$0.isEmpty }) {
+                let parts = line.components(separatedBy: "\u{01}")
+                guard parts.count >= 3 else { continue }
+                let winName = parts[1]
+                guard winName != "monitor" && winName != "_init_" else { continue }
+                let paneTty = parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
+                let ttyBase = paneTty.replacingOccurrences(of: "/dev/", with: "")
                 guard !ttyBase.isEmpty else { continue }
                 let procs = await ShellService.runAsync("ps -o command -t \(ShellService.shellq(ttyBase)) 2>/dev/null | grep '[c]laude' | head -1")
                 if !procs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { count += 1 }

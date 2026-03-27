@@ -481,6 +481,8 @@ final class SessionMonitor: ObservableObject {
 
     func purgeSession(_ session: ClaudeSession) async {
         intentionallyStoppedIds.insert(session.id)
+        // BUG#29 fix: windowGroupService.save() 이전 checkAutoSync 재시작 방지
+        intentionallyStoppedProfiles.insert(session.projectName)
         let projectDir = session.directory.isEmpty ? session.projectName : session.directory
         await ShellService.purgeSessionAsync(
             pid: session.pid,
@@ -810,9 +812,9 @@ final class SessionMonitor: ObservableObject {
                 }
                 // BUG#23 fix: window name에 '.'이 있으면 tmux가 pane 구분자로 오인 → window_id(@N) 기반 kill
                 let winIdRaw = await ShellService.runAsync(
-                    "tmux list-windows -t '\(escaped)' -F '\#{window_id}|\#{window_name}' 2>/dev/null | awk -F'|' -v w='\(shellEscape(windowName))' '$2==w{print $1; exit}'"
+                    "tmux list-windows -t '\(escaped)' -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w='\(shellEscape(windowName))' '$2==w{print $1; exit}'"
                 )
-                let winId = winIdRaw.trimmingCharacters(in: .whitespaces)
+                let winId = winIdRaw.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !winId.isEmpty {
                     await ShellService.runAsync("tmux kill-window -t '\(winId)' 2>/dev/null; true")
                 } else {
