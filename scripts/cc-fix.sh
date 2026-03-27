@@ -7,7 +7,28 @@ SESSION="${TMUX_SESSION:-claude-work}"
 
 log() { echo "[$(date '+%H:%M:%S')] $1" >> "$LOG"; }
 
-log "=== cc-fix 시작 ==="
+# 세션별 프로세스 lock (동일 세션에 대한 동시 실행 방지)
+LOCK_FILE="/tmp/.cc-fix-lock-${SESSION//[^a-zA-Z0-9]/_}"
+if [ -f "$LOCK_FILE" ]; then
+    OLD_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        log "cc-fix 이미 실행 중 (PID: $OLD_PID, session: $SESSION) — 스킵"
+        exit 0
+    fi
+fi
+echo $$ > "$LOCK_FILE"
+trap 'rm -f "$LOCK_FILE"' EXIT
+
+# auto-restore 실행 중이면 cc-fix 스킵 (복구 중 불필요한 창 생성 방지)
+if [ -f "/tmp/.auto-restore.lock" ]; then
+    RESTORE_PID=$(cat "/tmp/.auto-restore.lock" 2>/dev/null)
+    if [ -n "$RESTORE_PID" ] && kill -0 "$RESTORE_PID" 2>/dev/null; then
+        log "auto-restore 실행 중 — cc-fix 스킵 ($SESSION)"
+        exit 0
+    fi
+fi
+
+log "=== cc-fix 시작 ($SESSION) ==="
 
 # CC 클라이언트 목록 확인
 clients=$(tmux list-clients -t "$SESSION" -F "#{client_name}" 2>/dev/null)

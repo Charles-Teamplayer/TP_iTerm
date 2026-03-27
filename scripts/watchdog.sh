@@ -465,10 +465,18 @@ except: pass
     done
 
     # 5. tmux CC 클라이언트 연결 상태 모니터링 (모든 active 세션)
+    # auto-restore 실행 중이면 cc-fix 전체 스킵 (복구 중 불필요한 창 생성 방지)
+    RESTORE_RUNNING=false
+    RESTORE_LOCK="/tmp/.auto-restore.lock"
+    if [ -f "$RESTORE_LOCK" ]; then
+        RESTORE_PID=$(cat "$RESTORE_LOCK" 2>/dev/null)
+        [ -n "$RESTORE_PID" ] && kill -0 "$RESTORE_PID" 2>/dev/null && RESTORE_RUNNING=true
+    fi
     for CC_SESSION in $ACTIVE_SESSIONS_MON; do
         if tmux has-session -t "$CC_SESSION" 2>/dev/null; then
             CLIENT_COUNT=$(tmux list-clients -t "$CC_SESSION" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
             if [ "${CLIENT_COUNT:-0}" -eq 0 ]; then
+                [ "$RESTORE_RUNNING" = "true" ] && continue
                 CC_FIX_LOCK="/tmp/.cc-fix-last-${CC_SESSION//[^a-zA-Z0-9]/_}"
                 LAST_FIX=0
                 [ -f "$CC_FIX_LOCK" ] && LAST_FIX=$(cat "$CC_FIX_LOCK" 2>/dev/null || echo 0)

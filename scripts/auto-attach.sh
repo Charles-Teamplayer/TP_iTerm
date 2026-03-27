@@ -8,6 +8,18 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [auto-attach] $1" >> "$LOG"; }
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
+# 중복 실행 방지 (PID 파일 기반)
+ATTACH_LOCK="/tmp/.auto-attach.lock"
+if [ -f "$ATTACH_LOCK" ]; then
+    OLD_PID=$(cat "$ATTACH_LOCK" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        log "이미 auto-attach 실행 중 (PID: $OLD_PID) — 스킵"
+        exit 0
+    fi
+fi
+echo $$ > "$ATTACH_LOCK"
+trap 'rm -f "$ATTACH_LOCK"' EXIT
+
 FLAG_FILE="$HOME/.claude/logs/.auto-restore-done"
 
 # auto-restore.sh 완료 플래그를 기다림 (최대 3분)
