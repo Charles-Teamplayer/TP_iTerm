@@ -133,14 +133,18 @@ fi
 TITLE="${PREFIX:+$PREFIX }${PROJECT}"
 
 # escape code 적용
-printf '\e]1;%s\a' "$TITLE" > "$TTY_PATH" 2>/dev/null
+# OSC 1: 탭(icon) 타이틀 = 순수 PROJECT명 (emoji 없음 — 탭 이름 안정)
+# OSC 2: 윈도우 타이틀바 = 상태 emoji + PROJECT명 (상태 시각화)
+printf '\e]1;%s\a' "$PROJECT" > "$TTY_PATH" 2>/dev/null
+printf '\e]2;%s\a' "$TITLE" > "$TTY_PATH" 2>/dev/null
 printf '\e]6;1;bg;red;brightness;%s\a\e]6;1;bg;green;brightness;%s\a\e]6;1;bg;blue;brightness;%s\a' \
     "$R" "$G" "$B" > "$TTY_PATH" 2>/dev/null
 
-# tmux -CC 모드: 윈도우 이름으로 탭 제목 설정 (OSC 1은 tmux가 가로채므로)
+# tmux -CC 모드: 윈도우 이름 = 순수 디렉토리명 (emoji 제외 — 탭 타이틀 안정성)
+# 상태 emoji는 OSC 타이틀에만 표시 (iTerm2 타이틀바); 탭 탭명은 항상 PROJECT명 고정
 if [ -n "${TMUX:-}" ]; then
     CURRENT_WINDOW=$(tmux display-message -p '#I' 2>/dev/null)
-    [ -n "$CURRENT_WINDOW" ] && tmux rename-window -t "$CURRENT_WINDOW" "$TITLE" 2>/dev/null || true
+    [ -n "$CURRENT_WINDOW" ] && tmux rename-window -t "$CURRENT_WINDOW" "$PROJECT" 2>/dev/null || true
 fi
 
 # badge
