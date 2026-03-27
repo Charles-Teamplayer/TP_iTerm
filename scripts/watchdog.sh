@@ -386,13 +386,24 @@ print('')
             TAB_TTY="$TTY_PATH" bash "$HOME/.claude/tab-color/engine/set-color.sh" "$AGING_STATE" "$TAB_PROJECT" 2>/dev/null &
         done
     fi
-    # 레거시 tab-states 잔존 파일 일괄 정리
+    # 레거시 tab-states orphan 정리 (compat 파일은 유지 — set-color.sh가 활성 TTY 기록)
+    # 전체 삭제 금지: active-sessions.json에 없는 TTY만 정리
     if [ -d "$LEGACY_STATE_DIR" ]; then
-        LEGACY_COUNT=$(find "$LEGACY_STATE_DIR" -name 'ttys*' 2>/dev/null | wc -l | tr -d ' ')
-        if [ "${LEGACY_COUNT:-0}" -gt 0 ]; then
-            rm -f "$LEGACY_STATE_DIR"/ttys* 2>/dev/null
-            log "CLEANUP: legacy tab-states ${LEGACY_COUNT}개 정리"
-        fi
+        ACTIVE_TTYS=$(python3 -c "
+import json, os
+d = json.load(open(os.path.expanduser('~/.claude/active-sessions.json'))) if os.path.exists(os.path.expanduser('~/.claude/active-sessions.json')) else {}
+print(' '.join(s.get('tty','') for s in d.get('sessions',[]) if s.get('tty','')))
+" 2>/dev/null || echo "")
+        LEGACY_CLEANED=0
+        for lf in "$LEGACY_STATE_DIR"/ttys*; do
+            [ ! -f "$lf" ] && continue
+            TTY_BASE=$(basename "$lf")
+            if [ ! -c "/dev/$TTY_BASE" ] || ! echo " $ACTIVE_TTYS " | grep -qF " $TTY_BASE "; then
+                rm -f "$lf" 2>/dev/null
+                LEGACY_CLEANED=$((LEGACY_CLEANED + 1))
+            fi
+        done
+        [ "$LEGACY_CLEANED" -gt 0 ] && log "CLEANUP: orphan legacy tab-states ${LEGACY_CLEANED}개 정리"
     fi
 
     # 3. 좀비 프로세스 감지 (72시간 이상 + tty 없음)

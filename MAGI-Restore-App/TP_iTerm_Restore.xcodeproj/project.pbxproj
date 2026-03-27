@@ -20,6 +20,12 @@
 		DF624D2D4FED5BE231819764 /* ShellService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F218EEF3CA14E2C115B5944B /* ShellService.swift */; };
 		E8287F2D143A530FD290FDA6 /* BackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E10AE645575D8A65C423E1A /* BackupView.swift */; };
 		FD9A35186A94F8211FB13F2E /* ClaudeSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61366C1753028504CA2E8AAD /* ClaudeSession.swift */; };
+		A1B2C3D4E5F60001A2B3C4D5 /* WindowGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60002A2B3C4D5 /* WindowGroup.swift */; };
+		A1B2C3D4E5F60003A2B3C4D5 /* RestoreSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60004A2B3C4D5 /* RestoreSettings.swift */; };
+		A1B2C3D4E5F60005A2B3C4D5 /* ActivationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60006A2B3C4D5 /* ActivationService.swift */; };
+		A1B2C3D4E5F60007A2B3C4D5 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60008A2B3C4D5 /* NotificationService.swift */; };
+		A1B2C3D4E5F60009A2B3C4D5 /* WindowGroupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000AA2B3C4D5 /* WindowGroupService.swift */; };
+		A1B2C3D4E5F6000BA2B3C4D5 /* DragDropSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000CA2B3C4D5 /* DragDropSupport.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +44,12 @@
 		F218EEF3CA14E2C115B5944B /* ShellService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellService.swift; sourceTree = "<group>"; };
 		FD978A2A166A0C15F4569EAF /* BackupConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupConfig.swift; sourceTree = "<group>"; };
 		FEBD40BFF204EF0867586A63 /* SessionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitor.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60002A2B3C4D5 /* WindowGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowGroup.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60004A2B3C4D5 /* RestoreSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreSettings.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60006A2B3C4D5 /* ActivationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivationService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60008A2B3C4D5 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000AA2B3C4D5 /* WindowGroupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowGroupService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000CA2B3C4D5 /* DragDropSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DragDropSupport.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -65,10 +77,13 @@
 		BC8D73946C82215D4D5C2775 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A1B2C3D4E5F60006A2B3C4D5 /* ActivationService.swift */,
 				31B639CBFA50C7B05D08DD52 /* BackupService.swift */,
+				A1B2C3D4E5F60008A2B3C4D5 /* NotificationService.swift */,
 				3AEE93569832A63032FCD434 /* ProfileService.swift */,
 				FEBD40BFF204EF0867586A63 /* SessionMonitor.swift */,
 				F218EEF3CA14E2C115B5944B /* ShellService.swift */,
+				A1B2C3D4E5F6000AA2B3C4D5 /* WindowGroupService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -86,7 +101,9 @@
 			children = (
 				FD978A2A166A0C15F4569EAF /* BackupConfig.swift */,
 				61366C1753028504CA2E8AAD /* ClaudeSession.swift */,
+				A1B2C3D4E5F60004A2B3C4D5 /* RestoreSettings.swift */,
 				7A0122D26C65168C8806ED4B /* SmugProfile.swift */,
+				A1B2C3D4E5F60002A2B3C4D5 /* WindowGroup.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -95,6 +112,7 @@
 			isa = PBXGroup;
 			children = (
 				6E10AE645575D8A65C423E1A /* BackupView.swift */,
+				A1B2C3D4E5F6000CA2B3C4D5 /* DragDropSupport.swift */,
 				14201DE558EFE1A7F1421942 /* ProfilesView.swift */,
 				8F636E663B5B9212BD339941 /* SessionsView.swift */,
 				17A5B8EB2C6EB1472F968464 /* SystemView.swift */,
@@ -167,6 +185,12 @@
 				DF624D2D4FED5BE231819764 /* ShellService.swift in Sources */,
 				D5963CF2DC924A57B2041257 /* SmugProfile.swift in Sources */,
 				AFADFDC2A15586ED4C47CED0 /* SystemView.swift in Sources */,
+				A1B2C3D4E5F60001A2B3C4D5 /* WindowGroup.swift in Sources */,
+				A1B2C3D4E5F60003A2B3C4D5 /* RestoreSettings.swift in Sources */,
+				A1B2C3D4E5F60005A2B3C4D5 /* ActivationService.swift in Sources */,
+				A1B2C3D4E5F60007A2B3C4D5 /* NotificationService.swift in Sources */,
+				A1B2C3D4E5F60009A2B3C4D5 /* WindowGroupService.swift in Sources */,
+				A1B2C3D4E5F6000BA2B3C4D5 /* DragDropSupport.swift in Sources */,
 				0134BFFF004D82CF7981F06F /* TPiTermRestoreApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
