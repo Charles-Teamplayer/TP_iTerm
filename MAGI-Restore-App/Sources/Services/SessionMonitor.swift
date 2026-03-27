@@ -1011,17 +1011,22 @@ final class SessionMonitor: ObservableObject {
         let firstWinIdx = realPairs[0].0
         let firstLinked = "\(sname)-v\(firstWinIdx)"
         let firstCmd = "/bin/bash -lc 'tmux has-session -t \(firstLinked) 2>/dev/null || tmux new-session -d -s \(firstLinked) -t \(sname) 2>/dev/null; tmux select-window -t \(firstLinked):\(firstWinIdx) 2>/dev/null; tmux attach-session -t \(firstLinked); exec /bin/zsh -l'"
+        // BUG-ITERM-GROUPTABS fix: 각 탭마다 별도 tell newWin 블록 → newWin 레퍼런스 불안정 시 새 창으로 열림
+        // → 단일 tell newWin 블록으로 모든 탭 생성, create window 후 delay 1 추가
         var lines: [String] = [
             "tell application \"iTerm2\"",
             "    activate",
             "    set newWin to (create window with default profile command \"\(firstCmd)\")",
+            "    delay 1",
         ]
-        for (winIdx, _) in realPairs.dropFirst() {
-            let linkedName = "\(sname)-v\(winIdx)"
-            let cmd = "/bin/bash -lc 'tmux has-session -t \(linkedName) 2>/dev/null || tmux new-session -d -s \(linkedName) -t \(sname) 2>/dev/null; tmux select-window -t \(linkedName):\(winIdx) 2>/dev/null; tmux attach-session -t \(linkedName); exec /bin/zsh -l'"
-            lines.append("    delay 0.5")
+        if !realPairs.dropFirst().isEmpty {
             lines.append("    tell newWin")
-            lines.append("        create tab with default profile command \"\(cmd)\"")
+            for (winIdx, _) in realPairs.dropFirst() {
+                let linkedName = "\(sname)-v\(winIdx)"
+                let cmd = "/bin/bash -lc 'tmux has-session -t \(linkedName) 2>/dev/null || tmux new-session -d -s \(linkedName) -t \(sname) 2>/dev/null; tmux select-window -t \(linkedName):\(winIdx) 2>/dev/null; tmux attach-session -t \(linkedName); exec /bin/zsh -l'"
+                lines.append("        delay 0.5")
+                lines.append("        create tab with default profile command \"\(cmd)\"")
+            }
             lines.append("    end tell")
         }
         lines.append("end tell")
