@@ -541,12 +541,15 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain).help("Rename waiting list")
                 } else {
+                    // BUG#31 fix: startingGroups 체크로 중복 클릭 방지
+                    let isStarting = monitor.startingGroups.contains(pane.sessionName)
                     Button { Task { await monitor.startGroup(pane) } } label: {
-                        Image(systemName: "play.circle.fill")
+                        Image(systemName: isStarting ? "hourglass.circle.fill" : "play.circle.fill")
                             .font(.system(size: 16))
-                            .foregroundStyle(sessions.isEmpty ? Color.secondary : color)
+                            .foregroundStyle(sessions.isEmpty || isStarting ? Color.secondary : color)
                     }
-                    .buttonStyle(.plain).help("Start all in group").disabled(sessions.isEmpty)
+                    .buttonStyle(.plain).help(isStarting ? "Starting..." : "Start all in group")
+                    .disabled(sessions.isEmpty || isStarting)
                     .accessibilityIdentifier("startGroup_\(pane.sessionName)")
 
                     Button { Task { await monitor.stopGroup(pane) } } label: {

@@ -14,6 +14,8 @@ final class SessionMonitor: ObservableObject {
     private var syncTimer: Timer?
     @Published var isRefreshing = false   // 내부 dedup 전용
     @Published var isSyncing = false      // UI 배너 표시 전용 (사용자 액션 시만)
+    // BUG#31 fix: startGroup 중복 실행 방지 (더블클릭 → 창 2개 생성 방지)
+    @Published var startingGroups: Set<String> = []  // sessionName → 진행 중 여부
     private let activeSessionsPath = NSHomeDirectory() + "/.claude/active-sessions.json"
     private let statesDir = NSHomeDirectory() + "/.claude/tab-color/states"
     let profileService = ProfileService()
@@ -867,6 +869,10 @@ final class SessionMonitor: ObservableObject {
     func startGroup(_ group: WindowPane) async {
         guard !group.isWaitingList else { return }
         let sessionName = group.sessionName
+        // BUG#31 fix: 중복 실행 방지 — 이미 시작 중이면 무시
+        guard !startingGroups.contains(sessionName) else { return }
+        startingGroups.insert(sessionName)
+        defer { startingGroups.remove(sessionName) }
         let escapedSession = shellEscape(sessionName)
 
         // tmux 세션 없으면 _init_ 임시 창으로 생성 (profile → monitor 순서로 맨 뒤 배치)
