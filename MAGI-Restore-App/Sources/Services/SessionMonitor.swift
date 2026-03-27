@@ -444,12 +444,14 @@ final class SessionMonitor: ObservableObject {
             )
 
             if paneCmd.isEmpty {
-                // 창이 사라진 경우 — 새로 생성 후 claude 실행
-                await ShellService.runAsync(
-                    "tmux new-window -t \(session.tmuxSession) -n '\(winName)' -c '\(escapedDir)'"
+                // 창이 사라진 경우 — 새로 생성 (-P -F로 실제 index 획득 후 send-keys)
+                let newIdxRaw = await ShellService.runAsync(
+                    "tmux new-window -t \(session.tmuxSession) -n '\(winName)' -c '\(escapedDir)' -P -F '#{window_index}'"
                 )
+                let newIdx2 = newIdxRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+                let winTarget2 = newIdx2.isEmpty ? winName : newIdx2
                 await ShellService.runAsync(
-                    "tmux send-keys -t '\(session.tmuxSession):\(winName)' '\(claudeEntry)' Enter 2>/dev/null"
+                    "tmux send-keys -t '\(session.tmuxSession):\(winTarget2)' '\(claudeEntry)' Enter 2>/dev/null"
                 )
             } else {
                 // 창이 있음 — windowIndex로 targeting (특수문자 무관)
