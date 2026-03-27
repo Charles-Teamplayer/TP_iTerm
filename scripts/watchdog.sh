@@ -105,6 +105,19 @@ for cf in "$CRASH_COUNT_DIR"/*; do
 done
 log "Crash-count 정리 완료 (24h+ 만료)"
 
+# BUG-003 fix: watchdog 시작 시 고아 linked sessions 초기 정리 (15분 이상 + 클라이언트 없음)
+# 부팅/재시작 후 이전 linked sessions 누적 방지
+log "linked session 초기 정리 시작 (15분+ 클라이언트 없음)"
+tmux list-sessions -F '#{session_name}|#{session_created}' 2>/dev/null | grep -E '.*-v[0-9]+\|' | while IFS='|' read -r lsname lscreated; do
+    CLIENT_COUNT_INIT=$(tmux list-clients -t "$lsname" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
+    AGE_INIT=$(( NOW_INIT - ${lscreated:-0} ))
+    if [ "${CLIENT_COUNT_INIT:-0}" -eq 0 ] && [ "$AGE_INIT" -gt 900 ]; then
+        tmux kill-session -t "$lsname" 2>/dev/null && log "초기 정리: $lsname (${AGE_INIT}초 경과, 클라이언트 없음)"
+    fi
+done
+# 주기 정리 타임스탬프 초기화 (watchdog 재시작 후 즉시 주기 정리 트리거 방지)
+echo "$NOW_INIT" > "/tmp/.linked-cleanup-last"
+
 # 메인 루프
 while true; do
     # 1. 레지스트리 기반 크래시 감지
@@ -513,12 +526,16 @@ except: pass
     done
 
     # 5. tmux CC 클라이언트 연결 상태 모니터링 (모든 active 세션)
-    # auto-restore 실행 중이면 cc-fix 전체 스킵 (복구 중 불필요한 창 생성 방지)
+    # auto-restore / auto-attach 실행 중이면 cc-fix 전체 스킵 (BUG-001 fix: 중복 창 방지)
     RESTORE_RUNNING=false
     RESTORE_LOCK="/tmp/.auto-restore.lock"
     if [ -f "$RESTORE_LOCK" ]; then
         RESTORE_PID=$(cat "$RESTORE_LOCK" 2>/dev/null)
         [ -n "$RESTORE_PID" ] && kill -0 "$RESTORE_PID" 2>/dev/null && RESTORE_RUNNING=true
+    fi
+    if [ "$RESTORE_RUNNING" = "false" ] && [ -f "/tmp/.auto-attach.lock" ]; then
+        ATTACH_PID=$(cat "/tmp/.auto-attach.lock" 2>/dev/null)
+        [ -n "$ATTACH_PID" ] && kill -0 "$ATTACH_PID" 2>/dev/null && RESTORE_RUNNING=true
     fi
     for CC_SESSION in $ACTIVE_SESSIONS_MON; do
         if tmux has-session -t "$CC_SESSION" 2>/dev/null; then
@@ -554,12 +571,12 @@ except: pass
     LAST_CLEANUP=0
     [ -f "$LINKED_CLEANUP_LOCK" ] && LAST_CLEANUP=$(cat "$LINKED_CLEANUP_LOCK" 2>/dev/null || echo 0)
     NOW_CLEANUP=$(date +%s)
-    if [ $((NOW_CLEANUP - LAST_CLEANUP)) -gt 86400 ]; then
+    if [ $((NOW_CLEANUP - LAST_CLEANUP)) -gt 21600 ]; then  # 6시간마다 정리 (BUG-003 fix: 24h → 6h)
         echo "$NOW_CLEANUP" > "$LINKED_CLEANUP_LOCK"
         tmux list-sessions -F '#{session_name}|#{session_created}' 2>/dev/null | grep -E '.*-v[0-9]+\|' | while IFS='|' read -r lsname lscreated; do
             CLIENT_COUNT_LS=$(tmux list-clients -t "$lsname" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
             AGE_LS=$(( NOW_CLEANUP - ${lscreated:-0} ))
-            if [ "${CLIENT_COUNT_LS:-0}" -eq 0 ] && [ "$AGE_LS" -gt 86400 ]; then
+            if [ "${CLIENT_COUNT_LS:-0}" -eq 0 ] && [ "$AGE_LS" -gt 3600 ]; then  # 1시간 이상 클라이언트 없음
                 tmux kill-session -t "$lsname" 2>/dev/null && log "orphan linked session 정리: $lsname (${AGE_LS}초 전 생성)"
             fi
         done

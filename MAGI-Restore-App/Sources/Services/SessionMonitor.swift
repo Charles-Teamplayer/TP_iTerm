@@ -97,6 +97,10 @@ final class SessionMonitor: ObservableObject {
             guard fileNames.contains(name) else { return true }
             return validNames.contains(name)
         }
+        // BUG-002/BUG-008 fix: 파일에 새로 추가된 항목(watchdog이 외부에서 쓴 것)도 메모리에 반영
+        for name in validNames {
+            intentionallyStoppedProfiles.insert(name)
+        }
     }
 
     // BUG-STALE-LINKED fix: 5분(300초) 이상 클라이언트 없는 linked sessions(-vN)만 정리

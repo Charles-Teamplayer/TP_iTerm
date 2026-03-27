@@ -28,6 +28,15 @@ if [ -f "/tmp/.auto-restore.lock" ]; then
     fi
 fi
 
+# BUG-001 fix: auto-attach 실행 중이면 스킵 (중복 창 생성 방지)
+if [ -f "/tmp/.auto-attach.lock" ]; then
+    ATTACH_PID=$(cat "/tmp/.auto-attach.lock" 2>/dev/null)
+    if [ -n "$ATTACH_PID" ] && kill -0 "$ATTACH_PID" 2>/dev/null; then
+        log "auto-attach 실행 중 — cc-fix 스킵"
+        exit 0
+    fi
+fi
+
 log "=== cc-fix 시작 ==="
 
 # 이중 체크: 실제로 클라이언트 없는지 재확인 (main + linked sessions)
