@@ -232,11 +232,11 @@ print('no|claude-work')
                     sleep 0.5
                 fi
 
-                # 해당 윈도우가 타겟 세션에 없으면: 세션 방금 생성된 경우 창도 신규 생성, 아니면 skip
+                # 해당 윈도우가 타겟 세션에 없으면 항상 신규 생성
+                # BUG-AUTOCREATE-SKIP fix: SESSION_JUST_CREATED 여부 불문하고 창 없으면 생성
+                # (이전 이터레이션이 세션 재생성 후 → 창 없는 상태도 포함)
                 if ! tmux list-windows -t "$TARGET_SESSION" -F '#{window_name}' 2>/dev/null | grep -qx "$WINDOW_NAME"; then
-                    if [ "$SESSION_JUST_CREATED" = "true" ]; then
-                        # activated-sessions.json에서 root 경로 조회
-                        PROJ_ROOT=$(python3 -c "
+                    PROJ_ROOT=$(python3 -c "
 import json, os, sys
 p = os.path.expanduser('~/.claude/activated-sessions.json')
 d = json.load(open(p)) if os.path.exists(p) else {}
@@ -244,15 +244,13 @@ for path in d.get('activated', []):
     if os.path.basename(path) == sys.argv[1]:
         print(path); sys.exit(0)
 " "$WINDOW_NAME" 2>/dev/null)
-                        [ -z "$PROJ_ROOT" ] && PROJ_ROOT="$HOME/claude"
-                        log "AUTO-CREATE-WIN: $TARGET_SESSION:$WINDOW_NAME (root: $PROJ_ROOT)"
-                        tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_ROOT" 'bash' 2>/dev/null
-                        tmux kill-window -t "$TARGET_SESSION:_init_" 2>/dev/null || true
-                        sleep 0.3
-                    else
-                        log "SKIP restart: $WINDOW_NAME — $TARGET_SESSION에 창 없음"
-                        continue
-                    fi
+                    [ -z "$PROJ_ROOT" ] && PROJ_ROOT="$HOME/claude"
+                    log "AUTO-CREATE-WIN: $TARGET_SESSION:$WINDOW_NAME (root: $PROJ_ROOT)"
+                    # login shell로 생성해야 PATH에 claude 포함됨
+                    tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_ROOT" '/bin/bash -l' 2>/dev/null
+                    tmux kill-window -t "$TARGET_SESSION:_init_" 2>/dev/null || true
+                    sleep 0.5  # 창 안정화 대기
+                    SESSION_JUST_CREATED=true  # 창이 방금 생성됨 → kill 단계 스킵
                 fi
                 # 보호 PID 체크: 창에 살아있는 protected PID가 있으면 kill 금지 (활성 Claude Code 세션 보호)
                 # BUG: window name에 '.' 포함 시 tmux가 pane 구분자 오해 → window_id(@N) 기반으로 list-panes
@@ -279,15 +277,19 @@ for path in d.get('activated', []):
                     done <<< "$PANE_PIDS_RAW"
                 fi
                 [ "$SKIP_KILL" = "true" ] && continue
-                # 기존 창 kill 후 재생성
-                # BUG#24 fix: window name에 '.'이 있으면 tmux가 pane 구분자로 오인 → window_id(@N) 기반 kill
-                WIN_ID_KILL=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
-                if [ -n "$WIN_ID_KILL" ]; then
-                    tmux kill-window -t "$WIN_ID_KILL" 2>/dev/null
-                else
-                    tmux kill-window -t "$TARGET_SESSION:$WINDOW_NAME" 2>/dev/null
+                # BUG-AUTOCREATE-KILL fix: 방금 생성된 세션/창은 kill 스킵
+                # kill하면 세션 마지막 창 소멸 → 세션 자동 소멸 → 재시작 루프 발생
+                if [ "$SESSION_JUST_CREATED" = "false" ]; then
+                    # 기존 창 kill 후 재생성
+                    # BUG#24 fix: window name에 '.'이 있으면 tmux가 pane 구분자로 오인 → window_id(@N) 기반 kill
+                    WIN_ID_KILL=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
+                    if [ -n "$WIN_ID_KILL" ]; then
+                        tmux kill-window -t "$WIN_ID_KILL" 2>/dev/null
+                    else
+                        tmux kill-window -t "$TARGET_SESSION:$WINDOW_NAME" 2>/dev/null
+                    fi
+                    sleep 1
                 fi
-                sleep 1
 
                 # 연속 크래시 카운터 증가 (COUNT|TIMESTAMP 형식, 24h 만료)
                 CRASH_COUNT_FILE="$CRASH_COUNT_DIR/${RESTART_PROJECT//[^a-zA-Z0-9_-]/_}"
@@ -316,7 +318,10 @@ for path in d.get('activated', []):
                     continue
                 fi
 
-                tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_PATH" 2>/dev/null
+                # BUG-AUTOCREATE-KILL fix: SESSION_JUST_CREATED=true면 창 이미 있음 — new-window 스킵
+                if [ "$SESSION_JUST_CREATED" = "false" ]; then
+                    tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_PATH" 2>/dev/null
+                fi
                 # BUG#25+BUG-01 fix: window_id(@N) 기반 조회 → dot 이름 파싱 오류 완전 방지
                 # index 조회 실패 시 window_id로 fallback (name 직접 사용 금지)
                 # BUG-WINRACE fix: new-window 직후 list-windows에 없을 수 있음 → 최대 1.5s retry
