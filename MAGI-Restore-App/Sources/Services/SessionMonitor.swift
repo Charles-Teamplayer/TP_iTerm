@@ -177,8 +177,9 @@ final class SessionMonitor: ObservableObject {
                 matchedProjects.insert(info.project)
             }
 
+            // BUG#33 fix: sessionName:windowName 조합으로 다중 세션 ID 충돌 방지
             result.append(ClaudeSession(
-                id: tw.windowName,
+                id: "\(tw.sessionName):\(tw.windowName)",
                 pid: claudePid ?? tw.panePid,
                 tty: tw.paneTty,
                 projectName: activeInfo?.project ?? tw.windowName,
