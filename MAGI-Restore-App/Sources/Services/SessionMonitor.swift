@@ -865,8 +865,8 @@ final class SessionMonitor: ObservableObject {
             tmux new-window -t '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' '/bin/bash -c \"while true; do sleep 86400; done\"' 2>/dev/null; \
             tmux set-window-option -t '\(escapedSession):monitor' automatic-rename off 2>/dev/null; \
             tmux move-window -s '\(escapedSession):monitor' -t '\(escapedSession):999' 2>/dev/null; \
-            tmux list-sessions -F '#{session_name}' 2>/dev/null \
-              | grep '^\(sessionName)-v[0-9]' \
+            SNAME=\(ShellService.shellq(sessionName)) tmux list-sessions -F '#{session_name}' 2>/dev/null \
+              | python3 -c "import sys,os,re; sn=os.environ['SNAME']; [print(l.strip()) for l in sys.stdin if re.fullmatch(re.escape(sn)+r'-v[0-9]+', l.strip())]" \
               | xargs -I{} tmux kill-session -t {} 2>/dev/null; \
             true
             """
@@ -887,8 +887,8 @@ final class SessionMonitor: ObservableObject {
         // main session + linked view sessions(-v*)에서 클라이언트 TTY 수집
         let ttysRaw = await ShellService.runAsync("""
             { tmux list-clients -t '\(shellEscape(sessionName))' -F '#{client_tty}' 2>/dev/null; \
-              tmux list-sessions -F '#{session_name}' 2>/dev/null \
-                | grep '^\(sessionName)-v[0-9]' \
+              SNAME=\(ShellService.shellq(sessionName)) tmux list-sessions -F '#{session_name}' 2>/dev/null \
+                | python3 -c "import sys,os,re; sn=os.environ['SNAME']; [print(l.strip()) for l in sys.stdin if re.fullmatch(re.escape(sn)+r'-v[0-9]+', l.strip())]" \
                 | while read s; do tmux list-clients -t "$s" -F '#{client_tty}' 2>/dev/null; done; \
             } | sort -u
             """
