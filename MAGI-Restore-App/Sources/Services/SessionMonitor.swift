@@ -430,15 +430,15 @@ final class SessionMonitor: ObservableObject {
                 "tmux list-panes -t '\(shellEscape(session.tmuxSession)):\(session.windowIndex)' -F '#{pane_current_command}' 2>/dev/null | head -1"
             )
             if paneCmd.isEmpty {
-                // 창이 없어진 경우 → 새로 생성 (-P -F로 실제 index 획득 후 send-keys)
+                // 창이 없어진 경우 → 새로 생성 (BUG-B fix: window_id 즉시 캡처 + automatic-rename off)
                 let escapedName = shellEscape(session.windowName)
                 let escapedDir  = shellEscape(safeDir)
-                // BUG#21 fix: tmuxSession 이스케이프 (공백/특수문자 안전)
-                let newIdxRaw = await ShellService.runAsync("tmux new-window -t '\(shellEscape(session.tmuxSession))' -n '\(escapedName)' -c '\(escapedDir)' -P -F '#{window_index}'")
-                let newIdx = newIdxRaw.trimmingCharacters(in: .whitespacesAndNewlines)
-                let winTarget = newIdx.isEmpty ? escapedName : newIdx
-                // BUG#30 fix: tmuxSession shellEscape 일관 적용 (send-keys -t 타겟)
-                await ShellService.runAsync("tmux send-keys -t '\(shellEscape(session.tmuxSession)):\(winTarget)' '\(claudeEntry)' Enter 2>/dev/null")
+                await ShellService.runAsync("""
+                    _WID=$(tmux new-window -t '\(shellEscape(session.tmuxSession))' -n '\(escapedName)' -c '\(escapedDir)' -P -F '#{window_id}' 2>/dev/null || true); \
+                    [ -n \"$_WID\" ] && tmux set-window-option -t \"$_WID\" automatic-rename off 2>/dev/null || true; \
+                    [ -n \"$_WID\" ] && tmux rename-window -t \"$_WID\" '\(escapedName)' 2>/dev/null || true; \
+                    [ -n \"$_WID\" ] && tmux send-keys -t \"$_WID\" '\(claudeEntry)' Enter 2>/dev/null || true
+                    """)
             } else {
                 // BUG#30 fix: tmuxSession shellEscape 일관 적용
                 await ShellService.runAsync("tmux send-keys -t '\(shellEscape(session.tmuxSession)):\(session.windowIndex)' '\(claudeEntry)' Enter 2>/dev/null")
@@ -527,17 +527,13 @@ final class SessionMonitor: ObservableObject {
             )
 
             if paneCmd.isEmpty {
-                // 창이 사라진 경우 — 새로 생성 (-P -F로 실제 index 획득 후 send-keys)
-                // BUG#21 fix: tmuxSession 이스케이프
-                let newIdxRaw = await ShellService.runAsync(
-                    "tmux new-window -t '\(shellEscape(session.tmuxSession))' -n '\(winName)' -c '\(escapedDir)' -P -F '#{window_index}'"
-                )
-                let newIdx2 = newIdxRaw.trimmingCharacters(in: .whitespacesAndNewlines)
-                let winTarget2 = newIdx2.isEmpty ? winName : newIdx2
-                // BUG#30 fix: tmuxSession shellEscape 일관 적용
-                await ShellService.runAsync(
-                    "tmux send-keys -t '\(shellEscape(session.tmuxSession)):\(winTarget2)' '\(claudeEntry)' Enter 2>/dev/null"
-                )
+                // 창이 사라진 경우 — 새로 생성 (BUG-B fix: window_id 즉시 캡처 + automatic-rename off)
+                await ShellService.runAsync("""
+                    _WID=$(tmux new-window -t '\(shellEscape(session.tmuxSession))' -n '\(winName)' -c '\(escapedDir)' -P -F '#{window_id}' 2>/dev/null || true); \
+                    [ -n \"$_WID\" ] && tmux set-window-option -t \"$_WID\" automatic-rename off 2>/dev/null || true; \
+                    [ -n \"$_WID\" ] && tmux rename-window -t \"$_WID\" '\(winName)' 2>/dev/null || true; \
+                    [ -n \"$_WID\" ] && tmux send-keys -t \"$_WID\" '\(claudeEntry)' Enter 2>/dev/null || true
+                    """)
             } else {
                 // 창이 있음 — windowIndex로 targeting (특수문자 무관)
                 // BUG#30 fix: tmuxSession shellEscape 일관 적용
@@ -813,21 +809,14 @@ final class SessionMonitor: ObservableObject {
                                    .replacingOccurrences(of: "'", with: "'\\''")
         // 중복 생성 방지: check+create를 단일 shell 명령으로 atomic하게 처리
         // BUG-SENDKEYS-NOTARGET fix: \; 체인에서 send-keys -t 없으면 외부 실행 시 pane 못 찾음
-        // → new-window -P -F '#{window_index}'로 index 캡처 후 명시적 -t로 send-keys
-        // BUG-NEW-006 fix: _WIDX 빈 경우(race) window_id 기반 retry (auto-restore.sh 방식 통일)
+        // BUG-B fix: -P -F '#{window_id}' 즉시 캡처 → automatic-rename off 즉시 설정 (race 제거)
         let cmd = """
         if ! tmux list-windows -t '\(escapedSession)' -F '#{window_name}' 2>/dev/null | grep -qxF '\(escapedName)'; then \
-          _WIDX=$(tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedRoot)' -P -F '#{window_index}' 2>/dev/null); \
-          _WID=""; \
-          for _r in 1 2 3; do \
-            _WID=$(tmux list-windows -t '\(escapedSession)' -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w='\(escapedName)' '$2==w{print $1;exit}'); \
-            [ -n "$_WID" ] && break; sleep 0.4; \
-          done; \
-          if [ -n "$_WID" ]; then \
-            tmux set-window-option -t "$_WID" automatic-rename off 2>/dev/null; \
-            tmux send-keys -t "$_WID" "\(mkdirPart)\(sleepPart)(bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
-          elif [ -n "$_WIDX" ]; then \
-            tmux send-keys -t '\(escapedSession)':$_WIDX "\(mkdirPart)\(sleepPart)(bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
+          _WID=$(tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedRoot)' -P -F '#{window_id}' 2>/dev/null || true); \
+          if [ -n \"$_WID\" ]; then \
+            tmux set-window-option -t \"$_WID\" automatic-rename off 2>/dev/null || true; \
+            tmux rename-window -t \"$_WID\" '\(escapedName)' 2>/dev/null || true; \
+            tmux send-keys -t \"$_WID\" "\(mkdirPart)\(sleepPart)(bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
           fi; \
         fi; \
         true
@@ -1226,14 +1215,16 @@ final class SessionMonitor: ObservableObject {
         let escapedSession = shellEscape(targetSession)
         let nameForStatus = safeName.replacingOccurrences(of: "\"", with: "\\\"")
                                      .replacingOccurrences(of: "'", with: "'\\''")
-        // BUG-009 fix: 디렉토리가 없으면 mkdir -p (tmux new-window -c 실패 방지)
-        // 중복 방지: check+create 단일 shell 명령
-        // BUG-SENDKEYS-NOTARGET fix: index 캡처 후 명시적 -t send-keys
+        // BUG-B fix: -P -F '#{window_id}' 즉시 캡처 → automatic-rename off 즉시 설정
         let cmd = """
         mkdir -p '\(escapedDir)' 2>/dev/null; \
         if ! tmux list-windows -t '\(escapedSession)' -F '#{window_name}' 2>/dev/null | grep -qxF '\(escapedName)'; then \
-          _WIDX=$(tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedDir)' -P -F '#{window_index}' 2>/dev/null); \
-          [ -n "$_WIDX" ] && tmux send-keys -t '\(escapedSession)':$_WIDX "(bash ~/.claude/scripts/tab-status.sh starting '\(nameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; \
+          _WID=$(tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedDir)' -P -F '#{window_id}' 2>/dev/null || true); \
+          if [ -n \"$_WID\" ]; then \
+            tmux set-window-option -t \"$_WID\" automatic-rename off 2>/dev/null || true; \
+            tmux rename-window -t \"$_WID\" '\(escapedName)' 2>/dev/null || true; \
+            tmux send-keys -t \"$_WID\" "(bash ~/.claude/scripts/tab-status.sh starting '\(nameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; \
+          fi; \
         fi; true
         """
         await ShellService.runAsync(cmd)
