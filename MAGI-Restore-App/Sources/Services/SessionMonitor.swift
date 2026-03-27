@@ -851,6 +851,10 @@ final class SessionMonitor: ObservableObject {
             await launchProfile(name: profile.name, root: profile.root, delay: i * 2, sessionName: sessionName)
         }
 
+        // BUG#10 fix: linked sessions kill 전에 TTY 수집해야 함
+        // linked sessions가 살아있는 동안 closeExistingITermWindows를 먼저 호출
+        await closeExistingITermWindows(for: sessionName)
+
         // 기존 monitor 창 모두 제거 후 맨 마지막에 하나만 재생성 + _init_ 제거
         // 이전 linked view sessions 정리 (중복 방지)
         await ShellService.runAsync("""
@@ -867,9 +871,6 @@ final class SessionMonitor: ObservableObject {
             true
             """
         )
-
-        // 기존에 이 세션에 붙어있는 iTerm2 창 닫기 (미러링 방지)
-        await closeExistingITermWindows(for: sessionName)
 
         // 탭 순서 재배치 (profileNames 순서, monitor는 999)
         await reorderTabs(for: group)
