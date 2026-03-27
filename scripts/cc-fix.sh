@@ -30,10 +30,16 @@ fi
 
 log "=== cc-fix 시작 ==="
 
-# 이중 체크: 실제로 클라이언트 없는지 재확인
+# 이중 체크: 실제로 클라이언트 없는지 재확인 (main + linked sessions)
 CLIENT_COUNT=$(tmux list-clients -t "$SESSION" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
 if [ "${CLIENT_COUNT:-0}" -gt 0 ]; then
     log "클라이언트 이미 있음 (${CLIENT_COUNT}개) — 스킵"
+    exit 0
+fi
+# linked session(-vN)에도 클라이언트 있으면 스킵 (BUG-CCFIX-LINKEDCHECK 보완)
+LINKED_CLI=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${SESSION}-v" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' ')
+if [ "${LINKED_CLI:-0}" -gt 0 ]; then
+    log "linked session 클라이언트 있음 (${LINKED_CLI}개) — 스킵"
     exit 0
 fi
 

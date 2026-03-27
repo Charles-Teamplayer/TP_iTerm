@@ -481,6 +481,9 @@ except: pass
                 # monitor 창이 999번이 아니면 이동
                 MON_IDX=$(tmux list-windows -t "$MON_SESSION" -F "#{window_index} #{window_name}" 2>/dev/null | awk '/^[0-9]+ monitor$/{print $1}')
                 if [ -n "$MON_IDX" ] && [ "$MON_IDX" != "999" ]; then
+                    # BUG-001 fix: 999에 다른 창이 있으면 900으로 먼저 이동
+                    WIN999=$(tmux list-windows -t "$MON_SESSION" -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' '$1=="999" && $2!="monitor"{print $2;exit}')
+                    [ -n "$WIN999" ] && tmux move-window -s "$MON_SESSION:999" -t "$MON_SESSION:900" 2>/dev/null || true
                     tmux move-window -s "$MON_SESSION:monitor" -t "$MON_SESSION:999" 2>/dev/null || true
                 fi
             fi
