@@ -117,6 +117,14 @@ while IFS= read -r SESSION_NAME; do
         continue
     fi
 
+    # BUG-ATTACH-DUP fix: 이미 iTerm 클라이언트 있으면 중복 창 생성 스킵
+    _MAIN_CLI=$(tmux list-clients -t "$SESSION_NAME" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
+    _LINKED_CLI=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${SESSION_NAME}-v" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' ')
+    if [ $(( _MAIN_CLI + _LINKED_CLI )) -gt 0 ]; then
+        log "$SESSION_NAME 이미 iTerm 클라이언트 연결됨 (main=${_MAIN_CLI}, linked=${_LINKED_CLI}) — 중복 창 생성 스킵"
+        continue
+    fi
+
     # tmux 창 목록 조회 (index|name)
     RAW_WINS=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_index}|#{window_name}' 2>/dev/null)
     if [ -z "$RAW_WINS" ]; then

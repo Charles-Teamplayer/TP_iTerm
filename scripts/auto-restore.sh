@@ -290,10 +290,14 @@ for SNAME in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Ev '.
     log "DEDUP 전 $SNAME 창 목록: $(tmux list-windows -t "$SNAME" -F '#{window_id}:#{window_name}' 2>/dev/null | tr '\n' ' ')"
 
     # monitor 창 복구: 없으면 index 999에 재생성
+    # BUG-B fix: -P -F '#{window_id}' 즉시 캡처 → auto-rename race 제거
     if ! tmux list-windows -t "$SNAME" -F '#{window_name}' 2>/dev/null | grep -qxF "monitor"; then
-        tmux new-window -t "$SNAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" 2>/dev/null
-        tmux set-window-option -t "$SNAME:monitor" automatic-rename off 2>/dev/null
-        tmux move-window -s "$SNAME:monitor" -t "$SNAME:999" 2>/dev/null || true
+        _MON_WID_AR=$(tmux new-window -t "$SNAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" -P -F '#{window_id}' 2>/dev/null || true)
+        if [ -n "$_MON_WID_AR" ]; then
+            tmux set-window-option -t "$_MON_WID_AR" automatic-rename off 2>/dev/null || true
+            tmux rename-window -t "$_MON_WID_AR" monitor 2>/dev/null || true
+            tmux move-window -s "$_MON_WID_AR" -t "$SNAME:999" 2>/dev/null || true
+        fi
         log "$SNAME monitor 창 복구 (index 999)"
     else
         # monitor가 999번이 아니면 이동
