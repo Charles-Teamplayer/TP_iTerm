@@ -560,6 +560,14 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain).help("Stop running sessions in group").disabled(runCount == 0)
 
+                    // BUG#37 fix: Import 버튼 — importingToPane 설정 경로 없던 dead code 해소
+                    Button { importingToPane = pane } label: {
+                        Image(systemName: "tray.and.arrow.down.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Color.secondary)
+                    }
+                    .buttonStyle(.plain).help("Import profiles into this group")
+
                     Button { renamingPane = pane } label: {
                         Image(systemName: "pencil.circle.fill")
                             .font(.system(size: 16))
@@ -887,24 +895,37 @@ struct RenamePaneSheet: View {
         _sessionName = State(initialValue: pane.sessionName)
     }
 
+    // BUG#36 fix: 공백/특수문자 있는 session name → openITermTabs bash 파괴 방지
+    private var isValidSessionName: Bool {
+        let s = sessionName.trimmingCharacters(in: .whitespaces)
+        guard !s.isEmpty else { return false }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        return s.unicodeScalars.allSatisfy { allowed.contains($0) }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Edit Group").font(.headline).padding()
             Divider()
             Form {
                 TextField("Group name (UI label)", text: $name)
-                TextField("tmux session name", text: $sessionName)
-                    .help("e.g. claude-work, claude-imsms")
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField("tmux session name", text: $sessionName)
+                        .help("e.g. claude-work, claude-imsms (alphanumeric + hyphens only)")
+                    if !isValidSessionName && !sessionName.isEmpty {
+                        Text("Only alphanumeric, hyphens, underscores allowed")
+                            .font(.caption2).foregroundStyle(.red)
+                    }
+                }
             }.padding()
             Divider()
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Save") { onSave(name, sessionName); dismiss() }
+                Button("Save") { onSave(name, sessionName.trimmingCharacters(in: .whitespaces)); dismiss() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty ||
-                              sessionName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || !isValidSessionName)
             }.padding()
         }
         .frame(width: 360)
