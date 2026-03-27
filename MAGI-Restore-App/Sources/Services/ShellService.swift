@@ -80,11 +80,11 @@ struct ShellService {
         }
         // 3. tmux window 종료 — window-groups.json에서 해당 창이 속한 세션 동적 탐색
         if !windowName.isEmpty {
-            let escapedName = windowName.replacingOccurrences(of: "'", with: "'\\''")
+            // ENV 변수로 window name 전달 (Python 인라인 삽입 injection 방지)
             let killCmd = """
-            python3 -c "
+            WIN_NAME=\(shellEscapeArg(windowName)) python3 -c "
 import json, os, subprocess
-win = '\(escapedName)'
+win = os.environ['WIN_NAME']
 try:
     groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
     sessions = [g.get('sessionName','') for g in groups if not g.get('isWaitingList', False) and g.get('sessionName','') and g.get('sessionName','') != '__waiting__']

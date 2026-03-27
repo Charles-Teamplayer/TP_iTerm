@@ -352,11 +352,13 @@ final class SessionMonitor: ObservableObject {
                 "tmux list-panes -t '\(session.tmuxSession):\(session.windowIndex)' -F '#{pane_current_command}' 2>/dev/null | head -1"
             )
             if paneCmd.isEmpty {
-                // 창이 없어진 경우 → 새로 생성
+                // 창이 없어진 경우 → 새로 생성 (-P -F로 실제 index 획득 후 send-keys)
                 let escapedName = shellEscape(session.windowName)
                 let escapedDir  = shellEscape(safeDir)
-                await ShellService.runAsync("tmux new-window -t \(session.tmuxSession) -n '\(escapedName)' -c '\(escapedDir)'")
-                await ShellService.runAsync("tmux send-keys -t '\(session.tmuxSession):\(escapedName)' '\(claudeEntry)' Enter 2>/dev/null")
+                let newIdxRaw = await ShellService.runAsync("tmux new-window -t \(session.tmuxSession) -n '\(escapedName)' -c '\(escapedDir)' -P -F '#{window_index}'")
+                let newIdx = newIdxRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+                let winTarget = newIdx.isEmpty ? escapedName : newIdx
+                await ShellService.runAsync("tmux send-keys -t '\(session.tmuxSession):\(winTarget)' '\(claudeEntry)' Enter 2>/dev/null")
             } else {
                 await ShellService.runAsync("tmux send-keys -t '\(session.tmuxSession):\(session.windowIndex)' '\(claudeEntry)' Enter 2>/dev/null")
             }

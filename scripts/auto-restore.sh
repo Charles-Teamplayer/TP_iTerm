@@ -177,10 +177,24 @@ with open(path, 'w') as f:
     json.dump(data, f, indent=2)
 " 2>/dev/null || true
 
-# intentional-stops.json 초기화
+# intentional-stops.json — 48시간 이상 된 항목만 제거 (최근 의도적 중지는 보존)
 if [ -f "$STOPS_FILE" ]; then
-    echo '{"stops":[],"last_updated":"'"$(date -u '+%Y-%m-%dT%H:%M:%SZ')"'"}' > "$STOPS_FILE"
-    log "intentional-stops.json 초기화 완료"
+    python3 -c "
+import json, os
+from datetime import datetime, timezone, timedelta
+path = os.path.expanduser('$STOPS_FILE')
+try:
+    data = json.load(open(path))
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+    stops = data.get('stops', [])
+    kept = [s for s in stops if datetime.fromisoformat(s.get('stopped_at','1970-01-01T00:00:00Z').replace('Z','+00:00')) > cutoff]
+    data['stops'] = kept
+    data['last_updated'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    json.dump(data, open(path, 'w'), indent=2)
+except:
+    pass
+" 2>/dev/null || true
+    log "intentional-stops.json 48시간 TTL 정리 완료"
 fi
 
 # 세션 상태 확인 + 중복 창 제거 (window ID 기반 — 인덱스 재배열 문제 방지)
