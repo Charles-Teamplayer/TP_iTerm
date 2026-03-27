@@ -22,15 +22,28 @@ if [ "$STATE" = "working" ] || [ "$STATE" = "waiting" ] || [ "$STATE" = "attenti
     if [ -n "$CURRENT_TTY" ]; then
         STATE_FILE="$STATE_DIR/${CURRENT_TTY}.json"
         if [ -f "$STATE_FILE" ]; then
-            CURRENT_STATE=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('type',''))" 2>/dev/null)
+            # BUG#5 fix: 4회 파일 읽기 → 1회 통합 (race condition 제거)
+            _STATE_DATA=$(python3 -c "
+import json
+try:
+    d=json.load(open('$STATE_FILE'))
+    c=d.get('color',{})
+    print(d.get('type',''))
+    print(c.get('r',0))
+    print(c.get('g',220))
+    print(c.get('b',0))
+except:
+    print(''); print(0); print(220); print(0)
+" 2>/dev/null)
+            CURRENT_STATE=$(printf '%s' "$_STATE_DATA" | sed -n '1p')
+            _COLOR_R=$(printf '%s' "$_STATE_DATA" | sed -n '2p')
+            _COLOR_G=$(printf '%s' "$_STATE_DATA" | sed -n '3p')
+            _COLOR_B=$(printf '%s' "$_STATE_DATA" | sed -n '4p')
             echo "[$(date '+%H:%M:%S')] tab-status: state=$STATE tty=$CURRENT_TTY current=$CURRENT_STATE" >> "$HOME/.claude/logs/tab-status-debug.log"
             if [ "$CURRENT_STATE" = "active" ]; then
                 echo "[$(date '+%H:%M:%S')] tab-status: BLOCKED (active 유지)" >> "$HOME/.claude/logs/tab-status-debug.log"
                 # 시각적 불일치 복원: state=active이지만 TTY 색상이 달라졌을 수 있음 (watchdog 등)
                 # 저장된 color값으로 즉시 재전송
-                _COLOR_R=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('color',{}).get('r',0))" 2>/dev/null)
-                _COLOR_G=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('color',{}).get('g',220))" 2>/dev/null)
-                _COLOR_B=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('color',{}).get('b',0))" 2>/dev/null)
                 printf '\e]6;1;bg;red;brightness;%s\a\e]6;1;bg;green;brightness;%s\a\e]6;1;bg;blue;brightness;%s\a' \
                     "${_COLOR_R:-0}" "${_COLOR_G:-220}" "${_COLOR_B:-0}" > "/dev/$CURRENT_TTY" 2>/dev/null
                 # timestamp 갱신 (watchdog aging 방지)

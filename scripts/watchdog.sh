@@ -592,12 +592,10 @@ except: pass
             # claude-work-v* 등 linked sessions에도 클라이언트가 있으면 cc-fix 스킵
             CLIENT_COUNT=$(tmux list-clients -t "$CC_SESSION" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
             if [ "${CLIENT_COUNT:-0}" -eq 0 ]; then
-                LINKED_COUNT=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -c "^${CC_SESSION}-v" || echo 0)
-                if [ "${LINKED_COUNT:-0}" -gt 0 ]; then
-                    LINKED_CLIENT_COUNT=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${CC_SESSION}-v" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' ')
-                    if [ "${LINKED_CLIENT_COUNT:-0}" -gt 0 ]; then
-                        continue  # linked session에 클라이언트 있음 — cc-fix 불필요
-                    fi
+                # BUG#6 fix: 2개 tmux 호출 → 1개로 통합 (race 제거)
+                LINKED_CLIENT_COUNT=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${CC_SESSION}-v" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' ')
+                if [ "${LINKED_CLIENT_COUNT:-0}" -gt 0 ]; then
+                    continue  # linked session에 클라이언트 있음 — cc-fix 불필요
                 fi
                 [ "$RESTORE_RUNNING" = "true" ] && continue
                 CC_FIX_LOCK="/tmp/.cc-fix-last-${CC_SESSION//[^a-zA-Z0-9]/_}"
@@ -606,8 +604,10 @@ except: pass
                 NOW_FIX=$(date +%s)
                 if [ $((NOW_FIX - LAST_FIX)) -gt 120 ]; then
                     log "WARNING: $CC_SESSION 클라이언트 없음 (linked 포함) — 자동 CC 재연결 시도"
-                    echo "$NOW_FIX" > "$CC_FIX_LOCK"
-                    TMUX_SESSION="$CC_SESSION" bash "$HOME/.claude/scripts/cc-fix.sh" 2>/dev/null &
+                    # BUG#3 fix: cc-fix 성공 시에만 cooldown 갱신 (실패해도 10분 대기 방지)
+                    _CC_FIX_LOCK_COPY="$CC_FIX_LOCK"
+                    _CC_NOW_COPY="$NOW_FIX"
+                    (TMUX_SESSION="$CC_SESSION" bash "$HOME/.claude/scripts/cc-fix.sh" 2>/dev/null && echo "$_CC_NOW_COPY" > "$_CC_FIX_LOCK_COPY") &
                 fi
             fi
         fi
