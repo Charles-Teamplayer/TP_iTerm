@@ -161,8 +161,9 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
     # monitor 창을 맨 마지막에 추가 + _init_ 임시 창 제거
     tmux new-window -t "$SESSION_NAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" 2>/dev/null
     tmux set-window-option -t "$SESSION_NAME:monitor" automatic-rename off 2>/dev/null
+    tmux move-window -s "$SESSION_NAME:monitor" -t "$SESSION_NAME:999" 2>/dev/null || true
     tmux kill-window -t "$SESSION_NAME:_init_" 2>/dev/null || true
-    log "$SESSION_NAME monitor 창 맨 뒤 배치 완료"
+    log "$SESSION_NAME monitor 창 index 999에 배치 완료"
 
 done <<< "$GROUPS_JSON"
 
@@ -183,15 +184,24 @@ if [ -f "$STOPS_FILE" ]; then
 fi
 
 # 세션 상태 확인 + 중복 창 제거 (window ID 기반 — 인덱스 재배열 문제 방지)
+# linked view sessions(-vN)은 스킵 (dedup/monitor 불필요)
 sleep 3
-for SNAME in $(tmux list-sessions -F '#{session_name}' 2>/dev/null); do
+for SNAME in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Ev '.*-v[0-9]+$'); do
     log "DEDUP 전 $SNAME 창 목록: $(tmux list-windows -t "$SNAME" -F '#{window_id}:#{window_name}' 2>/dev/null | tr '\n' ' ')"
 
-    # monitor 창 복구: 없으면 맨 뒤에 재생성
+    # monitor 창 복구: 없으면 index 999에 재생성
     if ! tmux list-windows -t "$SNAME" -F '#{window_name}' 2>/dev/null | grep -qxF "monitor"; then
         tmux new-window -t "$SNAME" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" 2>/dev/null
         tmux set-window-option -t "$SNAME:monitor" automatic-rename off 2>/dev/null
-        log "$SNAME monitor 창 복구 (맨 뒤 재생성)"
+        tmux move-window -s "$SNAME:monitor" -t "$SNAME:999" 2>/dev/null || true
+        log "$SNAME monitor 창 복구 (index 999)"
+    else
+        # monitor가 999번이 아니면 이동
+        MON_IDX=$(tmux list-windows -t "$SNAME" -F '#{window_index} #{window_name}' 2>/dev/null | awk '/monitor/{print $1}')
+        if [ -n "$MON_IDX" ] && [ "$MON_IDX" != "999" ]; then
+            tmux move-window -s "$SNAME:monitor" -t "$SNAME:999" 2>/dev/null || true
+            log "$SNAME monitor $MON_IDX → 999 이동"
+        fi
     fi
     SEEN_NAMES=""
     while IFS='|' read -r win_id name; do

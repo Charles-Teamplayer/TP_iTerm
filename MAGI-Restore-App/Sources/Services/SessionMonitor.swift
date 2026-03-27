@@ -212,11 +212,16 @@ final class SessionMonitor: ObservableObject {
             .filter { $0.isWaitingList }
             .flatMap { $0.profileNames })
         let existingNames = Set(result.map { $0.projectName } + result.map { $0.windowName })
+        // 프로필→그룹 세션명 맵 (profile-only 세션의 tmuxSession 주입용)
+        var profileToSession: [String: String] = [:]
+        for group in windowGroupService.groups where !group.isWaitingList {
+            for name in group.profileNames { profileToSession[name] = group.sessionName }
+        }
         for profile in profileService.profiles {
             guard !existingNames.contains(profile.name) else { continue }
             let rootPath = profile.root.isEmpty ? "~/claude/\(profile.name)" : profile.root
             let assigned = !waitingListNames.contains(profile.name)
-            result.append(ClaudeSession(
+            var session = ClaudeSession(
                 id: "profile-\(profile.id)",
                 pid: 0,
                 tty: "",
@@ -229,7 +234,9 @@ final class SessionMonitor: ObservableObject {
                 profileRoot: rootPath,
                 profileDelay: profile.delay,
                 isAssigned: assigned
-            ))
+            )
+            session.tmuxSession = profileToSession[profile.name] ?? "claude-work"
+            result.append(session)
         }
 
         // tab-color/states 디렉토리에서 TTY별 상태 읽기
@@ -407,7 +414,11 @@ final class SessionMonitor: ObservableObject {
             // profile-only 세션(windowIndex=Int.max)은 launchProfile로 위임
             if session.id.hasPrefix("profile-") || session.windowIndex == Int.max,
                let root = session.profileRoot {
-                await launchProfile(name: session.projectName, root: root, delay: delay)
+                // window-groups에서 이 프로필이 속한 세션 이름 조회 (대기목록 제외)
+                let targetSession = windowGroupService.groups
+                    .first(where: { !$0.isWaitingList && $0.profileNames.contains(session.projectName) })?
+                    .sessionName ?? "claude-work"
+                await launchProfile(name: session.projectName, root: root, delay: delay, sessionName: targetSession)
                 restoreProgress = (i + 1, toRestore.count)
                 continue
             }
@@ -731,12 +742,21 @@ final class SessionMonitor: ObservableObject {
             var anyChange = false
 
             // 추가: desired에 있는데 tmux에 없는 탭
+            let activatedPathList = ActivationService.shared.loadActivated()  // fallback용
             for profileName in desiredProfiles where !currentSet.contains(profileName) {
-                guard let profile = profileService.profiles.first(where: { $0.name == profileName }) else { continue }
-                let safeRoot = profile.root.hasPrefix("~") ? NSHomeDirectory() + profile.root.dropFirst() : profile.root
+                // ProfileService 우선, 없으면 activated-sessions.json에서 경로 추론
+                var rootToUse: String
+                if let profile = profileService.profiles.first(where: { $0.name == profileName }) {
+                    rootToUse = profile.root
+                } else if let activated = activatedPathList.first(where: { $0.hasSuffix("/\(profileName)") }) {
+                    rootToUse = activated
+                } else {
+                    continue
+                }
+                let safeRoot = rootToUse.hasPrefix("~") ? NSHomeDirectory() + rootToUse.dropFirst() : rootToUse
                 let dirOk = await ShellService.runAsync("[ -d '\(shellEscape(safeRoot))' ] && echo yes || echo no")
                 guard dirOk.trimmingCharacters(in: .whitespacesAndNewlines) == "yes" else { continue }
-                await launchProfile(name: profile.name, root: profile.root, delay: 0, sessionName: sname)
+                await launchProfile(name: profileName, root: rootToUse, delay: 0, sessionName: sname)
                 anyChange = true
             }
 

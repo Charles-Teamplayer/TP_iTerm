@@ -10,11 +10,11 @@ enum ClaudeStatus: String {
 
     var label: String {
         switch self {
-        case .idle:     return "대기 중"
-        case .working:  return "작업 중"
-        case .starting: return "시작 중"
-        case .blocked:  return "확인 필요"
-        case .waiting:  return "대기"
+        case .idle:     return "Idle"
+        case .working:  return "Working"
+        case .starting: return "Starting"
+        case .blocked:  return "Needs Input"
+        case .waiting:  return "Waiting"
         case .unknown:  return ""
         }
     }

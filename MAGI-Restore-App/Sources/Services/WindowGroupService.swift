@@ -16,13 +16,13 @@ final class WindowGroupService: ObservableObject {
             }
             return
         }
-        // 대기 목록이 없으면 추가, 항상 최상단 고정
+        // Waiting List이 없으면 추가, 항상 최상단 고정
         if !decoded.contains(where: { $0.isWaitingList }) {
-            let wl = WindowPane(name: "대기 목록", sessionName: "__waiting__",
+            let wl = WindowPane(name: "Waiting List", sessionName: "__waiting__",
                                 profileNames: [], isWaitingList: true)
             decoded.insert(wl, at: 0)
         } else {
-            // 대기 목록을 항상 첫 번째로 이동
+            // Waiting List을 항상 첫 번째로 이동
             if let idx = decoded.firstIndex(where: { $0.isWaitingList }), idx != 0 {
                 let wl = decoded.remove(at: idx)
                 decoded.insert(wl, at: 0)
@@ -40,7 +40,7 @@ final class WindowGroupService: ObservableObject {
     func group(for profileName: String) -> WindowPane {
         return groups.first { $0.profileNames.contains(profileName) }
             ?? groups.first
-            ?? WindowPane(name: "메인", sessionName: Self.defaultSessionName, profileNames: [])
+            ?? WindowPane(name: "Main", sessionName: Self.defaultSessionName, profileNames: [])
     }
 
     // 프로필 이름 변경 (windowGroup 내 이름도 동기화)
@@ -73,7 +73,7 @@ final class WindowGroupService: ObservableObject {
         save()
     }
 
-    // 대기 목록 pane (없으면 자동 생성)
+    // Waiting List pane (없으면 자동 생성)
     var waitingList: WindowPane {
         groups.first { $0.isWaitingList } ?? ensureWaitingList()
     }
@@ -81,14 +81,14 @@ final class WindowGroupService: ObservableObject {
     @discardableResult
     func ensureWaitingList() -> WindowPane {
         if let existing = groups.first(where: { $0.isWaitingList }) { return existing }
-        let wl = WindowPane(name: "대기 목록", sessionName: "__waiting__",
+        let wl = WindowPane(name: "Waiting List", sessionName: "__waiting__",
                             profileNames: [], isWaitingList: true)
         groups.insert(wl, at: 0)  // 항상 최상단
         save()
         return wl
     }
 
-    // 그룹 삭제 (프로필은 대기 목록으로 이동, 대기 목록 자체는 삭제 불가)
+    // 그룹 삭제 (프로필은 Waiting List으로 이동, Waiting List 자체는 삭제 불가)
     func deleteGroup(_ group: WindowPane) {
         guard !group.isWaitingList,
               groups.filter({ !$0.isWaitingList }).count > 1,
@@ -135,8 +135,8 @@ final class WindowGroupService: ObservableObject {
 
     private func defaultGroups() -> [WindowPane] {
         [
-            WindowPane(name: "메인", sessionName: "claude-work", profileNames: []),
-            WindowPane(name: "대기 목록", sessionName: "__waiting__", profileNames: [], isWaitingList: true),
+            WindowPane(name: "Main", sessionName: "claude-work", profileNames: []),
+            WindowPane(name: "Waiting List", sessionName: "__waiting__", profileNames: [], isWaitingList: true),
         ]
     }
 
@@ -145,8 +145,8 @@ final class WindowGroupService: ObservableObject {
         let path = NSHomeDirectory() + "/.claude/window-groups.json"
         guard !FileManager.default.fileExists(atPath: path) else { return }
         let defaults = [
-            WindowPane(name: "메인", sessionName: "claude-work", profileNames: []),
-            WindowPane(name: "대기 목록", sessionName: "__waiting__", profileNames: [], isWaitingList: true),
+            WindowPane(name: "Main", sessionName: "claude-work", profileNames: []),
+            WindowPane(name: "Waiting List", sessionName: "__waiting__", profileNames: [], isWaitingList: true),
         ]
         guard let data = try? JSONEncoder().encode(defaults) else { return }
         try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
