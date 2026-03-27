@@ -33,6 +33,8 @@ final class SessionMonitor: ObservableObject {
     private var intentionallyStoppedProfiles: Set<String> = [] // 의도적 중지 추적 (by profileName, checkAutoSync 용)
 
     func start() {
+        // BUG-003 fix: app 재시작 시 intentional-stops.json 로드 → checkAutoSync 오재시작 방지
+        loadIntentionalStops()
         Task {
             await cleanupStaleLinkedSessions()
             await refresh()
@@ -48,12 +50,33 @@ final class SessionMonitor: ObservableObject {
         restartSyncTimer()
     }
 
-    // client 없는 stale linked sessions(-vN) 자동 정리
+    // BUG-003 fix: intentional-stops.json → intentionallyStoppedProfiles 초기 로드
+    private func loadIntentionalStops() {
+        let path = NSHomeDirectory() + "/.claude/intentional-stops.json"
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let stops = json["stops"] as? [[String: Any]] else { return }
+        for stop in stops {
+            if let windowName = stop["window_name"] as? String, !windowName.isEmpty {
+                intentionallyStoppedProfiles.insert(windowName)
+            }
+        }
+    }
+
+    // BUG-STALE-LINKED fix: 5분(300초) 이상 클라이언트 없는 linked sessions(-vN)만 정리
+    // 즉시 kill 금지 — 부팅 시 auto-attach가 생성 직후 iTerm 연결 전에 앱이 kill할 수 있음
     func cleanupStaleLinkedSessions() async {
         let raw = await ShellService.runAsync(
-            "tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E '.*-v[0-9]+$'"
+            "tmux list-sessions -F '#{session_name}|#{session_created}' 2>/dev/null | grep -E '.*-v[0-9]+\\|'"
         )
-        for s in raw.components(separatedBy: "\n").map({ $0.trimmingCharacters(in: .whitespaces) }).filter({ !$0.isEmpty }) {
+        let nowTS = Int(Date().timeIntervalSince1970)
+        for line in raw.components(separatedBy: "\n").map({ $0.trimmingCharacters(in: .whitespaces) }).filter({ !$0.isEmpty }) {
+            let parts = line.components(separatedBy: "|")
+            guard parts.count >= 2 else { continue }
+            let s = parts[0]
+            let createdTS = Int(parts[1]) ?? 0
+            let age = nowTS - createdTS
+            guard age > 300 else { continue }  // 5분 미만 세션은 보존 (부팅 race condition 방지)
             let clients = await ShellService.runAsync("tmux list-clients -t '\(shellEscape(s))' 2>/dev/null | wc -l")
             if (Int(clients.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) == 0 {
                 await ShellService.runAsync("tmux kill-session -t '\(shellEscape(s))' 2>/dev/null; true")
@@ -883,7 +906,15 @@ final class SessionMonitor: ObservableObject {
         // BUG#31 fix: 중복 실행 방지 — 이미 시작 중이면 무시
         guard !startingGroups.contains(sessionName) else { return }
         startingGroups.insert(sessionName)
-        defer { startingGroups.remove(sessionName) }
+        // BUG-STARTGROUP-CCFIX fix: startGroup 실행 중 cc-fix 중복 발동 방지
+        // cc-fix의 120초 cooldown lock을 현재 시각으로 갱신 → startGroup 완료 때까지 cc-fix 스킵
+        let ccFixLockPath = "/tmp/.cc-fix-last-\(sessionName.replacingOccurrences(of: "[^a-zA-Z0-9]", with: "_", options: .regularExpression))"
+        try? "\(Int(Date().timeIntervalSince1970))".write(toFile: ccFixLockPath, atomically: true, encoding: .utf8)
+        defer {
+            startingGroups.remove(sessionName)
+            // startGroup 완료 후 cc-fix lock 재갱신 (iTerm 연결 완료까지 추가 120초 확보)
+            try? "\(Int(Date().timeIntervalSince1970))".write(toFile: ccFixLockPath, atomically: true, encoding: .utf8)
+        }
         let escapedSession = shellEscape(sessionName)
 
         // tmux 세션 없으면 _init_ 임시 창으로 생성 (profile → monitor 순서로 맨 뒤 배치)
