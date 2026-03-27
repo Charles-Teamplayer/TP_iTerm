@@ -69,7 +69,7 @@ set logFile to \"$LOGF\"
 set logTail to do shell script \"tail -20 \" & quoted form of logFile
 set choice to button returned of (display dialog \"[${TS}] ${SAFE_MSG}\" & return & return & \"─── 최근 로그 (20줄) ───\" & return & logTail with title \"MAGI+NORN Watchdog 상세\" buttons {\"닫기\", \"전체 로그 열기\"} default button \"닫기\")
 if choice is \"전체 로그 열기\" then
-    do shell script \"open \" & quoted form of logFile
+    do shell script \"osascript -e 'tell application \\\"iTerm2\\\" to create window with default profile command \\\"tail -100 \" & quoted form of logFile & \"\\\"' 2>/dev/null || open \" & quoted form of logFile
 end if" 2>/dev/null
         ) &>/dev/null &
         disown
@@ -200,6 +200,27 @@ for candidate in [path, path + '.bak']:
                 if [ -z "$PROJ_PATH" ] || [ ! -d "$PROJ_PATH" ]; then
                     log "SKIP restart: $RESTART_PROJECT not in activated-sessions or path missing"
                     continue
+                fi
+
+                # BUG-009 fix: intentional-stops.json 확인 — 사용자가 의도적으로 중지한 세션은 재시작 금지
+                # MAGI 앱에서 Stop 시 graceful exit이 실패해 레지스트리에 남아 있어도 watchdog이 재시작하지 않도록
+                INTENTIONAL_STOPS_FILE="$HOME/.claude/intentional-stops.json"
+                if [ -f "$INTENTIONAL_STOPS_FILE" ]; then
+                    IS_INTENTIONAL=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$INTENTIONAL_STOPS_FILE'))
+    wn = sys.argv[1]
+    for s in d.get('stops', []):
+        if s.get('window_name', s.get('project', '')) == wn:
+            print('yes'); sys.exit(0)
+except: pass
+print('no')
+" "$WINDOW_NAME" 2>/dev/null)
+                    if [ "$IS_INTENTIONAL" = "yes" ]; then
+                        log "SKIP restart: $RESTART_PROJECT — intentional-stop 목록에 있음 (사용자 의도 중지)"
+                        continue
+                    fi
                 fi
 
                 # window-groups.json에서 이 윈도우가 속한 세션 + 대기목록 여부 확인
