@@ -54,18 +54,34 @@ final class MenuBarState: ObservableObject {
     }
 
     func refresh() async {
-        let windowNames = await ShellService.runAsync("tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null")
-        let windows = windowNames.components(separatedBy: "\n").filter { !$0.isEmpty }
+        // window-groups.json에서 active session 목록 읽기 (claude-work 하드코딩 제거)
+        let groupsRaw = await ShellService.runAsync("""
+            python3 -c "
+import json, os
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    for g in groups:
+        if not g.get('isWaitingList', False):
+            print(g['sessionName'])
+except: pass
+" 2>/dev/null
+""")
+        let activeSessions = groupsRaw.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let checkSessions = activeSessions.isEmpty ? ["claude-work"] : activeSessions
+
         var count = 0
-        for win in windows {
-            let paneInfo = await ShellService.runAsync(
-                "tmux display-message -t \(ShellService.shellq("claude-work:\(win)")) -p '#{pane_tty}' 2>/dev/null"
-            ).trimmingCharacters(in: .whitespacesAndNewlines)
-            let ttyBase = paneInfo.replacingOccurrences(of: "/dev/", with: "")
-            guard !ttyBase.isEmpty else { continue }
-            let procs = await ShellService.runAsync("ps -o command -t \(ShellService.shellq(ttyBase)) 2>/dev/null | grep '[c]laude' | head -1")
-            if !procs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                count += 1
+        for sessionName in checkSessions {
+            let windowNames = await ShellService.runAsync(
+                "tmux list-windows -t '\(sessionName)' -F '#{window_name}' 2>/dev/null"
+            )
+            for win in windowNames.components(separatedBy: "\n").filter({ !$0.isEmpty && $0 != "monitor" }) {
+                let paneInfo = await ShellService.runAsync(
+                    "tmux display-message -t \(ShellService.shellq("\(sessionName):\(win)")) -p '#{pane_tty}' 2>/dev/null"
+                ).trimmingCharacters(in: .whitespacesAndNewlines)
+                let ttyBase = paneInfo.replacingOccurrences(of: "/dev/", with: "")
+                guard !ttyBase.isEmpty else { continue }
+                let procs = await ShellService.runAsync("ps -o command -t \(ShellService.shellq(ttyBase)) 2>/dev/null | grep '[c]laude' | head -1")
+                if !procs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { count += 1 }
             }
         }
         sessionCount = count
@@ -78,9 +94,11 @@ final class MenuBarState: ObservableObject {
         }
         allDaemonsRunning = allRunning
 
-        // tmux 세션 목록 갱신
-        let raw = await ShellService.runAsync("tmux list-sessions -F '#{session_name}' 2>/dev/null")
-        tmuxSessionNames = raw.components(separatedBy: "\n").filter { !$0.isEmpty }
+        // linked view sessions(-vN) 제외한 실제 tmux 세션 목록
+        let raw = await ShellService.runAsync(
+            "tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Ev '.*-v[0-9]+$'"
+        )
+        tmuxSessionNames = raw.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 
     private lazy var systemVM = SystemViewModel()

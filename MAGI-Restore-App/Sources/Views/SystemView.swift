@@ -47,25 +47,41 @@ func startAutoRefresh() {
         }
         daemons = updated
 
-        // TTY 기반: tmux 각 윈도우의 pane에서 claude 프로세스 카운트
-        let windowNames = await ShellService.runAsync("tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null")
-        let windows = windowNames.components(separatedBy: "\n").filter { !$0.isEmpty }
+        // 모든 active 세션에서 claude 프로세스 카운트
+        let groupsRaw = await ShellService.runAsync("""
+            python3 -c "
+import json, os
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    for g in groups:
+        sn = g.get('sessionName','')
+        if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
+            print(sn)
+except: pass
+" 2>/dev/null
+""")
+        let activeSessions = groupsRaw.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let checkSessions = activeSessions.isEmpty ? ["claude-work"] : activeSessions
+
         var count = 0
-        for win in windows {
-            let paneInfo = await ShellService.runAsync(
-                "tmux display-message -t \(shellq("claude-work:\(win)")) -p '#{pane_tty}' 2>/dev/null"
-            ).trimmingCharacters(in: .whitespacesAndNewlines)
-            let ttyBase = paneInfo.replacingOccurrences(of: "/dev/", with: "")
-            guard !ttyBase.isEmpty else { continue }
-            let procs = await ShellService.runAsync("ps -o command -t \(shellq(ttyBase)) 2>/dev/null | grep '[c]laude' | head -1")
-            if !procs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                count += 1
+        var anySessionExists = false
+        for sname in checkSessions {
+            let hasSession = await ShellService.runAsync("tmux has-session -t '\(sname.replacingOccurrences(of: "'", with: "'\\''"))' 2>/dev/null && echo YES || echo NO")
+            if hasSession.contains("YES") { anySessionExists = true }
+            let windowNames = await ShellService.runAsync("tmux list-windows -t '\(sname.replacingOccurrences(of: "'", with: "'\\''"))' -F '#{window_name}' 2>/dev/null")
+            let windows = windowNames.components(separatedBy: "\n").filter { !$0.isEmpty && $0 != "monitor" }
+            for win in windows {
+                let paneInfo = await ShellService.runAsync(
+                    "tmux display-message -t \(shellq("\(sname):\(win)")) -p '#{pane_tty}' 2>/dev/null"
+                ).trimmingCharacters(in: .whitespacesAndNewlines)
+                let ttyBase = paneInfo.replacingOccurrences(of: "/dev/", with: "")
+                guard !ttyBase.isEmpty else { continue }
+                let procs = await ShellService.runAsync("ps -o command -t \(shellq(ttyBase)) 2>/dev/null | grep '[c]laude' | head -1")
+                if !procs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { count += 1 }
             }
         }
         sessionCount = count
-
-        let tmuxCheck = await ShellService.runAsync("tmux has-session -t claude-work 2>/dev/null && echo YES || echo NO")
-        tmuxSessionExists = tmuxCheck.contains("YES")
+        tmuxSessionExists = anySessionExists
     }
 
     func toggle(daemon: DaemonInfo) {
@@ -86,7 +102,23 @@ func startAutoRefresh() {
         isRestoring = true
         restoreLog = "⏳ 세션 상태 확인 중..."
 
-        let sessionExists = await ShellService.runAsync("tmux has-session -t claude-work 2>/dev/null && echo YES || echo NO")
+        // 첫 번째 active 세션 존재 여부 확인
+        let firstSessionCheck = await ShellService.runAsync("""
+            python3 -c "
+import json, os, subprocess
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    for g in groups:
+        sn = g.get('sessionName','')
+        if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
+            r = subprocess.run(['tmux','has-session','-t',sn], capture_output=True)
+            if r.returncode == 0:
+                print('YES')
+                break
+except: pass
+" 2>/dev/null
+""")
+        let sessionExists = firstSessionCheck.contains("YES") ? firstSessionCheck : "NO"
 
         if sessionExists.contains("YES") {
             restoreLog = "⏳ 죽은 세션 점검 중..."
@@ -122,9 +154,22 @@ func startAutoRefresh() {
     }
 
     private func attachTmuxToITerm() async {
-        let alreadyAttached = await ShellService.runAsync(
-            "tmux list-clients -t claude-work -F '#{client_flags}' 2>/dev/null | grep -q 'control-mode' && echo YES || echo NO"
-        )
+        // 모든 active 세션 중 하나라도 control-mode로 연결되어 있으면 OK
+        let alreadyAttached = await ShellService.runAsync("""
+            python3 -c "
+import json, os, subprocess
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    for g in groups:
+        sn = g.get('sessionName','')
+        if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
+            r = subprocess.run(['tmux','list-clients','-t',sn,'-F','#{client_flags}'], capture_output=True, text=True)
+            if 'control-mode' in r.stdout:
+                print('YES')
+                break
+except: pass
+" 2>/dev/null
+""")
 
         if alreadyAttached.contains("YES") {
             restoreLog += "\n✅ iTerm2 이미 연결됨"
@@ -133,12 +178,31 @@ func startAutoRefresh() {
 
         restoreLog += "\n🔗 iTerm2 새 탭으로 연결 중..."
 
+        // 첫 번째 active 세션에 attach (claude-work 하드코딩 제거)
+        let firstSession = await ShellService.runAsync("""
+            python3 -c "
+import json, os
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    for g in groups:
+        sn = g.get('sessionName','')
+        if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
+            import subprocess
+            r = subprocess.run(['tmux','has-session','-t',sn], capture_output=True)
+            if r.returncode == 0:
+                print(sn)
+                break
+except: pass
+" 2>/dev/null
+""").trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetSession = firstSession.isEmpty ? "claude-work" : firstSession
+
         let script = """
         osascript -e 'tell application "iTerm2"
             tell current window
                 create tab with default profile
                 tell current session of current tab
-                    write text "tmux -CC attach -t claude-work"
+                    write text "tmux -CC attach -t \(targetSession)"
                 end tell
             end tell
         end tell' 2>&1
@@ -174,8 +238,48 @@ func startAutoRefresh() {
                 return (name: name, path: path)
             }
 
-        let existingWindows = await ShellService.runAsync("tmux list-windows -t claude-work -F '#{window_name}' 2>/dev/null")
-        let windowSet = Set(existingWindows.components(separatedBy: "\n").filter { !$0.isEmpty })
+        // window-groups.json에서 프로젝트명 → 세션명 매핑
+        let sessionMapRaw = await ShellService.runAsync("""
+            python3 -c "
+import json, os
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    for g in groups:
+        sn = g.get('sessionName','')
+        if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
+            for p in g.get('profileNames',[]):
+                print(p + '|' + sn)
+except: pass
+" 2>/dev/null
+""")
+        var projectSessionMap: [String: String] = [:]
+        for line in sessionMapRaw.components(separatedBy: "\n") where line.contains("|") {
+            let parts = line.components(separatedBy: "|")
+            if parts.count >= 2 { projectSessionMap[parts[0]] = parts[1] }
+        }
+
+        // 모든 active 세션의 창 목록 수집
+        let allWindowsRaw = await ShellService.runAsync("""
+            python3 -c "
+import json, os, subprocess
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    for g in groups:
+        sn = g.get('sessionName','')
+        if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
+            r = subprocess.run(['tmux','list-windows','-t',sn,'-F','#{window_name}'], capture_output=True, text=True)
+            for w in r.stdout.strip().split('\\n'):
+                if w: print(sn + '|' + w)
+except: pass
+" 2>/dev/null
+""")
+        // sessionName|windowName 형식 → windowName → sessionName 매핑
+        var windowSessionMap: [String: String] = [:]
+        for line in allWindowsRaw.components(separatedBy: "\n") where line.contains("|") {
+            let parts = line.components(separatedBy: "|")
+            if parts.count >= 2 { windowSessionMap[parts[1]] = parts[0] }
+        }
+        let windowSet = Set(windowSessionMap.keys)
 
         // "지금 복원" 버튼은 사용자의 명시적 의도이므로 intentional-stops를 초기화
         let stopsFile = NSHomeDirectory() + "/.claude/intentional-stops.json"
@@ -185,6 +289,9 @@ func startAutoRefresh() {
         var restored = 0
         var alreadyRunning = 0
         for proj in projects {
+            let targetSession = projectSessionMap[proj.name] ?? windowSessionMap[proj.name] ?? "claude-work"
+            let escapedSession = targetSession.replacingOccurrences(of: "'", with: "'\\''")
+
             let expandedPath = proj.path.hasPrefix("~")
                 ? NSHomeDirectory() + proj.path.dropFirst()
                 : proj.path
@@ -194,7 +301,7 @@ func startAutoRefresh() {
             if windowSet.contains(proj.name) {
                 // 창은 있지만 claude가 실행 중인지 확인 (TTY 기반 + pgrep fallback)
                 let paneInfo = await ShellService.runAsync(
-                    "tmux display-message -t \(shellq("claude-work:\(proj.name)")) -p '#{pane_tty}|#{pane_pid}' 2>/dev/null"
+                    "tmux display-message -t \(shellq("\(targetSession):\(proj.name)")) -p '#{pane_tty}|#{pane_pid}' 2>/dev/null"
                 ).trimmingCharacters(in: .whitespacesAndNewlines)
                 let infoParts = paneInfo.components(separatedBy: "|")
                 let paneTty = infoParts.count > 0 ? infoParts[0] : ""
@@ -221,16 +328,16 @@ func startAutoRefresh() {
                 // claude 죽어있음 → 재시작 명령 전송
                 let cmd = "bash ~/.claude/scripts/tab-status.sh starting \(shellq(proj.name)) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)"
                 await ShellService.runAsync(
-                    "tmux send-keys -t \(shellq("claude-work:\(proj.name)")) \(shellq(cmd)) Enter"
+                    "tmux send-keys -t \(shellq("\(targetSession):\(proj.name)")) \(shellq(cmd)) Enter"
                 )
                 restored += 1
             } else {
                 // 창 없음 → 새로 생성
-                await ShellService.runAsync("tmux new-window -t claude-work -n \(shellq(proj.name)) -c \(shellq(expandedPath))")
-                await ShellService.runAsync("tmux set-window-option -t \(shellq("claude-work:\(proj.name)")) automatic-rename off 2>/dev/null")
+                await ShellService.runAsync("tmux new-window -t '\(escapedSession)' -n \(shellq(proj.name)) -c \(shellq(expandedPath))")
+                await ShellService.runAsync("tmux set-window-option -t \(shellq("\(targetSession):\(proj.name)")) automatic-rename off 2>/dev/null")
                 let cmd = "bash ~/.claude/scripts/tab-status.sh starting \(shellq(proj.name)) && unset CLAUDECODE && (claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions)"
                 await ShellService.runAsync(
-                    "tmux send-keys -t \(shellq("claude-work:\(proj.name)")) \(shellq(cmd)) Enter"
+                    "tmux send-keys -t \(shellq("\(targetSession):\(proj.name)")) \(shellq(cmd)) Enter"
                 )
                 restored += 1
             }

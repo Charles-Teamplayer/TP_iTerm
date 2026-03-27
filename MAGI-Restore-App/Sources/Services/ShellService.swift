@@ -78,15 +78,29 @@ struct ShellService {
         if pid > 0 {
             await runAsync("kill -9 \(pid) 2>/dev/null; true")
         }
-        // 3. tmux window 종료 — 이름 정확 일치 (windowIndex 기반 대안 없으므로 이름 비교 유지)
+        // 3. tmux window 종료 — window-groups.json에서 해당 창이 속한 세션 동적 탐색
         if !windowName.isEmpty {
             let escapedName = windowName.replacingOccurrences(of: "'", with: "'\\''")
             let killCmd = """
-            tmux list-windows -t claude-work -F '#{window_index} #{window_name}' 2>/dev/null \
-            | while IFS=' ' read -r idx name; do \
-              [ "$name" = '\(escapedName)' ] && tmux kill-window -t "claude-work:$idx" 2>/dev/null; \
-            done; true
-            """
+            python3 -c "
+import json, os, subprocess
+win = '\(escapedName)'
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    sessions = [g.get('sessionName','') for g in groups if not g.get('isWaitingList', False) and g.get('sessionName','') and g.get('sessionName','') != '__waiting__']
+except:
+    sessions = ['claude-work']
+if not sessions:
+    sessions = ['claude-work']
+for sn in sessions:
+    r = subprocess.run(['tmux','list-windows','-t',sn,'-F','#{window_index} #{window_name}'], capture_output=True, text=True)
+    for line in r.stdout.strip().split('\\n'):
+        parts = line.split(' ', 1)
+        if len(parts) == 2 and parts[1] == win:
+            subprocess.run(['tmux','kill-window','-t',sn + ':' + parts[0]], capture_output=True)
+            break
+" 2>/dev/null; true
+"""
             await runAsync(killCmd)
         }
         // 4. active-sessions.json 제거 — 환경변수로 값 전달 (인라인 삽입 제거)

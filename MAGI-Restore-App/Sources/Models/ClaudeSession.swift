@@ -36,6 +36,7 @@ struct ClaudeSession: Identifiable, Hashable {
     var isAssigned: Bool = true
     var claudeStatus: ClaudeStatus = .unknown  // tab-color/states 기반 실시간 상태
     var didCrash: Bool = false                 // running→false 비정상 종료 감지 시 true
+    var tmuxSession: String = "claude-work"
 
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
     static func == (lhs: ClaudeSession, rhs: ClaudeSession) -> Bool { lhs.id == rhs.id }

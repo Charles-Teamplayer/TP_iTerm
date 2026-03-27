@@ -30,15 +30,32 @@ final class SessionMonitor: ObservableObject {
     private var intentionallyStoppedIds: Set<String> = []    // 의도적 중지 추적
 
     func start() {
-        Task { await refresh() }
+        Task {
+            await cleanupStaleLinkedSessions()
+            await refresh()
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.refresh()
                 await self?.checkAutoRestore()
+                await self?.cleanupStaleLinkedSessions()
             }
         }
         setupStateWatcher()
         restartSyncTimer()
+    }
+
+    // client 없는 stale linked sessions(-vN) 자동 정리
+    func cleanupStaleLinkedSessions() async {
+        let raw = await ShellService.runAsync(
+            "tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E '.*-v[0-9]+$'"
+        )
+        for s in raw.components(separatedBy: "\n").map({ $0.trimmingCharacters(in: .whitespaces) }).filter({ !$0.isEmpty }) {
+            let clients = await ShellService.runAsync("tmux list-clients -t '\(shellEscape(s))' 2>/dev/null | wc -l")
+            if (Int(clients.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) == 0 {
+                await ShellService.runAsync("tmux kill-session -t '\(shellEscape(s))' 2>/dev/null; true")
+            }
+        }
     }
 
     func restartSyncTimer() {
@@ -166,7 +183,8 @@ final class SessionMonitor: ObservableObject {
                 directory: activeInfo?.dir ?? tw.rootDir,
                 windowName: tw.windowName,
                 windowIndex: tw.windowIndex,
-                isRunning: isRunning
+                isRunning: isRunning,
+                tmuxSession: tw.sessionName
             ))
         }
 
@@ -323,16 +341,16 @@ final class SessionMonitor: ObservableObject {
         if session.windowIndex >= 0 && session.windowIndex != Int.max {
             // 창 존재 여부 확인
             let paneCmd = await ShellService.runAsync(
-                "tmux list-panes -t 'claude-work:\(session.windowIndex)' -F '#{pane_current_command}' 2>/dev/null | head -1"
+                "tmux list-panes -t '\(session.tmuxSession):\(session.windowIndex)' -F '#{pane_current_command}' 2>/dev/null | head -1"
             )
             if paneCmd.isEmpty {
                 // 창이 없어진 경우 → 새로 생성
                 let escapedName = shellEscape(session.windowName)
                 let escapedDir  = shellEscape(safeDir)
-                await ShellService.runAsync("tmux new-window -t claude-work -n '\(escapedName)' -c '\(escapedDir)'")
-                await ShellService.runAsync("tmux send-keys -t 'claude-work:\(escapedName)' '\(claudeEntry)' Enter 2>/dev/null")
+                await ShellService.runAsync("tmux new-window -t \(session.tmuxSession) -n '\(escapedName)' -c '\(escapedDir)'")
+                await ShellService.runAsync("tmux send-keys -t '\(session.tmuxSession):\(escapedName)' '\(claudeEntry)' Enter 2>/dev/null")
             } else {
-                await ShellService.runAsync("tmux send-keys -t 'claude-work:\(session.windowIndex)' '\(claudeEntry)' Enter 2>/dev/null")
+                await ShellService.runAsync("tmux send-keys -t '\(session.tmuxSession):\(session.windowIndex)' '\(claudeEntry)' Enter 2>/dev/null")
             }
         } else if let root = session.profileRoot {
             let group = windowGroupService.group(for: session.projectName)
@@ -347,7 +365,7 @@ final class SessionMonitor: ObservableObject {
     func forceResetSession(_ session: ClaudeSession) async {
         // 기존 창 kill
         if session.windowIndex >= 0 && session.windowIndex != Int.max {
-            await ShellService.runAsync("tmux kill-window -t 'claude-work:\(session.windowIndex)' 2>/dev/null; true")
+            await ShellService.runAsync("tmux kill-window -t '\(session.tmuxSession):\(session.windowIndex)' 2>/dev/null; true")
         }
         // crash 상태 초기화
         if let idx = sessions.firstIndex(where: { $0.id == session.id }) {
@@ -408,21 +426,21 @@ final class SessionMonitor: ObservableObject {
             // 창 존재 여부 먼저 확인 — windowIndex 기반 (이모지/특수문자 안전)
             let winIdx = session.windowIndex
             let paneCmd = await ShellService.runAsync(
-                "tmux list-panes -t 'claude-work:\(winIdx)' -F '#{pane_current_command}' 2>/dev/null | head -1"
+                "tmux list-panes -t '\(session.tmuxSession):\(winIdx)' -F '#{pane_current_command}' 2>/dev/null | head -1"
             )
 
             if paneCmd.isEmpty {
                 // 창이 사라진 경우 — 새로 생성 후 claude 실행
                 await ShellService.runAsync(
-                    "tmux new-window -t claude-work -n '\(winName)' -c '\(escapedDir)'"
+                    "tmux new-window -t \(session.tmuxSession) -n '\(winName)' -c '\(escapedDir)'"
                 )
                 await ShellService.runAsync(
-                    "tmux send-keys -t 'claude-work:\(winName)' '\(claudeEntry)' Enter 2>/dev/null"
+                    "tmux send-keys -t '\(session.tmuxSession):\(winName)' '\(claudeEntry)' Enter 2>/dev/null"
                 )
             } else {
                 // 창이 있음 — windowIndex로 targeting (특수문자 무관)
                 await ShellService.runAsync(
-                    "tmux send-keys -t 'claude-work:\(winIdx)' '\(claudeEntry)' Enter 2>/dev/null"
+                    "tmux send-keys -t '\(session.tmuxSession):\(winIdx)' '\(claudeEntry)' Enter 2>/dev/null"
                 )
             }
 
@@ -478,9 +496,8 @@ final class SessionMonitor: ObservableObject {
             if session.pid > 0 {
                 await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
             }
-            // loadTmuxWindows()는 claude-work만 쿼리하므로 고정
             await ShellService.runAsync(
-                "tmux kill-window -t 'claude-work:\(session.windowIndex)' 2>/dev/null; true"
+                "tmux kill-window -t '\(session.tmuxSession):\(session.windowIndex)' 2>/dev/null; true"
             )
         }
         if !toKill.isEmpty {
@@ -522,7 +539,7 @@ final class SessionMonitor: ObservableObject {
             // windowIndex 기반 tmux kill-window (이름 특수문자 무관, json-* 세션 -1 방어)
             if session.windowIndex >= 0 {
                 await ShellService.runAsync(
-                    "tmux kill-window -t 'claude-work:\(session.windowIndex)' 2>/dev/null; true"
+                    "tmux kill-window -t '\(session.tmuxSession):\(session.windowIndex)' 2>/dev/null; true"
                 )
             }
         }
@@ -539,7 +556,7 @@ final class SessionMonitor: ObservableObject {
         for session in idleZsh {
             let winIdx = session.windowIndex
             let paneCmd = await ShellService.runAsync(
-                "tmux list-panes -t 'claude-work:\(winIdx)' -F '#{pane_current_command}' 2>/dev/null | head -1"
+                "tmux list-panes -t '\(session.tmuxSession):\(winIdx)' -F '#{pane_current_command}' 2>/dev/null | head -1"
             )
             guard paneCmd == "zsh" || paneCmd == "bash" || paneCmd.isEmpty else {
                 continue
@@ -547,7 +564,7 @@ final class SessionMonitor: ObservableObject {
             let dir = session.directory.isEmpty ? session.projectName : session.directory
             await ShellService.intentionalStopAsync(projectDir: dir)
             await ShellService.runAsync(
-                "tmux kill-window -t 'claude-work:\(winIdx)' 2>/dev/null; true"
+                "tmux kill-window -t '\(session.tmuxSession):\(winIdx)' 2>/dev/null; true"
             )
         }
         try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -793,6 +810,7 @@ final class SessionMonitor: ObservableObject {
             tmux kill-window -t '\(escapedSession):_init_' 2>/dev/null; \
             tmux new-window -t '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' '/bin/bash -c \"while true; do sleep 86400; done\"' 2>/dev/null; \
             tmux set-window-option -t '\(escapedSession):monitor' automatic-rename off 2>/dev/null; \
+            tmux move-window -s '\(escapedSession):monitor' -t '\(escapedSession):999' 2>/dev/null; \
             tmux list-sessions -F '#{session_name}' 2>/dev/null \
               | grep '^\(sessionName)-v[0-9]' \
               | xargs -I{} tmux kill-session -t {} 2>/dev/null; \
@@ -802,6 +820,9 @@ final class SessionMonitor: ObservableObject {
 
         // 기존에 이 세션에 붙어있는 iTerm2 창 닫기 (미러링 방지)
         await closeExistingITermWindows(for: sessionName)
+
+        // 탭 순서 재배치 (profileNames 순서, monitor는 999)
+        await reorderTabs(for: group)
 
         // iTerm2 새 창 + 각 tmux 창마다 탭 생성 (CC 모드 대신 개별 attach)
         try? await Task.sleep(nanoseconds: 2_000_000_000)  // 창 생성 대기
@@ -928,8 +949,13 @@ final class SessionMonitor: ObservableObject {
             await ShellService.runAsync(
                 "tmux move-window -s '\(shellEscape(sname)):\(tempIdx)' -t '\(shellEscape(sname)):\(targetIdx)' 2>/dev/null; true"
             )
-            _ = profile  // suppress warning
+            _ = profile
         }
+
+        // monitor는 항상 맨 뒤 (index 999)
+        await ShellService.runAsync(
+            "tmux move-window -s '\(shellEscape(sname)):monitor' -t '\(shellEscape(sname)):999' 2>/dev/null; true"
+        )
     }
 
     func createSession(name: String, directory: String) async {
@@ -937,12 +963,16 @@ final class SessionMonitor: ObservableObject {
         let safeDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !safeName.isEmpty, !safeDir.isEmpty else { return }
 
+        // 첫 번째 active 세션 사용 (없으면 claude-work)
+        let targetSession = windowGroupService.groups
+            .first(where: { !$0.isWaitingList })?.sessionName ?? "claude-work"
         let escapedName = shellEscape(safeName)
         let escapedDir = shellEscape(safeDir)
+        let escapedSession = shellEscape(targetSession)
         let nameForStatus = safeName.replacingOccurrences(of: "\"", with: "\\\"")
                                      .replacingOccurrences(of: "'", with: "'\\''")
         let cmd = """
-        tmux new-window -t claude-work -n '\(escapedName)' -c '\(escapedDir)' \\; \
+        tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedDir)' \\; \
         send-keys "bash ~/.claude/scripts/tab-status.sh starting '\(nameForStatus)' && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; true
         """
         await ShellService.runAsync(cmd)
@@ -966,6 +996,7 @@ final class SessionMonitor: ObservableObject {
         let panePid: Int
         let paneTty: String
         let rootDir: String
+        let sessionName: String
     }
 
     private struct ActiveSessionInfo {
@@ -988,22 +1019,44 @@ final class SessionMonitor: ObservableObject {
     }
 
     private func loadTmuxWindows() async -> [TmuxWindow] {
-        let output = await ShellService.runAsync(
-            "tmux list-windows -t claude-work -F '#{window_index}\u{01}#{window_name}\u{01}#{pane_pid}\u{01}#{pane_tty}\u{01}#{pane_current_path}' 2>/dev/null"
-        )
-        guard !output.isEmpty else { return [] }
+        // window-groups.json에서 active 세션 목록 조회
+        let groupsRaw = await ShellService.runAsync("""
+            python3 -c "
+import json, os
+try:
+    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
+    for g in groups:
+        sn = g.get('sessionName','')
+        if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
+            print(sn)
+except: pass
+" 2>/dev/null
+""")
+        let activeSessions = groupsRaw.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let sessions = activeSessions.isEmpty ? ["claude-work"] : activeSessions
+
         var result: [TmuxWindow] = []
-        for line in output.components(separatedBy: "\n") {
-            let parts = line.components(separatedBy: "\u{01}")
-            guard parts.count >= 4 else { continue }
-            guard let idx = Int(parts[0]), let pid = Int(parts[2]) else { continue }
-            result.append(TmuxWindow(
-                windowIndex: idx,
-                windowName: parts[1],
-                panePid: pid,
-                paneTty: parts[3],
-                rootDir: parts.count >= 5 ? parts[4] : ""
-            ))
+        for sessionName in sessions {
+            let escaped = sessionName.replacingOccurrences(of: "'", with: "'\\''")
+            let output = await ShellService.runAsync(
+                "tmux list-windows -t '\(escaped)' -F '#{window_index}\u{01}#{window_name}\u{01}#{pane_pid}\u{01}#{pane_tty}\u{01}#{pane_current_path}' 2>/dev/null"
+            )
+            guard !output.isEmpty else { continue }
+            for line in output.components(separatedBy: "\n") {
+                let parts = line.components(separatedBy: "\u{01}")
+                guard parts.count >= 4 else { continue }
+                guard let idx = Int(parts[0]), let pid = Int(parts[2]) else { continue }
+                result.append(TmuxWindow(
+                    windowIndex: idx,
+                    windowName: parts[1],
+                    panePid: pid,
+                    paneTty: parts[3],
+                    rootDir: parts.count >= 5 ? parts[4] : "",
+                    sessionName: sessionName
+                ))
+            }
         }
         return result
     }

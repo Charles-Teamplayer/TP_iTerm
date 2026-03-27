@@ -80,25 +80,6 @@ struct ContentView: View {
             monitor.profileService.load()
             monitor.windowGroupService.load()
             monitor.syncWindowGroupsWithProfiles()
-            // 진단 로그 파일 생성 (앱 시작 시 반드시 생성)
-            let logPath = "/tmp/badge_debug.log"
-            try? "[AppStart] \(Date())\n".write(toFile: logPath, atomically: true, encoding: .utf8)
-            NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
-                let line = "[AppMonitor] mouseDown at=\(event.locationInWindow)\n"
-                if let data = line.data(using: .utf8),
-                   let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: logPath)) {
-                    h.seekToEndOfFile(); h.write(data); h.closeFile()
-                }
-                return event
-            }
-            NSEvent.addLocalMonitorForEvents(matching: .leftMouseDragged) { event in
-                let line = "[AppMonitor] mouseDragged at=\(event.locationInWindow) delta=(\(event.deltaX),\(event.deltaY))\n"
-                if let data = line.data(using: .utf8),
-                   let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: logPath)) {
-                    h.seekToEndOfFile(); h.write(data); h.closeFile()
-                }
-                return event
-            }
             // 대시보드 열릴 때 Cmd+Tab + Dock에 나타나도록 정책 전환
             NSApp.setActivationPolicy(.regular)
             DispatchQueue.main.async {
@@ -479,7 +460,11 @@ struct ContentView: View {
     // MARK: - Session List Helpers
 
     private func paneSessions(_ pane: WindowPane, all: [ClaudeSession]) -> [ClaudeSession] {
-        pane.profileNames.compactMap { name in all.first { $0.projectName == name } }
+        pane.profileNames.compactMap { name in
+            // tmuxSession이 일치하는 세션 우선, 없으면 첫 번째 매칭
+            all.first { $0.projectName == name && $0.tmuxSession == pane.sessionName }
+            ?? all.first { $0.projectName == name }
+        }
     }
 
     @ViewBuilder
