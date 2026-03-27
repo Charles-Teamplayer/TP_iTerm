@@ -124,11 +124,12 @@ for candidate in [path, path + '.bak']:
 }
 
 # window-groups.json에서 활성 그룹(isWaitingList=false) 목록 읽기
-GROUPS_JSON=$(python3 -c "
-import json, sys
-path = '$WINDOW_GROUPS'
+GROUPS_JSON=$(WG_PATH="$WINDOW_GROUPS" python3 -c "
+import json, sys, os
+path = os.environ['WG_PATH']
 try:
-    groups = json.load(open(path))
+    with open(path) as f:
+        groups = json.load(f)
     active = [g for g in groups if not g.get('isWaitingList', False)]
     for g in active:
         profiles = '|'.join(g.get('profileNames', []))
@@ -181,14 +182,18 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
 
         # BUG-NOSTOPCHECK fix: intentional-stops.json 체크 — 의도적으로 중지된 프로파일 skip (48h TTL 적용)
         if [ -f "$STOPS_FILE" ]; then
-            IS_STOPPED=$(python3 -c "
-import json, sys
+            # iter59: BUG-INJECT/FILE-LEAK fix — env var 방식 + with open() 파일핸들 정리
+            IS_STOPPED=$(AR_STOPS="$STOPS_FILE" AR_PROFILE="$PROFILE_NAME" python3 -c "
+import json, sys, os
 from datetime import datetime, timezone, timedelta
 try:
-    d = json.load(open('$STOPS_FILE'))
+    stops_f = os.environ['AR_STOPS']
+    profile = os.environ['AR_PROFILE']
+    with open(stops_f) as f:
+        d = json.load(f)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
     for s in d.get('stops', []):
-        if s.get('window_name','') != '$PROFILE_NAME':
+        if s.get('window_name','') != profile:
             continue
         ts_str = s.get('stopped_at','1970-01-01T00:00:00Z').replace('Z','+00:00')
         ts = datetime.fromisoformat(ts_str)

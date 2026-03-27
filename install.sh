@@ -37,15 +37,12 @@ for f in "$SCRIPT_DIR"/configs/com.claude.*.plist; do
     echo "  ✓ $BASENAME"
 done
 
-# 4. tab_focus_status.py → iTerm2 AutoLaunch 설치
+# 4. tab_focus_status.py 설치 스킵 — tab-focus-monitor.sh (bash LaunchAgent)으로 대체됨
+# iter59: tab_focus_status.py는 .disabled 상태이며 좀비 프로세스 누적 원인 → 설치 불필요
+# ITERM_AUTOLAUNCH 디렉토리만 확보 (다른 용도)
 ITERM_AUTOLAUNCH="$HOME/.config/iterm2/AppSupport/Scripts/AutoLaunch"
 mkdir -p "$ITERM_AUTOLAUNCH"
-if [ -f "$SCRIPT_DIR/iterm2-scripts/AutoLaunch/tab_focus_status.py" ]; then
-    cp "$SCRIPT_DIR/iterm2-scripts/AutoLaunch/tab_focus_status.py" "$ITERM_AUTOLAUNCH/"
-    echo "  ✓ tab_focus_status.py (iTerm2 AutoLaunch)"
-else
-    echo "  ⚠️  tab_focus_status.py 없음 — iterm2-scripts/AutoLaunch/ 확인 필요"
-fi
+echo "  ✓ iTerm2 AutoLaunch 디렉토리 준비 (tab_focus_status.py는 tab-focus-monitor.sh로 대체)"
 
 # 4b. iterm-config.json → ~/.claude/config/
 mkdir -p "$CLAUDE_DIR/config"
