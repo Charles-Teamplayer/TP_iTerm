@@ -128,14 +128,19 @@ while true; do
                 # activated-sessions.json에서 프로젝트명으로 경로 조회
                 # window 이름 = 디렉토리 basename (= RESTART_PROJECT)
                 PROJ_PATH=$(python3 -c "
-import json, os, sys
+import json, os, sys, re
 name = sys.argv[1]
+def normalize(s):
+    return re.sub(r'[ _]+', '_', s).lower()
+norm = normalize(name)
 path = os.path.expanduser('~/.claude/activated-sessions.json')
 for candidate in [path, path + '.bak']:
     try:
         data = json.load(open(candidate))
         for p in data.get('activated', []):
-            if os.path.basename(p) == name:
+            bn = os.path.basename(p)
+            # 정확 매칭 우선, 그 다음 공백↔밑줄 정규화 비교
+            if bn == name or normalize(bn) == norm:
                 print(p)
                 sys.exit(0)
     except Exception:
@@ -257,6 +262,39 @@ print('no|claude-work')
 
                 log "AUTO-RESTART: $RESTART_PROJECT → $TARGET_SESSION:$WINDOW_NAME (연속 ${NEW_COUNT}/${CRASH_MAX}회)"
                 notify "세션 자동 복구: $RESTART_PROJECT"
+
+                # BUG-REORDER: crash restart 후 window 순서 복원
+                # window-groups.json의 profileNames 순서대로 index 재배열 (monitor는 999 유지)
+                DESIRED_ORDER=$(python3 -c "
+import json, os, sys
+path = os.path.expanduser('~/.claude/window-groups.json')
+try:
+    groups = json.load(open(path))
+    for g in groups:
+        if g.get('sessionName','') == sys.argv[1] and not g.get('isWaitingList', False):
+            print('|'.join(g.get('profileNames', [])))
+            sys.exit(0)
+except: pass
+print('')
+" "$TARGET_SESSION" 2>/dev/null)
+
+                if [ -n "$DESIRED_ORDER" ]; then
+                    # temp 인덱스(500+)로 먼저 이동, 그 다음 최종 순서 배치
+                    IDX=0
+                    IFS='|' read -ra PROFILES_ORD <<< "$DESIRED_ORDER"
+                    for pname in "${PROFILES_ORD[@]}"; do
+                        WIN_ID_ORD=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$pname" '$2==w{print $1;exit}')
+                        [ -z "$WIN_ID_ORD" ] && continue
+                        tmux move-window -s "$WIN_ID_ORD" -t "$TARGET_SESSION:$((500 + IDX))" 2>/dev/null
+                        IDX=$((IDX + 1))
+                    done
+                    IDX=0
+                    for pname in "${PROFILES_ORD[@]}"; do
+                        tmux move-window -s "$TARGET_SESSION:$((500 + IDX))" -t "$TARGET_SESSION:$((IDX + 1))" 2>/dev/null
+                        IDX=$((IDX + 1))
+                    done
+                    log "REORDER: $TARGET_SESSION 순서 복원 완료"
+                fi
             done
         fi
     fi
