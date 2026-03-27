@@ -222,11 +222,11 @@ except:
         if [ -n "$WIN_ID_AR" ]; then
             tmux set-window-option -t "$WIN_ID_AR" automatic-rename off 2>/dev/null
             tmux send-keys -t "$WIN_ID_AR" \
-                "sleep $DELAY && bash ~/.claude/scripts/tab-status.sh starting '$PROFILE_NAME' && unset CLAUDECODE && $CLAUDE_CMD" Enter
+                "sleep $DELAY && (bash ~/.claude/scripts/tab-status.sh starting '$PROFILE_NAME' 2>/dev/null || true) && unset CLAUDECODE && $CLAUDE_CMD" Enter
         elif [ -n "$WIN_IDX" ]; then
             tmux set-window-option -t "$SESSION_NAME:$WIN_IDX" automatic-rename off 2>/dev/null
             tmux send-keys -t "$SESSION_NAME:$WIN_IDX" \
-                "sleep $DELAY && bash ~/.claude/scripts/tab-status.sh starting '$PROFILE_NAME' && unset CLAUDECODE && $CLAUDE_CMD" Enter
+                "sleep $DELAY && (bash ~/.claude/scripts/tab-status.sh starting '$PROFILE_NAME' 2>/dev/null || true) && unset CLAUDECODE && $CLAUDE_CMD" Enter
         else
             log "WARN: $PROFILE_NAME 창 index/id 조회 실패 — send-keys 스킵"
         fi

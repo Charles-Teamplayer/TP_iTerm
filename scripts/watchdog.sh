@@ -295,11 +295,11 @@ for path in d.get('activated', []):
                 done
                 if [ -n "$WIN_IDX_NEW" ]; then
                     tmux set-window-option -t "$TARGET_SESSION:$WIN_IDX_NEW" automatic-rename off 2>/dev/null
-                    tmux send-keys -t "$TARGET_SESSION:$WIN_IDX_NEW" "bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
+                    tmux send-keys -t "$TARGET_SESSION:$WIN_IDX_NEW" "(bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
                 elif [ -n "$WIN_ID_NEW" ]; then
                     # window_id(@N) 기반 fallback — dot 이름 포함 세션 안전 처리
                     tmux set-window-option -t "$WIN_ID_NEW" automatic-rename off 2>/dev/null
-                    tmux send-keys -t "$WIN_ID_NEW" "bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
+                    tmux send-keys -t "$WIN_ID_NEW" "(bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
                 else
                     log "WARN: $WINDOW_NAME 창 index/id 조회 실패 — 재시작 명령 스킵"
                 fi
@@ -493,21 +493,48 @@ except: pass
     fi
     for CC_SESSION in $ACTIVE_SESSIONS_MON; do
         if tmux has-session -t "$CC_SESSION" 2>/dev/null; then
+            # BUG-CCFIX-LINKEDCHECK fix: main session + linked sessions(-vN) 모두 확인
+            # linked session이 attached되면 main session 클라이언트는 0으로 보이므로
+            # claude-work-v* 등 linked sessions에도 클라이언트가 있으면 cc-fix 스킵
             CLIENT_COUNT=$(tmux list-clients -t "$CC_SESSION" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
             if [ "${CLIENT_COUNT:-0}" -eq 0 ]; then
+                LINKED_COUNT=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -c "^${CC_SESSION}-v" || echo 0)
+                if [ "${LINKED_COUNT:-0}" -gt 0 ]; then
+                    LINKED_CLIENT_COUNT=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${CC_SESSION}-v" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' ')
+                    if [ "${LINKED_CLIENT_COUNT:-0}" -gt 0 ]; then
+                        continue  # linked session에 클라이언트 있음 — cc-fix 불필요
+                    fi
+                fi
                 [ "$RESTORE_RUNNING" = "true" ] && continue
                 CC_FIX_LOCK="/tmp/.cc-fix-last-${CC_SESSION//[^a-zA-Z0-9]/_}"
                 LAST_FIX=0
                 [ -f "$CC_FIX_LOCK" ] && LAST_FIX=$(cat "$CC_FIX_LOCK" 2>/dev/null || echo 0)
                 NOW_FIX=$(date +%s)
                 if [ $((NOW_FIX - LAST_FIX)) -gt 120 ]; then
-                    log "WARNING: $CC_SESSION 클라이언트 없음 — 자동 CC 재연결 시도"
+                    log "WARNING: $CC_SESSION 클라이언트 없음 (linked 포함) — 자동 CC 재연결 시도"
                     echo "$NOW_FIX" > "$CC_FIX_LOCK"
                     TMUX_SESSION="$CC_SESSION" bash "$HOME/.claude/scripts/cc-fix.sh" 2>/dev/null &
                 fi
             fi
         fi
     done
+
+    # 6. orphan linked session 정리 (BUG-005 fix)
+    # 24시간 이상 클라이언트 없는 linked sessions(-vN) 제거
+    LINKED_CLEANUP_LOCK="/tmp/.linked-cleanup-last"
+    LAST_CLEANUP=0
+    [ -f "$LINKED_CLEANUP_LOCK" ] && LAST_CLEANUP=$(cat "$LINKED_CLEANUP_LOCK" 2>/dev/null || echo 0)
+    NOW_CLEANUP=$(date +%s)
+    if [ $((NOW_CLEANUP - LAST_CLEANUP)) -gt 86400 ]; then
+        echo "$NOW_CLEANUP" > "$LINKED_CLEANUP_LOCK"
+        tmux list-sessions -F '#{session_name}|#{session_created}' 2>/dev/null | grep -E '.*-v[0-9]+\|' | while IFS='|' read -r lsname lscreated; do
+            CLIENT_COUNT_LS=$(tmux list-clients -t "$lsname" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
+            AGE_LS=$(( NOW_CLEANUP - ${lscreated:-0} ))
+            if [ "${CLIENT_COUNT_LS:-0}" -eq 0 ] && [ "$AGE_LS" -gt 86400 ]; then
+                tmux kill-session -t "$lsname" 2>/dev/null && log "orphan linked session 정리: $lsname (${AGE_LS}초 전 생성)"
+            fi
+        done
+    fi
 
     # stderr.log 로테이션 (매 루프마다 체크)
     rotate_stderr_log

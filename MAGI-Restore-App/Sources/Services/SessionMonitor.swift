@@ -347,7 +347,7 @@ final class SessionMonitor: ObservableObject {
         let winNameForStatus = session.windowName
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "'", with: "'\\''")
-        let claudeEntry = "bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' && unset CLAUDECODE && \(claudeCmd)"
+        let claudeEntry = "(bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && \(claudeCmd)"
 
         if session.windowIndex >= 0 && session.windowIndex != Int.max {
             // 창 존재 여부 확인
@@ -443,7 +443,7 @@ final class SessionMonitor: ObservableObject {
                 : "claude --dangerously-skip-permissions"
             let escapedWindowName = shellEscape(session.windowName)
             let sleepPart = delay > 0 ? "sleep \(delay) && " : ""
-            let claudeEntry = "\(sleepPart)bash ~/.claude/scripts/tab-status.sh starting '\(escapedWindowName)' && unset CLAUDECODE && \(claudeCmd)"
+            let claudeEntry = "\(sleepPart)(bash ~/.claude/scripts/tab-status.sh starting '\(escapedWindowName)' 2>/dev/null || true) && unset CLAUDECODE && \(claudeCmd)"
 
             // 창 존재 여부 먼저 확인 — windowIndex 기반 (이모지/특수문자 안전)
             let winIdx = session.windowIndex
@@ -740,7 +740,7 @@ final class SessionMonitor: ObservableObject {
         let cmd = """
         if ! tmux list-windows -t '\(escapedSession)' -F '#{window_name}' 2>/dev/null | grep -qxF '\(escapedName)'; then \
           _WIDX=$(tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedRoot)' -P -F '#{window_index}' 2>/dev/null); \
-          [ -n "$_WIDX" ] && tmux send-keys -t '\(escapedSession)':$_WIDX "\(mkdirPart)\(sleepPart)bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
+          [ -n "$_WIDX" ] && tmux send-keys -t '\(escapedSession)':$_WIDX "\(mkdirPart)\(sleepPart)(bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
         fi; \
         true
         """
@@ -1011,24 +1011,28 @@ final class SessionMonitor: ObservableObject {
         let firstWinIdx = realPairs[0].0
         let firstLinked = "\(sname)-v\(firstWinIdx)"
         let firstCmd = "/bin/bash -lc 'tmux has-session -t \(firstLinked) 2>/dev/null || tmux new-session -d -s \(firstLinked) -t \(sname) 2>/dev/null; tmux select-window -t \(firstLinked):\(firstWinIdx) 2>/dev/null; tmux attach-session -t \(firstLinked); exec /bin/zsh -l'"
-        // BUG-ITERM-GROUPTABS fix: 각 탭마다 별도 tell newWin 블록 → newWin 레퍼런스 불안정 시 새 창으로 열림
-        // → 단일 tell newWin 블록으로 모든 탭 생성, create window 후 delay 1 추가
+        // BUG-ITERM-GROUPTABS fix: 단일 tell newWin 블록으로 모든 탭 생성, create window 후 delay 1 추가
+        // BUG-010 fix: try-on error 추가 — 첫 창 생성 실패 시 전체 블록 silently fail 방지
         var lines: [String] = [
             "tell application \"iTerm2\"",
             "    activate",
-            "    set newWin to (create window with default profile command \"\(firstCmd)\")",
-            "    delay 1",
+            "    try",
+            "        set newWin to (create window with default profile command \"\(firstCmd)\")",
+            "        delay 1",
         ]
         if !realPairs.dropFirst().isEmpty {
-            lines.append("    tell newWin")
+            lines.append("        tell newWin")
             for (winIdx, _) in realPairs.dropFirst() {
                 let linkedName = "\(sname)-v\(winIdx)"
                 let cmd = "/bin/bash -lc 'tmux has-session -t \(linkedName) 2>/dev/null || tmux new-session -d -s \(linkedName) -t \(sname) 2>/dev/null; tmux select-window -t \(linkedName):\(winIdx) 2>/dev/null; tmux attach-session -t \(linkedName); exec /bin/zsh -l'"
-                lines.append("        delay 0.5")
-                lines.append("        create tab with default profile command \"\(cmd)\"")
+                lines.append("            delay 0.5")
+                lines.append("            create tab with default profile command \"\(cmd)\"")
             }
-            lines.append("    end tell")
+            lines.append("        end tell")
         }
+        lines.append("    on error errMsg")
+        lines.append("        -- openITermTabs 실패: errMsg 무시 (iTerm2 권한 또는 초기화 미완료)")
+        lines.append("    end try")
         lines.append("end tell")
 
         let appleScript = lines.joined(separator: "\n")
@@ -1096,7 +1100,7 @@ final class SessionMonitor: ObservableObject {
         let cmd = """
         if ! tmux list-windows -t '\(escapedSession)' -F '#{window_name}' 2>/dev/null | grep -qxF '\(escapedName)'; then \
           _WIDX=$(tmux new-window -t '\(escapedSession)' -n '\(escapedName)' -c '\(escapedDir)' -P -F '#{window_index}' 2>/dev/null); \
-          [ -n "$_WIDX" ] && tmux send-keys -t '\(escapedSession)':$_WIDX "bash ~/.claude/scripts/tab-status.sh starting '\(nameForStatus)' && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; \
+          [ -n "$_WIDX" ] && tmux send-keys -t '\(escapedSession)':$_WIDX "(bash ~/.claude/scripts/tab-status.sh starting '\(nameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; \
         fi; true
         """
         await ShellService.runAsync(cmd)
