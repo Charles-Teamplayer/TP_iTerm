@@ -641,10 +641,11 @@ final class SessionMonitor: ObservableObject {
         await refresh(showBanner: true)
     }
 
-    // claude 실행 중 세션 중지 + tmux 창 닫기
+    // claude 실행 중 세션 중지 + tmux 창 닫기 (protected PID 제외)
     func stopGroup(_ group: WindowPane) async {
         let profileNames = Set(group.profileNames)
-        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") && profileNames.contains($0.projectName) }
+        let protectedPids = loadProtectedPidSet()
+        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") && profileNames.contains($0.projectName) && !protectedPids.contains($0.pid) }
         for session in toStop { intentionallyStoppedIds.insert(session.id) }
         for session in toStop {
             let dir = session.directory.isEmpty ? session.projectName : session.directory
@@ -668,8 +669,8 @@ final class SessionMonitor: ObservableObject {
     }
 
     func stopAllRunning() async {
-        let myAppPid = Int(ProcessInfo.processInfo.processIdentifier)
-        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") && $0.pid != myAppPid }
+        let protectedPids = loadProtectedPidSet()
+        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") && !protectedPids.contains($0.pid) }
         for session in toStop { intentionallyStoppedIds.insert(session.id) }
         for session in toStop {
             let dir = session.directory.isEmpty ? session.projectName : session.directory
@@ -694,9 +695,16 @@ final class SessionMonitor: ObservableObject {
     }
 
     // zsh만 있는 유휴 창 전체 닫기 (복원 실패 후 남은 zsh 정리용)
+    // 단, 이 앱 자신의 TTY/PID가 속한 창은 절대 닫지 않음
     func purgeIdleZshWindows() async {
+        // 보호 대상: 이 앱의 parent chain에 속한 PID가 있는 TTY
+        let myPid = ProcessInfo.processInfo.processIdentifier
+        let myTtyRaw = ShellService.run("ps -o tty= -p \(myPid) 2>/dev/null").trimmingCharacters(in: .whitespaces)
+        let protectedTtys = Set([myTtyRaw].filter { !$0.isEmpty })
+
         let idleZsh = sessions.filter {
             !$0.isRunning && !$0.id.hasPrefix("profile-") && $0.windowIndex != Int.max
+            && !protectedTtys.contains(($0.tty as NSString).lastPathComponent)
         }
         for session in idleZsh { intentionallyStoppedIds.insert(session.id) }
         for session in idleZsh {
@@ -1300,6 +1308,13 @@ final class SessionMonitor: ObservableObject {
         await ShellService.runAsync(cmd)
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh(showBanner: true)
+    }
+
+    // protected-claude-pids 파일에서 보호 대상 PID 집합 로드
+    private func loadProtectedPidSet() -> Set<Int> {
+        let path = NSHomeDirectory() + "/.claude/protected-claude-pids"
+        guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else { return [] }
+        return Set(raw.components(separatedBy: "\n").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) })
     }
 
     // inner escape only (caller wraps in '...')
