@@ -106,42 +106,53 @@ except: pass
     func runRestore() async {
         guard !isRestoring else { return }
         isRestoring = true
-        restoreLog = "⏳ 세션 상태 확인 중..."
+        restoreLog = "🔴 모든 세션 종료 중..."
 
-        // 첫 번째 active 세션 존재 여부 확인
-        let firstSessionCheck = await ShellService.runAsync("""
-            python3 -c "
-import json, os, subprocess
-try:
-    groups = json.load(open(os.path.expanduser('~/.claude/window-groups.json')))
-    for g in groups:
-        sn = g.get('sessionName','')
-        if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
-            r = subprocess.run(['tmux','has-session','-t',sn], capture_output=True)
-            if r.returncode == 0:
-                print('YES')
-                break
-except: pass
-" 2>/dev/null
-""")
-        let sessionExists = firstSessionCheck.contains("YES") ? firstSessionCheck : "NO"
+        // 1. 모든 tmux linked sessions (-vN) 제거
+        let linkedKill = await ShellService.runAsync("""
+            tmux list-sessions -F '#{session_name}' 2>/dev/null \
+            | grep -E '.*-v[0-9]+' \
+            | while read s; do tmux kill-session -t "$s" 2>/dev/null; echo "killed: $s"; done
+        """)
+        restoreLog += linkedKill.isEmpty ? "\n  linked sessions: 없음" : "\n" + linkedKill.prefix(300)
 
-        if sessionExists.contains("YES") {
-            restoreLog = "⏳ 죽은 세션 점검 중..."
-            let repairResult = await repairDeadWindows()
-            restoreLog = repairResult
-        } else {
-            restoreLog = "⏳ 전체 세션 새로 생성 중... (약 10초 소요)"
-            let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
-            let result = await ShellService.runAsync("bash '\(scriptPath)' --force 2>&1")
-            restoreLog = result.isEmpty ? "⚠️ auto-restore 출력 없음" : result
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-        }
+        // 2. 메인 tmux 세션 제거 (window-groups.json 기반)
+        let mainKill = await ShellService.runAsync(
+            "python3 -c \"\nimport json,os,subprocess\ntry:\n  gs=json.load(open(os.path.expanduser('~/.claude/window-groups.json')))\n  [subprocess.run(['tmux','kill-session','-t',g['sessionName']]) for g in gs if not g.get('isWaitingList') and g.get('sessionName','')]\nexcept: pass\n\" 2>/dev/null"
+        )
+        restoreLog += mainKill.isEmpty ? "\n  main sessions: 없음" : "\n" + mainKill.prefix(200)
 
-        // tmux 복원 후 iTerm2 현재 창에 attach 명령 전송
+        // 3. orphan claude 프로세스 정리 (현재 앱 PID + protected-claude-pids 제외)
+        let myPid = ProcessInfo.processInfo.processIdentifier
+        let claudeKill = await ShellService.runAsync("""
+            PROTECTED=$(cat "$HOME/.claude/protected-claude-pids" 2>/dev/null | tr '\\n' ' ')
+            ps -A -o pid=,comm= 2>/dev/null | awk '/[c]laude$/{print $1}' | while read pid; do
+                if [ "$pid" = "\(myPid)" ]; then continue; fi
+                if echo " $PROTECTED " | grep -qF " $pid "; then
+                    echo "protected: $pid (skip)"
+                    continue
+                fi
+                kill -TERM "$pid" 2>/dev/null && echo "term: $pid" || true
+            done
+        """)
+        restoreLog += "\n🔪 Claude 프로세스 종료: " + (claudeKill.isEmpty ? "없음" : claudeKill.prefix(200))
+
+        // 4. cooldown 파일 삭제 (30분 제한 우회)
+        await ShellService.runAsync("rm -f '$HOME/.claude/logs/.auto-restore-lastrun' 2>/dev/null; true")
+        restoreLog += "\n🗑️ 쿨다운 초기화"
+
+        // 5. 2초 대기 후 --force 복원
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        restoreLog += "\n⏳ auto-restore.sh --force 실행 중..."
+        let scriptPath = NSHomeDirectory() + "/.claude/scripts/auto-restore.sh"
+        let result = await ShellService.runAsync("bash '\(scriptPath)' --force 2>&1")
+        restoreLog += "\n" + (result.isEmpty ? "⚠️ 출력 없음" : String(result.prefix(500)))
+        try? await Task.sleep(nanoseconds: 5_000_000_000)
+
+        // 6. iTerm2 연결
         await attachTmuxToITerm()
 
-        // attach 후 4초 대기 → 탭 색상 복원
+        // 7. 탭 색상 복원
         restoreLog += "\n⏳ 탭 색상 복원 중..."
         try? await Task.sleep(nanoseconds: 4_000_000_000)
         let restoreColorScript = NSHomeDirectory() + "/.claude/scripts/restore-tab-colors.sh"
@@ -152,7 +163,7 @@ except: pass
             let count = colorResult[range]
             restoreLog += "\n🎨 탭 색상 \(count)개 복원"
         } else {
-            restoreLog += "\n🎨 탭 색상 복원 완료"
+            restoreLog += "\n✅ 복원 완료"
         }
 
         isRestoring = false
@@ -385,6 +396,7 @@ struct SystemView: View {
     @StateObject private var vm = SystemViewModel()
     @State private var showInstallLog = false
     @State private var showRestoreLog = false
+    @State private var showForceRestoreConfirm = false
     // 직접 입력 토글
     @State private var useCustomDelay = false
     @State private var useCustomAttempts = false
@@ -575,7 +587,7 @@ struct SystemView: View {
 
             Section("Session Restore") {
                 Button(action: {
-                    Task { await vm.runRestore() }
+                    showForceRestoreConfirm = true
                 }) {
                     if vm.isRestoring {
                         HStack(spacing: 8) {
@@ -583,12 +595,24 @@ struct SystemView: View {
                             Text("Restoring...")
                         }
                     } else {
-                        Label("Restore Sessions", systemImage: "arrow.clockwise.circle.fill")
+                        Label("Force Restore", systemImage: "exclamationmark.arrow.circlepath")
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.blue)
+                .tint(.red)
                 .disabled(vm.isRestoring)
+                .confirmationDialog(
+                    "모든 Claude 세션을 종료하고 완전히 새로 시작합니까?",
+                    isPresented: $showForceRestoreConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button("Force Restore", role: .destructive) {
+                        Task { await vm.runRestore() }
+                    }
+                    Button("취소", role: .cancel) {}
+                } message: {
+                    Text("실행 중인 모든 tmux 세션과 Claude 프로세스를 종료하고 auto-restore.sh --force로 초기화합니다.")
+                }
 
                 if !vm.restoreLog.isEmpty {
                     Text(vm.restoreLog)

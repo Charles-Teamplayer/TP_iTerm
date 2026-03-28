@@ -824,6 +824,8 @@ final class SessionMonitor: ObservableObject {
         ActivationService.shared.activate(root: safeRoot)
         intentionallyStoppedProfiles.remove(name)  // 수동 시작 → 중지 게이트 해제
         await ShellService.runAsync(cmd)
+        // monitor 창이 항상 마지막(999)에 있도록 보장
+        await ensureMonitorWindow(sessionName: safeSession)
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh(showBanner: true)
     }
@@ -940,8 +942,32 @@ final class SessionMonitor: ObservableObject {
             }
 
             if anyChange {
+                // monitor 창이 없거나 999가 아니면 보장 (CEO 요구: monitor는 항상 맨 뒤)
+                await ensureMonitorWindow(sessionName: sname)
                 await refresh(showBanner: false)
             }
+        }
+    }
+
+    // monitor 창이 해당 세션에 존재하지 않거나 999번이 아니면 생성/이동
+    private func ensureMonitorWindow(sessionName: String) async {
+        let escaped = shellEscape(sessionName)
+        let monInfo = await ShellService.runAsync(
+            "tmux list-windows -t '\(escaped)' -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' '$2==\"monitor\"{print $1}'"
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        if monInfo.isEmpty {
+            // monitor 창 없음 → 새로 생성
+            await ShellService.runAsync("""
+                _MON_ID=$(tmux new-window -t '\(escaped)' -n monitor -c '\(NSHomeDirectory())/claude' -P -F '#{window_id}' '/bin/bash -c "while true; do sleep 86400; done"' 2>/dev/null || true); \
+                [ -n \"$_MON_ID\" ] && tmux set-window-option -t \"$_MON_ID\" automatic-rename off 2>/dev/null || true; \
+                [ -n \"$_MON_ID\" ] && tmux rename-window -t \"$_MON_ID\" monitor 2>/dev/null || true; \
+                [ -n \"$_MON_ID\" ] && tmux move-window -s \"$_MON_ID\" -t '\(escaped):999' 2>/dev/null || true
+                """)
+        } else if monInfo != "999" {
+            // monitor 창 있지만 999가 아님 → 이동
+            await ShellService.runAsync(
+                "tmux move-window -s '\(escaped):\(monInfo)' -t '\(escaped):999' 2>/dev/null; true"
+            )
         }
     }
 
