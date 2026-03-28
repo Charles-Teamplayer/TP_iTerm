@@ -270,7 +270,7 @@ except:
         log "$SESSION_NAME monitor 창 이미 존재 ($MON_WIN_ID) — 재사용"
     else
         # BUG-MONITOR-CMD fix: 명령 인수 포함 시 -P -F #{window_id} 출력 안됨 → 창 생성 후 send-keys
-        MON_WIN_ID=$(tmux new-window -t "$SESSION_NAME" -n monitor -c "$HOME/claude" -P -F '#{window_id}' 2>/dev/null || true)
+        MON_WIN_ID=$(tmux new-window -d -t "$SESSION_NAME" -n monitor -c "$HOME/claude" -P -F '#{window_id}' 2>/dev/null || true)
         [ -n "$MON_WIN_ID" ] && tmux send-keys -t "$MON_WIN_ID" "while true; do sleep 86400; done" Enter 2>/dev/null || true
     fi
     if [ -n "$MON_WIN_ID" ]; then
@@ -342,7 +342,7 @@ for SNAME in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Ev '.
     # BUG-B fix: -P -F '#{window_id}' 즉시 캡처 → auto-rename race 제거
     if ! tmux list-windows -t "$SNAME" -F '#{window_name}' 2>/dev/null | grep -qxF "monitor"; then
         # BUG-MONITOR-CMD fix: 창 생성 후 send-keys로 명령 전송
-        _MON_WID_AR=$(tmux new-window -t "$SNAME" -n monitor -c "$HOME/claude" -P -F '#{window_id}' 2>/dev/null || true)
+        _MON_WID_AR=$(tmux new-window -d -t "$SNAME" -n monitor -c "$HOME/claude" -P -F '#{window_id}' 2>/dev/null || true)
         [ -n "$_MON_WID_AR" ] && tmux send-keys -t "$_MON_WID_AR" "while true; do sleep 86400; done" Enter 2>/dev/null || true
         if [ -n "$_MON_WID_AR" ]; then
             tmux set-window-option -t "$_MON_WID_AR" automatic-rename off 2>/dev/null || true

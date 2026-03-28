@@ -638,7 +638,7 @@ except: pass
                 log "MONITOR 창 없음 ($MON_SESSION) — 자동 복구"
                 # BUG-MONITOR-CMD fix: 명령 인수 포함 시 -P -F #{window_id} 출력 안됨
                 # → 창 먼저 생성(-c start-dir) 후 send-keys로 명령 전송
-                _MON_WID=$(tmux new-window -t "$MON_SESSION" -n monitor -c "$HOME/claude" -P -F '#{window_id}' 2>/dev/null || true)
+                _MON_WID=$(tmux new-window -d -t "$MON_SESSION" -n monitor -c "$HOME/claude" -P -F '#{window_id}' 2>/dev/null || true)
                 if [ -n "$_MON_WID" ]; then
                     tmux send-keys -t "$_MON_WID" "while true; do sleep 86400; done" Enter 2>/dev/null || true
                     tmux set-window-option -t "$_MON_WID" automatic-rename off 2>/dev/null || true
