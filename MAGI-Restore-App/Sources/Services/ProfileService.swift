@@ -61,6 +61,10 @@ final class ProfileService: ObservableObject {
         let yml = generateYml(normalized, sessionName: "claude-work")
         try? yml.write(toFile: defaultYmlPath, atomically: true, encoding: .utf8)
         self.profiles = normalized
+        // 세션별 YAML도 자동 동기화 (window-groups.json 직접 로드)
+        if let groups = loadWindowGroups() {
+            savePerSession(groups: groups)
+        }
     }
 
     /// window-groups.json 기반으로 세션별 YAML 파일 생성
@@ -97,6 +101,13 @@ final class ProfileService: ObservableObject {
     func delete(_ profile: SmugProfile) {
         let updated = profiles.filter { $0.id != profile.id }
         save(updated)
+    }
+
+    private func loadWindowGroups() -> [WindowPane]? {
+        let path = NSHomeDirectory() + "/.claude/window-groups.json"
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let groups = try? JSONDecoder().decode([WindowPane].self, from: data) else { return nil }
+        return groups
     }
 
     private func stableID(for name: String) -> UUID {

@@ -593,10 +593,21 @@ print(' '.join(s.get('tty','') for s in d.get('sessions',[]) if s.get('tty',''))
         for lf in "$LEGACY_STATE_DIR"/ttys*; do
             [ ! -f "$lf" ] && continue
             TTY_BASE=$(basename "$lf")
-            if [ ! -c "/dev/$TTY_BASE" ] || ! echo " $ACTIVE_TTYS " | grep -qF " $TTY_BASE "; then
+            # TTY 장치가 없으면 즉시 삭제
+            if [ ! -c "/dev/$TTY_BASE" ]; then
                 rm -f "$lf" 2>/dev/null
                 LEGACY_CLEANED=$((LEGACY_CLEANED + 1))
+                continue
             fi
+            # active-sessions에 있으면 보존
+            echo " $ACTIVE_TTYS " | grep -qF " $TTY_BASE " && continue
+            # active-sessions에 없어도 해당 TTY에 살아있는 claude 프로세스가 있으면 보존
+            # (M+N 에이전트 등 등록 안 된 claude 세션 보호)
+            if ps -o command= -t "$TTY_BASE" 2>/dev/null | grep -q '[c]laude'; then
+                continue
+            fi
+            rm -f "$lf" 2>/dev/null
+            LEGACY_CLEANED=$((LEGACY_CLEANED + 1))
         done
         [ "$LEGACY_CLEANED" -gt 0 ] && log "CLEANUP: orphan legacy tab-states ${LEGACY_CLEANED}개 정리"
     fi

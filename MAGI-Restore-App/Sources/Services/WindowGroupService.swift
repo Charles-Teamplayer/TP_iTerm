@@ -28,6 +28,15 @@ final class WindowGroupService: ObservableObject {
                 decoded.insert(wl, at: 0)
             }
         }
+        // cross-session 중복 프로필 정리 (외부 JSON 편집 방어)
+        var seen = Set<String>()
+        for i in decoded.indices {
+            decoded[i].profileNames = decoded[i].profileNames.filter { name in
+                if seen.contains(name) { return false }
+                seen.insert(name)
+                return true
+            }
+        }
         groups = decoded
     }
 

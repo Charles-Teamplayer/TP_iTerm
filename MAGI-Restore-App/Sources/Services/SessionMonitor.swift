@@ -14,6 +14,7 @@ final class SessionMonitor: ObservableObject {
     private var syncTimer: Timer?
     @Published var isRefreshing = false   // 내부 dedup 전용
     @Published var isSyncing = false      // UI 배너 표시 전용 (사용자 액션 시만)
+    private var didInitialYamlSync = false
     // BUG#31 fix: startGroup 중복 실행 방지 (더블클릭 → 창 2개 생성 방지)
     @Published var startingGroups: Set<String> = []  // sessionName → 진행 중 여부
     private let activeSessionsPath = NSHomeDirectory() + "/.claude/active-sessions.json"
@@ -345,30 +346,40 @@ final class SessionMonitor: ObservableObject {
         detectChanges(old: sessions, new: &newSessions)
         sessions = newSessions
         // Problem-10 fix: 실행 중인 claude PID → ~/.claude/protected-claude-pids 갱신
-        updateProtectedPids(from: newSessions)
+        await updateProtectedPids(from: newSessions)
+        // 초기 1회: 세션별 YAML 동기화 (앱 시작 시 누락 YAML 생성)
+        if !didInitialYamlSync {
+            didInitialYamlSync = true
+            profileService.savePerSession(groups: windowGroupService.groups)
+        }
     }
 
     // Problem-10 fix: 실행 중인 세션 PID + 앱 자신의 parent chain을 protected-claude-pids에 등록
-    private func updateProtectedPids(from sessions: [ClaudeSession]) {
+    private func updateProtectedPids(from sessions: [ClaudeSession]) async {
         var pidSet = Set(sessions.filter { $0.isRunning && $0.pid > 0 }.map { "\($0.pid)" })
-        // 앱 자신의 PID + parent chain 보호 (이 CLI가 kill되지 않도록)
         let myPid = ProcessInfo.processInfo.processIdentifier
         pidSet.insert("\(myPid)")
-        // parent PID chain 추적 — shell → tmux pane → ... 전부 보호
-        var currentPid = Int(myPid)
-        for _ in 0..<10 {  // 최대 10단계
-            guard currentPid > 1 else { break }
-            let ppidRaw = ShellService.run("ps -o ppid= -p \(currentPid) 2>/dev/null").trimmingCharacters(in: .whitespaces)
-            guard let ppid = Int(ppidRaw), ppid > 1 else { break }
-            pidSet.insert("\(ppid)")
-            currentPid = ppid
-        }
-        // 모든 tmux pane의 claude 프로세스도 보호 (active-sessions에 없는 것 포함)
-        let allClaude = ShellService.run("ps -A -o pid=,comm= 2>/dev/null | awk '/[c]laude$/{print $1}'")
-        for line in allClaude.components(separatedBy: "\n") {
-            let pid = line.trimmingCharacters(in: .whitespaces)
-            if !pid.isEmpty { pidSet.insert(pid) }
-        }
+        // parent PID chain + 전체 claude 프로세스 — 백그라운드에서 수집
+        let collected = await Task.detached(priority: .utility) { () -> Set<String> in
+            var pids = Set<String>()
+            // parent PID chain 추적 — shell → tmux pane → ... 전부 보호
+            var currentPid = Int(myPid)
+            for _ in 0..<10 {
+                guard currentPid > 1 else { break }
+                let ppidRaw = ShellService.run("ps -o ppid= -p \(currentPid) 2>/dev/null").trimmingCharacters(in: .whitespaces)
+                guard let ppid = Int(ppidRaw), ppid > 1 else { break }
+                pids.insert("\(ppid)")
+                currentPid = ppid
+            }
+            // 모든 tmux pane의 claude 프로세스도 보호 (active-sessions에 없는 것 포함)
+            let allClaude = ShellService.run("ps -A -o pid=,comm= 2>/dev/null | awk '/[c]laude$/{print $1}'")
+            for line in allClaude.components(separatedBy: "\n") {
+                let pid = line.trimmingCharacters(in: .whitespaces)
+                if !pid.isEmpty { pids.insert(pid) }
+            }
+            return pids
+        }.value
+        pidSet.formUnion(collected)
         let content = pidSet.sorted().joined(separator: "\n") + "\n"
         let path = NSHomeDirectory() + "/.claude/protected-claude-pids"
         try? content.write(toFile: path, atomically: true, encoding: .utf8)
@@ -572,6 +583,10 @@ final class SessionMonitor: ObservableObject {
             : toRestore.count
         NotificationService.shared.notifyRestoreComplete(count: restoredCount)
         selectedForRestore.removeAll()
+        // 복원 완료 후 모든 활성 세션의 monitor 창 보장
+        for group in windowGroupService.groups where !group.isWaitingList {
+            await ensureMonitorWindow(sessionName: group.sessionName)
+        }
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh(showBanner: true)
     }
@@ -615,12 +630,14 @@ final class SessionMonitor: ObservableObject {
         }
     }
 
-    // 대기 목록의 모든 tmux 창 닫기 (zsh 포함 전체)
+    // 대기 목록의 모든 tmux 창 닫기 (zsh 포함 전체, protected PID 제외)
     func killWaitingListWindows() async {
         let waitingNames = Set(windowGroupService.waitingList.profileNames)
+        let protectedPids = loadProtectedPidSet()
         let toKill = sessions.filter {
             !$0.id.hasPrefix("profile-") && $0.windowIndex >= 0 && $0.windowIndex != Int.max
             && waitingNames.contains($0.projectName)
+            && !protectedPids.contains($0.pid)
         }
         for session in toKill { intentionallyStoppedIds.insert(session.id) }
         for session in toKill {
@@ -1003,9 +1020,10 @@ final class SessionMonitor: ObservableObject {
     func applyNow() async {
         selectAllLaunchable()
         await restoreSelected()
-        // 모든 활성 그룹 탭 순서 재배치
+        // 모든 활성 그룹 탭 순서 재배치 + monitor 보장
         for group in windowGroupService.groups where !group.isWaitingList {
             await reorderTabs(for: group)
+            await ensureMonitorWindow(sessionName: group.sessionName)
         }
     }
 
@@ -1274,10 +1292,8 @@ final class SessionMonitor: ObservableObject {
                 "tmux move-window -s '\(shellEscape(sname)):999' -t '\(shellEscape(sname)):900' 2>/dev/null; true"
             )
         }
-        // monitor는 항상 맨 뒤 (index 999)
-        await ShellService.runAsync(
-            "tmux move-window -s '\(shellEscape(sname)):monitor' -t '\(shellEscape(sname)):999' 2>/dev/null; true"
-        )
+        // monitor는 항상 맨 뒤 (index 999) — 없으면 생성 포함
+        await ensureMonitorWindow(sessionName: sname)
     }
 
     func createSession(name: String, directory: String, sessionName: String? = nil) async {
