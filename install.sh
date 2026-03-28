@@ -12,10 +12,19 @@ LAUNCH_DIR="$HOME/Library/LaunchAgents"
 echo "=== MAGI+NORN AutoRestart 설치 ==="
 
 # 1. 디렉토리 생성
-mkdir -p "$SCRIPTS_DIR" "$CLAUDE_DIR/logs" "$CLAUDE_DIR/tab-states" "$LAUNCH_DIR"
+mkdir -p "$SCRIPTS_DIR" "$CLAUDE_DIR/logs" "$CLAUDE_DIR/tab-states" \
+         "$CLAUDE_DIR/tab-color/states" "$CLAUDE_DIR/tab-color/logs" "$LAUNCH_DIR"
 
-# 2. 스크립트 복사 + 실행 권한
+# 2. 스크립트 복사 + 실행 권한 (.sh)
 for f in "$SCRIPT_DIR"/scripts/*.sh; do
+    cp "$f" "$SCRIPTS_DIR/"
+    chmod +x "$SCRIPTS_DIR/$(basename "$f")"
+    echo "  ✓ $(basename "$f")"
+done
+
+# 2a. Python 스크립트 복사 (.py)
+for f in "$SCRIPT_DIR"/scripts/*.py; do
+    [ -f "$f" ] || continue
     cp "$f" "$SCRIPTS_DIR/"
     chmod +x "$SCRIPTS_DIR/$(basename "$f")"
     echo "  ✓ $(basename "$f")"
