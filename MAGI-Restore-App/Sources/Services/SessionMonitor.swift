@@ -1426,6 +1426,7 @@ except: pass
         for line in snapshot.components(separatedBy: "\n") {
             let parts = line.trimmingCharacters(in: .whitespaces)
                 .components(separatedBy: .whitespaces)
+                .filter { !$0.isEmpty }  // 연속 공백으로 인한 빈 요소 제거 (4자리 PID 버그 수정)
             guard parts.count >= 3,
                   let pid = Int(parts[0]) else { continue }
             // 방법1: TTY 매칭
