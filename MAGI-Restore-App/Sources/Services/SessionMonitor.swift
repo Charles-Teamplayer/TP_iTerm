@@ -348,11 +348,28 @@ final class SessionMonitor: ObservableObject {
         updateProtectedPids(from: newSessions)
     }
 
-    // Problem-10 fix: 실행 중인 세션 PID를 protected-claude-pids에 등록 (auto-restore.sh가 kill 못 하도록)
+    // Problem-10 fix: 실행 중인 세션 PID + 앱 자신의 parent chain을 protected-claude-pids에 등록
     private func updateProtectedPids(from sessions: [ClaudeSession]) {
-        let pidSet = sessions.filter { $0.isRunning && $0.pid > 0 }.map { "\($0.pid)" }
-        guard !pidSet.isEmpty else { return }
-        let content = pidSet.joined(separator: "\n") + "\n"
+        var pidSet = Set(sessions.filter { $0.isRunning && $0.pid > 0 }.map { "\($0.pid)" })
+        // 앱 자신의 PID + parent chain 보호 (이 CLI가 kill되지 않도록)
+        let myPid = ProcessInfo.processInfo.processIdentifier
+        pidSet.insert("\(myPid)")
+        // parent PID chain 추적 — shell → tmux pane → ... 전부 보호
+        var currentPid = Int(myPid)
+        for _ in 0..<10 {  // 최대 10단계
+            guard currentPid > 1 else { break }
+            let ppidRaw = ShellService.run("ps -o ppid= -p \(currentPid) 2>/dev/null").trimmingCharacters(in: .whitespaces)
+            guard let ppid = Int(ppidRaw), ppid > 1 else { break }
+            pidSet.insert("\(ppid)")
+            currentPid = ppid
+        }
+        // 모든 tmux pane의 claude 프로세스도 보호 (active-sessions에 없는 것 포함)
+        let allClaude = ShellService.run("ps -A -o pid=,comm= 2>/dev/null | awk '/[c]laude$/{print $1}'")
+        for line in allClaude.components(separatedBy: "\n") {
+            let pid = line.trimmingCharacters(in: .whitespaces)
+            if !pid.isEmpty { pidSet.insert(pid) }
+        }
+        let content = pidSet.sorted().joined(separator: "\n") + "\n"
         let path = NSHomeDirectory() + "/.claude/protected-claude-pids"
         try? content.write(toFile: path, atomically: true, encoding: .utf8)
     }
@@ -945,6 +962,8 @@ final class SessionMonitor: ObservableObject {
             if anyChange {
                 // monitor 창이 없거나 999가 아니면 보장 (CEO 요구: monitor는 항상 맨 뒤)
                 await ensureMonitorWindow(sessionName: sname)
+                // 세션별 YAML 갱신 (auto-restore 정합성)
+                profileService.savePerSession(groups: windowGroupService.groups)
                 await refresh(showBanner: false)
             }
         }
@@ -1054,6 +1073,9 @@ final class SessionMonitor: ObservableObject {
         // 탭 순서 재배치 (profileNames 순서, monitor는 999)
         await reorderTabs(for: group)
 
+        // 세션별 YAML 동기화 (auto-restore 정합성)
+        profileService.savePerSession(groups: windowGroupService.groups)
+
         // iTerm2 새 창 + 각 tmux 창마다 탭 생성 (CC 모드 대신 개별 attach)
         try? await Task.sleep(nanoseconds: 2_000_000_000)  // 창 생성 대기
         await openITermTabs(for: group)
@@ -1090,10 +1112,10 @@ final class SessionMonitor: ObservableObject {
             .filter { $0 != "/dev/" })
 
         // 이 세션의 예상 탭 수 (orphaned 판별용)
-        let expectedTabCount = await ShellService.runAsync(
+        let expectedTabCountRaw = await ShellService.runAsync(
             "tmux list-windows -t '\(shellEscape(sessionName))' 2>/dev/null | wc -l"
         )
-        let expectedTabs = Int(expectedTabCount.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let expectedTabs = Int(expectedTabCountRaw.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
 
         let allTtys = ttys + Array(protectedTtys)
         let ttyList = allTtys.map { "\"\($0)\"" }.joined(separator: ", ")

@@ -102,17 +102,20 @@ struct ContentView: View {
             NSApp.setActivationPolicy(.accessory)
         }
         .sheet(isPresented: $showAddPane) {
-            AddPaneSheet { name in monitor.windowGroupService.addGroup(name: name) }
+            AddPaneSheet { name in
+                monitor.windowGroupService.addGroup(name: name)
+                monitor.profileService.savePerSession(groups: monitor.windowGroupService.groups)
+            }
         }
         .sheet(item: $renamingPane) { pane in
             RenamePaneSheet(pane: pane) { newName, newSession in
                 let oldSession = pane.sessionName
                 monitor.windowGroupService.updateGroup(pane, name: newName, sessionName: newSession)
+                monitor.profileService.savePerSession(groups: monitor.windowGroupService.groups)
                 // tmux 세션 이름도 실제 rename (세션명이 바뀐 경우만)
                 if oldSession != newSession && !pane.isWaitingList {
                     Task {
                         await ShellService.runAsync(
-                            // BUG#34 fix: shellq already wraps in '...' — no extra quotes
                             "tmux rename-session -t \(ShellService.shellq(oldSession)) \(ShellService.shellq(newSession)) 2>/dev/null; true"
                         )
                     }
@@ -127,7 +130,10 @@ struct ContentView: View {
             isPresented: $showDeletePaneConfirm, titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                if let p = paneToDelete { monitor.windowGroupService.deleteGroup(p) }
+                if let p = paneToDelete {
+                    monitor.windowGroupService.deleteGroup(p)
+                    monitor.profileService.savePerSession(groups: monitor.windowGroupService.groups)
+                }
             }
             Button("Cancel", role: .cancel) {}
         }
@@ -313,6 +319,7 @@ struct ContentView: View {
                                         let srcPaneIdStr = parts.count > 1 ? String(parts[1]) : ""
                                         if pane.id.uuidString != srcPaneIdStr {
                                             monitor.windowGroupService.moveProfile(profileName, to: pane)
+                                            monitor.profileService.savePerSession(groups: monitor.windowGroupService.groups)
                                         }
                                         badgeLog("[drop done] moved \(profileName) to \(pane.name)")
                                         return true
@@ -351,6 +358,7 @@ struct ContentView: View {
                                                     .profileNames.firstIndex(of: session.projectName) {
                                                     monitor.windowGroupService.moveProfileToIndex(profileName, groupId: pane.id, index: destIdx)
                                                 }
+                                                monitor.profileService.savePerSession(groups: monitor.windowGroupService.groups)
                                                 return true
                                             } isTargeted: { targeted in
                                                 dragHighlightPane = targeted ? pane.id : nil

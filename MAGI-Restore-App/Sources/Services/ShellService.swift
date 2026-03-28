@@ -74,9 +74,14 @@ struct ShellService {
         if !projectDir.isEmpty {
             await intentionalStopAsync(projectDir: projectDir)
         }
-        // 2. 프로세스 강제 종료 (SIGKILL)
+        // 2. 프로세스 강제 종료 (SIGKILL) — protected PIDs 보호
         if pid > 0 {
-            await runAsync("kill -9 \(pid) 2>/dev/null; true")
+            let protectedRaw = run("cat ~/.claude/protected-claude-pids 2>/dev/null")
+            let protectedPids = Set(protectedRaw.components(separatedBy: "\n").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) })
+            let appPid = Int(ProcessInfo.processInfo.processIdentifier)
+            if !protectedPids.contains(pid) && pid != appPid {
+                await runAsync("kill -9 \(pid) 2>/dev/null; true")
+            }
         }
         // 3. tmux window 종료 — window-groups.json에서 해당 창이 속한 세션 동적 탐색
         if !windowName.isEmpty {

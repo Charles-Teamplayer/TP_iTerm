@@ -107,10 +107,11 @@ fi
 echo $$ > "$WATCHDOG_LOCK"
 trap 'rm -f "$WATCHDOG_LOCK"' EXIT
 
-# 환경변수 로드
-if [ -f "$HOME/.zshrc" ]; then
-    source "$HOME/.zshrc" 2>/dev/null || true
-fi
+# 환경변수 로드 (.zshrc source 금지: iTerm2 integration/conda init 부작용 방지)
+# auto-restore.sh와 동일한 방식 — PATH만 직접 설정
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/opt/homebrew/sbin:$PATH"
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" --no-use 2>/dev/null || true
 unset CLAUDECODE
 
 log "=== Watchdog 시작 (PID: $$) ==="
@@ -314,7 +315,7 @@ print('no|claude-work')
                 # 해당 윈도우가 타겟 세션에 없으면 항상 신규 생성
                 # BUG-AUTOCREATE-SKIP fix: SESSION_JUST_CREATED 여부 불문하고 창 없으면 생성
                 # (이전 이터레이션이 세션 재생성 후 → 창 없는 상태도 포함)
-                if ! tmux list-windows -t "$TARGET_SESSION" -F '#{window_name}' 2>/dev/null | grep -qx "$WINDOW_NAME"; then
+                if ! tmux list-windows -t "$TARGET_SESSION" -F '#{window_name}' 2>/dev/null | grep -qxF "$WINDOW_NAME"; then
                     PROJ_ROOT=$(python3 -c "
 import json, os, sys
 p = os.path.expanduser('~/.claude/activated-sessions.json')
