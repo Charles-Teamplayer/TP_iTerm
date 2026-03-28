@@ -39,13 +39,13 @@ struct ContentView: View {
     enum Tab: String, CaseIterable {
         case sessions = "Sessions"
         case profiles = "Profiles"
-        case backup = "Backup"
+        case backup = "Config"
         case system = "System"
         var icon: String {
             switch self {
             case .sessions: "terminal"
             case .profiles: "rectangle.3.group"
-            case .backup: "externaldrive"
+            case .backup: "externaldrive.badge.checkmark"
             case .system: "gearshape"
             }
         }

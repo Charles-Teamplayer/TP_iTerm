@@ -94,7 +94,7 @@ struct SessionDetailView: View {
                             }
                         } else {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(session.profileRoot != nil ? "Start" : "Restore")
+                                Text("Launch")
                                     .font(.caption).foregroundStyle(.secondary)
                                 if !session.isAssigned {
                                     Label("Assign to a group first — drag to add to a group", systemImage: "tray.and.arrow.down")
@@ -131,7 +131,7 @@ struct SessionDetailView: View {
                                         .buttonStyle(.borderedProminent)
                                         .disabled(isRestoring || !session.isAssigned)
                                     } else {
-                                        // 일반 중단 세션 → 복원
+                                        // 일반 중단 세션 → 재시작
                                         Button {
                                             Task {
                                                 monitor.selectedForRestore = [session.id]
@@ -141,9 +141,9 @@ struct SessionDetailView: View {
                                             }
                                         } label: {
                                             if isRestoring {
-                                                Label("Restoring...", systemImage: "arrow.clockwise")
+                                                Label("Launching...", systemImage: "play.fill")
                                             } else {
-                                                Label("Restore", systemImage: "arrow.clockwise")
+                                                Label("Launch", systemImage: "play.fill")
                                             }
                                         }
                                         .buttonStyle(.borderedProminent)
