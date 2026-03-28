@@ -636,14 +636,19 @@ except: pass
         if tmux has-session -t "$MON_SESSION" 2>/dev/null; then
             if ! tmux list-windows -t "$MON_SESSION" -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
                 log "MONITOR 창 없음 ($MON_SESSION) — 자동 복구"
-                _MON_WID=$(tmux new-window -t "$MON_SESSION" -n monitor -c "$HOME/claude" "/bin/bash -c 'while true; do sleep 86400; done'" -P -F '#{window_id}' 2>/dev/null || true)
+                # BUG-MONITOR-CMD fix: 명령 인수 포함 시 -P -F #{window_id} 출력 안됨
+                # → 창 먼저 생성(-c start-dir) 후 send-keys로 명령 전송
+                _MON_WID=$(tmux new-window -t "$MON_SESSION" -n monitor -c "$HOME/claude" -P -F '#{window_id}' 2>/dev/null || true)
                 if [ -n "$_MON_WID" ]; then
+                    tmux send-keys -t "$_MON_WID" "while true; do sleep 86400; done" Enter 2>/dev/null || true
                     tmux set-window-option -t "$_MON_WID" automatic-rename off 2>/dev/null || true
                     tmux rename-window -t "$_MON_WID" monitor 2>/dev/null || true
                     tmux move-window -s "$_MON_WID" -t "$MON_SESSION:999" 2>/dev/null || true
                     log "MONITOR 창 복구 완료 ($MON_SESSION)"
+                    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [tmux-window] MONITOR_RECOVER session=$MON_SESSION wid=$_MON_WID" >> "$HOME/.claude/logs/window-events.log"
                 else
                     log "ERROR: MONITOR 창 복구 실패 ($MON_SESSION)"
+                    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [tmux-window] MONITOR_FAIL session=$MON_SESSION" >> "$HOME/.claude/logs/window-events.log"
                 fi
             else
                 # monitor 창이 999번이 아니면 이동
