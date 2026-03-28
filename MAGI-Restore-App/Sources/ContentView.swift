@@ -39,13 +39,11 @@ struct ContentView: View {
     enum Tab: String, CaseIterable {
         case sessions = "Sessions"
         case profiles = "Profiles"
-        case backup = "Config"
         case system = "System"
         var icon: String {
             switch self {
             case .sessions: "terminal"
             case .profiles: "rectangle.3.group"
-            case .backup: "externaldrive.badge.checkmark"
             case .system: "gearshape"
             }
         }
@@ -148,8 +146,7 @@ struct ContentView: View {
                     selectedTab = .profiles
                     if profileSelection == nil { profileSelection = monitor.profileService.profiles.first?.id }
                 }.keyboardShortcut("2", modifiers: .command)
-                Button("") { selectedTab = .backup  }.keyboardShortcut("3", modifiers: .command)
-                Button("") { selectedTab = .system  }.keyboardShortcut("4", modifiers: .command)
+                Button("") { selectedTab = .system  }.keyboardShortcut("3", modifiers: .command)
                 Button("") {
                     switch selectedTab {
                     case .sessions: searchFocused = true
@@ -771,7 +768,6 @@ struct ContentView: View {
     private var otherTabContent: some View {
         switch selectedTab {
         case .profiles: ProfilesView(monitor: monitor, searchFocused: $profileSearchFocused, selection: $profileSelection)
-        case .backup:   BackupView()
         case .system:   SystemView(monitor: monitor)
         default:        EmptyStateView(title: "Select an item", systemImage: "sidebar.left")
         }
