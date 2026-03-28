@@ -66,6 +66,70 @@ if [ ! -f "$WINDOW_GROUPS" ]; then
     exit 0
 fi
 
+WELOG="$HOME/.claude/logs/window-events.log"
+
+# orphan iTerm 창 정리: tmux/claude가 실행되지 않는 창(zsh 단독)을 닫음
+# 방법: 각 iTerm 탭의 TTY에서 tmux/claude 프로세스 존재 여부로 판단
+_SAFE_TTYS=""
+# 활성 tmux 클라이언트 TTY 수집
+_TMUX_CLI_TTYS=$(tmux list-clients -F '#{client_tty}' 2>/dev/null | sed 's|/dev/||' | tr '\n' ' ')
+# claude 프로세스 TTY 수집
+_CLAUDE_TTYS=$(ps -A -o tty=,comm= 2>/dev/null | awk '/claude$/{print $1}' | grep -v '??' | tr '\n' ' ')
+_SAFE_TTYS="$_TMUX_CLI_TTYS $_CLAUDE_TTYS"
+
+if ps -A 2>/dev/null | grep -q "iTerm.app/Contents/MacOS/iTerm2"; then
+    # iTerm TTY 목록 수집 후 orphan 판단
+    _ALL_ITERM_TTYS=$(osascript 2>/dev/null << 'OSEOF'
+tell application "iTerm2"
+    set _out to ""
+    repeat with w in windows
+        try
+            set _t to current tab of w
+            set _s to current session of _t
+            set _tty to tty of _s
+            if _tty is not "" then
+                set _out to _out & _tty & " "
+            end if
+        end try
+    end repeat
+    return _out
+end tell
+OSEOF
+    )
+    _ORPHAN_TTYS=""
+    for _itty in $_ALL_ITERM_TTYS; do
+        _short=$(echo "$_itty" | sed 's|/dev/||')
+        _procs=$(ps -t "$_itty" -o comm= 2>/dev/null | grep -vE '^(zsh|bash|sh|login|-zsh|-bash|login)$' | tr '\n' ',')
+        if [ -z "$_procs" ]; then
+            _ORPHAN_TTYS="$_ORPHAN_TTYS $_short"
+        fi
+    done
+    if [ -n "$_ORPHAN_TTYS" ]; then
+        _ORPHAN_COUNT=$(echo "$_ORPHAN_TTYS" | tr ' ' '\n' | grep -c '.')
+        # AppleScript로 orphan TTY 창만 닫기
+        _ORPHAN_LIST=$(echo "$_ORPHAN_TTYS" | tr ' ' '\n' | grep -v '^$' | awk '{print "\"/dev/" $0 "\""}' | tr '\n' ',')
+        osascript 2>/dev/null << OSEOF2
+tell application "iTerm2"
+    set _orphanList to {${_ORPHAN_LIST%,}}
+    set _closed to 0
+    repeat with w in windows
+        try
+            set _t to current tab of w
+            set _s to current session of _t
+            set _tty to tty of _s
+            if _orphanList contains _tty then
+                close w
+                set _closed to _closed + 1
+            end if
+        end try
+    end repeat
+end tell
+OSEOF2
+        log "orphan iTerm 창 ${_ORPHAN_COUNT}개 정리 완료 (TTY:${_ORPHAN_TTYS})"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [iterm-window] CLEANUP orphan=${_ORPHAN_COUNT} ttys=${_ORPHAN_TTYS}" >> "$WELOG"
+    fi
+fi
+
 # iTerm2 즉시 실행 (이미 실행 중이면 activate만, 미실행이면 시작)
 log "iTerm2 시작/활성화 중..."
 open -a iTerm 2>/dev/null || true
@@ -220,8 +284,10 @@ __APPLES__
 
     if [ $OSASCRIPT_EXIT -eq 0 ]; then
         log "$SESSION_NAME iTerm2 창+탭 생성 완료 (window $OSASCRIPT_ERR)"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [iterm-window] CREATE session=$SESSION_NAME result=$OSASCRIPT_ERR" >> "$WELOG"
     else
         log "ERROR: $SESSION_NAME osascript 실패 (exit=$OSASCRIPT_EXIT): $OSASCRIPT_ERR"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [iterm-window] CREATE_FAIL session=$SESSION_NAME error=$OSASCRIPT_ERR" >> "$WELOG"
     fi
 
     sleep 2  # 그룹 간 딜레이

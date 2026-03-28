@@ -18,6 +18,10 @@ if [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE" 2>/dev/null)" -gt 10000 ] 2>/d
 fi
 
 log "=== Auto-Restore 시작 ==="
+# 윈도우 이벤트 로그 (초기화 보장)
+WELOG="$HOME/.claude/logs/window-events.log"
+mkdir -p "$(dirname "$WELOG")"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [auto-restore] START caller=$(ps -o comm= -p $PPID 2>/dev/null || echo unknown)" >> "$WELOG"
 
 # BUG-FLAG-STALE fix: 시작 즉시 이전 부팅 플래그 삭제 (auto-attach의 오래된 플래그 재사용 방지)
 FLAG_FILE_STALE="$HOME/.claude/logs/.auto-restore-done"
@@ -48,6 +52,24 @@ FORCE_MODE="${1:-}"
 BOOT_TS=$(sysctl -n kern.boottime 2>/dev/null | awk '{print $4}' | tr -d ',')
 NOW_TS=$(date +%s)
 UPTIME_SEC=$(( NOW_TS - ${BOOT_TS:-0} ))
+
+# 30분 쿨다운: 부팅 직후(300s 이내)나 --force가 아니면 마지막 실행 후 1800초 내 재실행 방지
+# 이중 LaunchAgent(com.claude.auto-restore + com.claude.magi-restore) 동시 트리거 방어
+LASTRUN_FILE="$HOME/.claude/logs/.auto-restore-lastrun"
+if [ "$UPTIME_SEC" -ge 300 ] && [ "$FORCE_MODE" != "--force" ]; then
+    if [ -f "$LASTRUN_FILE" ]; then
+        LAST_RUN_TS=$(cat "$LASTRUN_FILE" 2>/dev/null)
+        SINCE_LAST=$(( NOW_TS - ${LAST_RUN_TS:-0} ))
+        if [ "$SINCE_LAST" -lt 1800 ]; then
+            log "마지막 실행 후 ${SINCE_LAST}초 경과 — 쿨다운 중 (30분 미만), 스킵 (강제: --force)"
+            WELOG="$HOME/.claude/logs/window-events.log"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] [auto-restore] COOLDOWN 스킵 (uptime=${UPTIME_SEC}s, last=${SINCE_LAST}s전)" >> "$WELOG"
+            exit 0
+        fi
+    fi
+fi
+echo "$NOW_TS" > "$LASTRUN_FILE"
+
 EXISTING=$(ps -A -o comm= 2>/dev/null | grep -c "^claude$" | tr -d ' ')
 if [ "$UPTIME_SEC" -lt 300 ]; then
     log "부팅 직후 감지 (uptime=${UPTIME_SEC}s) — EXISTING 체크 스킵 (현재 claude ${EXISTING}개)"
@@ -236,6 +258,7 @@ except:
         TOTAL_CREATED=$((TOTAL_CREATED + 1))
         DELAY=$((DELAY + 3))
         log "창 생성: $SESSION_NAME/$PROFILE_NAME (delay ${DELAY}s)"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [tmux-window] CREATE session=$SESSION_NAME window=$PROFILE_NAME" >> "$WELOG"
     done
 
     # monitor 창을 맨 마지막에 추가 + _init_ 임시 창 제거
@@ -365,3 +388,6 @@ echo "$(date +%s)" > "$HOME/.claude/logs/.auto-restore-done"
 log "auto-attach 트리거 플래그 생성 완료"
 
 log "=== Auto-Restore 완료: ${TOTAL_CREATED}개 창 복원 ==="
+# 윈도우 이벤트 로그
+WELOG="$HOME/.claude/logs/window-events.log"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [auto-restore] COMPLETE uptime=${UPTIME_SEC}s created=${TOTAL_CREATED} trigger=$([ "$UPTIME_SEC" -lt 300 ] && echo boot || echo manual)" >> "$WELOG"
