@@ -703,6 +703,18 @@ except: pass
         fi
     done
 
+    # 5.5. active-sessions orphan-sync (1시간 주기)
+    # window-groups.json의 프로파일 중 active-sessions에 없는 것을 tmux 기반으로 보완 등록
+    ORPHAN_SYNC_LOCK="/tmp/.orphan-sync-last"
+    LAST_OS=0
+    [ -f "$ORPHAN_SYNC_LOCK" ] && LAST_OS=$(cat "$ORPHAN_SYNC_LOCK" 2>/dev/null || echo 0)
+    NOW_OS=$(date +%s)
+    if [ $((NOW_OS - LAST_OS)) -gt 3600 ]; then
+        echo "$NOW_OS" > "$ORPHAN_SYNC_LOCK"
+        SYNC_RESULT=$(python3 "$HOME/.claude/scripts/active-sessions-sync.py" 2>/dev/null || true)
+        [ -n "$SYNC_RESULT" ] && log "[orphan-sync] $SYNC_RESULT"
+    fi
+
     # 6. orphan linked session 정리 (BUG-005 fix)
     # 24시간 이상 클라이언트 없는 linked sessions(-vN) 제거
     LINKED_CLEANUP_LOCK="/tmp/.linked-cleanup-last"

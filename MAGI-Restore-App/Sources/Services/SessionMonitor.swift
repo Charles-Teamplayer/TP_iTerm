@@ -651,7 +651,8 @@ final class SessionMonitor: ObservableObject {
     }
 
     func stopAllRunning() async {
-        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") }
+        let myAppPid = Int(ProcessInfo.processInfo.processIdentifier)
+        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") && $0.pid != myAppPid }
         for session in toStop { intentionallyStoppedIds.insert(session.id) }
         for session in toStop {
             let dir = session.directory.isEmpty ? session.projectName : session.directory
@@ -1077,19 +1078,36 @@ final class SessionMonitor: ObservableObject {
         let ttys = ttysRaw.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
 
         // BUG-CLOSEWIN-TTY fix: iTerm2 tmux 통합 탭은 tty = missing value → TTY 비교 불가
-        // 두 가지 전략 병행:
-        // 1. 클라이언트 TTY 직접 매칭 (plain attach 또는 control 탭)
-        // 2. 모든 탭이 missing value인 창 → orphaned tmux 통합 창 → 닫기
-        // 단, 현재 Claude Code 세션 TTY (/dev/ttysXXX)를 가진 창은 절대 닫지 않음
-        let ttyList = ttys.map { "\"\($0)\"" }.joined(separator: ", ")
+        // 전략 1: 클라이언트 TTY 직접 매칭 (plain attach 또는 control 탭)
+        // 전략 2: 모든 탭이 missing value + 탭 수가 이 세션 창 수와 비슷한 창 → orphaned tmux 통합 창
+        // 안전장치: 탭이 1개뿐인 창은 allMissingTTY로 닫지 않음 (일반 터미널 보호)
+        // 안전장치: protected-claude-pids의 TTY를 가진 창은 닫지 않음
+        let protectedTtysRaw = await ShellService.runAsync(
+            "cat ~/.claude/protected-claude-pids 2>/dev/null | while read pid; do ps -o tty= -p $pid 2>/dev/null; done | sort -u"
+        )
+        let protectedTtys = Set(protectedTtysRaw.components(separatedBy: "\n")
+            .map { "/dev/" + $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0 != "/dev/" })
+
+        // 이 세션의 예상 탭 수 (orphaned 판별용)
+        let expectedTabCount = await ShellService.runAsync(
+            "tmux list-windows -t '\(shellEscape(sessionName))' 2>/dev/null | wc -l"
+        )
+        let expectedTabs = Int(expectedTabCount.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+
+        let allTtys = ttys + Array(protectedTtys)
+        let ttyList = allTtys.map { "\"\($0)\"" }.joined(separator: ", ")
+        let protectedTtyList = protectedTtys.map { "\"\($0)\"" }.joined(separator: ", ")
         let script = """
         osascript << '__APPLES__'
         tell application "iTerm2"
             set ttySet to {\(ttyList)}
+            set protectedSet to {\(protectedTtyList.isEmpty ? "\"__none__\"" : protectedTtyList)}
             set toClose to {}
             repeat with w in every window
                 set hasMatch to false
                 set allMissingTTY to true
+                set hasProtectedTTY to false
                 set tabCnt to count tabs of w
                 repeat with t in every tab of w
                     try
@@ -1097,17 +1115,21 @@ final class SessionMonitor: ObservableObject {
                         set wTTY to tty of st
                         if wTTY is not missing value and wTTY is not "" then
                             set allMissingTTY to false
+                            if wTTY is in protectedSet then
+                                set hasProtectedTTY to true
+                            end if
                             if wTTY is in ttySet then
                                 set hasMatch to true
                             end if
                         end if
                     end try
                 end repeat
-                -- 전략 1: TTY 직접 매칭
-                if hasMatch then
+                -- 전략 1: TTY 직접 매칭 (단, protected TTY가 있으면 닫지 않음)
+                if hasMatch and not hasProtectedTTY then
                     set end of toClose to w
-                -- 전략 2: 모든 탭이 missing value = orphaned tmux 통합 창
-                else if allMissingTTY and tabCnt > 0 then
+                -- 전략 2: 모든 탭이 missing value + 탭이 2개 이상 + 예상 탭 수의 50% 이상
+                -- (탭 1개짜리 창은 일반 터미널일 수 있으므로 보호)
+                else if allMissingTTY and tabCnt >= 2 and tabCnt >= (\(max(expectedTabs / 2, 2))) then
                     set end of toClose to w
                 end if
             end repeat
