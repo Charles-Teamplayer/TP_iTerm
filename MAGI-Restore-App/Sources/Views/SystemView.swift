@@ -624,6 +624,31 @@ struct SystemView: View {
                 }
             }
 
+            Section("알림 스타일 테스트") {
+                HStack(spacing: 12) {
+                    Button("A안 — macOS 기본") {
+                        NotificationService.shared.notify(
+                            title: "세션 시작",
+                            body: "TP_iTerm 세션이 시작됐습니다",
+                            identifier: "test-a"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("B안 — 커스텀 토스트") {
+                        ToastService.shared.show(
+                            title: "세션 시작",
+                            body: "TP_iTerm 세션이 시작됐습니다",
+                            icon: "play.fill"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                }
+                Text("둘 다 눌러보고 맘에 드는 걸 선택하세요.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Updates") {
                 Button(action: {
                     Task { await vm.runInstall() }
