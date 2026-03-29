@@ -53,26 +53,34 @@ rotate_stderr_log() {
 notify() {
     local msg="$1"
     local is_critical="${2:-0}"
-    # 기본 배너 알림
-    osascript -e "display notification \"${msg//\"/\'}\" with title \"MAGI+NORN Watchdog\" sound name \"Basso\"" 2>/dev/null || true
+    local icon="${3:-bell.fill}"
+    local title="${4:-MAGI+NORN Watchdog}"
     # 최근 이벤트 파일 저장 (상세 확인용)
     printf "[%s] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$msg" > /tmp/watchdog-latest-event.txt
     tail -30 "$LOG_FILE" 2>/dev/null >> /tmp/watchdog-latest-event.txt
-    # 크리티컬 이벤트: 별도 다이얼로그 표시 (백그라운드, 버튼 포함)
-    if [ "$is_critical" = "1" ]; then
-        (
-            SAFE_MSG="${msg//\"/\'}"
-            TS=$(date '+%H:%M:%S')
-            LOGF="$LOG_FILE"
-            osascript -e "
-set logFile to \"$LOGF\"
-set logTail to do shell script \"tail -20 \" & quoted form of logFile
-set choice to button returned of (display dialog \"[${TS}] ${SAFE_MSG}\" & return & return & \"─── 최근 로그 (20줄) ───\" & return & logTail with title \"MAGI+NORN Watchdog 상세\" buttons {\"닫기\", \"전체 로그 열기\"} default button \"닫기\")
-if choice is \"전체 로그 열기\" then
-    do shell script \"osascript -e 'tell application \\\"iTerm2\\\" to create window with default profile command \\\"tail -100 \" & quoted form of logFile & \"\\\"' 2>/dev/null || open \" & quoted form of logFile
-end if" 2>/dev/null
-        ) &>/dev/null &
-        disown
+    # MAGI-Restore-App 토스트 큐에 추가
+    local queue_file="/tmp/magi-toast.json"
+    local safe_title="${title//\"/\\\"}"
+    local safe_msg="${msg//\"/\\\"}"
+    local safe_icon="${icon//\"/\\\"}"
+    local new_entry="{\"title\":\"${safe_title}\",\"message\":\"${safe_msg}\",\"icon\":\"${safe_icon}\"}"
+    if [ -f "$queue_file" ]; then
+        # 기존 배열에 append
+        local existing
+        existing=$(cat "$queue_file" 2>/dev/null)
+        if [[ "$existing" == \[*\] ]]; then
+            # 마지막 ] 제거 후 새 항목 추가
+            local trimmed="${existing%]}"
+            if [ "$trimmed" = "[" ]; then
+                echo "[${new_entry}]" > "$queue_file"
+            else
+                echo "${trimmed},${new_entry}]" > "$queue_file"
+            fi
+        else
+            echo "[${new_entry}]" > "$queue_file"
+        fi
+    else
+        echo "[${new_entry}]" > "$queue_file"
     fi
 }
 
@@ -162,7 +170,7 @@ while true; do
 
         if [ -n "$CRASHED" ]; then
             log "CRASH DETECTED: $CRASHED"
-            notify "Claude Code 크래시 감지! 자동 재시작 중..." 1
+            notify "Claude Code 크래시 감지! 자동 재시작 중..." 1 "exclamationmark.triangle.fill"
 
             # Notion에 크래시 기록
             if [ -n "$NOTION_API_KEY" ]; then
@@ -402,7 +410,7 @@ for path in d.get('activated', []):
                 # 연속 크래시 임계값 초과 시 intentional-stop 등록 (무한 루프 방지)
                 if [ "$NEW_COUNT" -gt "$CRASH_MAX" ]; then
                     log "CRASH LOOP DETECTED: $RESTART_PROJECT (${NEW_COUNT}회) — intentional-stop 등록"
-                    notify "⚠️ $RESTART_PROJECT 연속 ${NEW_COUNT}회 크래시 — 자동 복원 중단" 1
+                    notify "$RESTART_PROJECT 연속 ${NEW_COUNT}회 크래시 — 자동 복원 중단" 1 "xmark.octagon.fill"
                     bash "$HOME/.claude/scripts/stop-session.sh" "$WINDOW_NAME" 2>/dev/null || true
                     continue
                 fi
@@ -450,7 +458,7 @@ for path in d.get('activated', []):
                 fi
 
                 log "AUTO-RESTART: $RESTART_PROJECT → $TARGET_SESSION:$WINDOW_NAME (연속 ${NEW_COUNT}/${CRASH_MAX}회)"
-                notify "세션 자동 복구: $RESTART_PROJECT"
+                notify "세션 자동 복구: $RESTART_PROJECT" 0 "arrow.clockwise.circle.fill"
 
                 # BUG-C fix: REORDER를 루프 밖으로 이동 — 세션별 1회만 실행 (중복 재배열 방지)
                 SESSIONS_TO_REORDER="$SESSIONS_TO_REORDER $TARGET_SESSION"

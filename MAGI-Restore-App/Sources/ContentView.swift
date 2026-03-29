@@ -74,6 +74,7 @@ struct ContentView: View {
         .frame(minWidth: 700, minHeight: 450)
         .onAppear {
             NotificationService.shared.requestPermission()
+            ToastService.shared.startPolling()
             monitor.start()
             monitor.profileService.load()
             monitor.windowGroupService.load()

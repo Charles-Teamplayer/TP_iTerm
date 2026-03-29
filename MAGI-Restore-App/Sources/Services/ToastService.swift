@@ -3,13 +3,43 @@ import SwiftUI
 
 // MARK: - B안: 커스텀 토스트 (화면 우하단, 2.5초 후 자동 사라짐)
 
+struct ToastEntry: Codable {
+    var title: String
+    var message: String
+    var icon: String
+}
+
 @MainActor
 final class ToastService {
     static let shared = ToastService()
     private var window: NSPanel?
     private var hideTask: Task<Void, Never>?
+    private var pollTask: Task<Void, Never>?
+    static let queueFile = "/tmp/magi-toast.json"
 
     private init() {}
+
+    func startPolling() {
+        pollTask?.cancel()
+        pollTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                await drainQueue()
+            }
+        }
+    }
+
+    private func drainQueue() async {
+        let path = ToastService.queueFile
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let entries = try? JSONDecoder().decode([ToastEntry].self, from: data),
+              !entries.isEmpty else { return }
+        try? FileManager.default.removeItem(atPath: path)
+        for entry in entries {
+            show(title: entry.title, body: entry.message, icon: entry.icon)
+            try? await Task.sleep(nanoseconds: 800_000_000)
+        }
+    }
 
     func show(title: String, body: String, icon: String = "bell.fill") {
         hideTask?.cancel()
