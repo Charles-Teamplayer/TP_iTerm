@@ -110,7 +110,7 @@ private struct ToastView: View {
         .frame(width: 320, height: 64)
         .background {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.black.opacity(0.85))
+                .fill(Color(red: 0.08, green: 0.55, blue: 0.25).opacity(0.95))
                 .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
         }
         .padding(.horizontal, 8)
