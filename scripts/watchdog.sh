@@ -675,6 +675,74 @@ except: pass
         fi
     done
 
+    # 4.5. Hot-add: window-groups.json에 있지만 tmux에 없는 창 자동 생성 (2분 간격)
+    HOTADD_LOCK="/tmp/.hotadd-last"
+    LAST_HOTADD=0
+    [ -f "$HOTADD_LOCK" ] && LAST_HOTADD=$(cat "$HOTADD_LOCK" 2>/dev/null || echo 0)
+    NOW_HOTADD=$(date +%s)
+    if [ $((NOW_HOTADD - LAST_HOTADD)) -gt 120 ] && [ ! -f "/tmp/.auto-restore.lock" ] && [ ! -f "/tmp/.auto-attach.lock" ]; then
+        echo "$NOW_HOTADD" > "$HOTADD_LOCK"
+        HOTADD_RESULT=$(python3 << 'HOTADD_PYEOF'
+import json, os, subprocess, sys
+
+wg_path = os.path.expanduser('~/.claude/window-groups.json')
+as_path = os.path.expanduser('~/.claude/activated-sessions.json')
+
+try:
+    with open(wg_path) as f:
+        groups = json.load(f)
+    with open(as_path) as f:
+        activated = json.load(f)
+except Exception as e:
+    sys.exit(0)
+
+# name → path 맵 (공백↔밑줄 정규화)
+name_to_path = {}
+for p in activated.get('activated', []):
+    bn = os.path.basename(p)
+    name_to_path[bn] = p
+    name_to_path[bn.replace(' ', '_')] = p
+    name_to_path[bn.replace('_', ' ')] = p
+
+added = []
+for g in groups:
+    sn = g.get('sessionName', '')
+    if g.get('isWaitingList', False) or not sn or sn == '__waiting__':
+        continue
+    # 현재 tmux 창 목록
+    r = subprocess.run(['tmux', 'list-windows', '-t', sn, '-F', '#{window_name}'],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        continue
+    existing = set(r.stdout.strip().split('\n'))
+    for pname in g.get('profileNames', []):
+        if pname in existing:
+            continue
+        proj_path = name_to_path.get(pname) or name_to_path.get(pname.replace(' ', '_')) or name_to_path.get(pname.replace('_', ' '))
+        if not proj_path or not os.path.isdir(proj_path):
+            continue
+        # tmux 창 생성
+        r2 = subprocess.run(
+            ['tmux', 'new-window', '-t', sn, '-n', pname, '-c', proj_path, '-P', '-F', '#{window_id}'],
+            capture_output=True, text=True)
+        if r2.returncode == 0:
+            wid = r2.stdout.strip()
+            subprocess.run(['tmux', 'set-window-option', '-t', wid, 'automatic-rename', 'off'],
+                           capture_output=True)
+            subprocess.run(['tmux', 'rename-window', '-t', wid, pname], capture_output=True)
+            claude_cmd = "unset CLAUDECODE && claude --dangerously-skip-permissions --continue"
+            subprocess.run(['tmux', 'send-keys', '-t', wid,
+                            f"(bash ~/.claude/scripts/tab-status.sh starting '{pname}' 2>/dev/null || true) && {claude_cmd}",
+                            'Enter'], capture_output=True)
+            added.append(f"{sn}/{pname}")
+
+if added:
+    print('HOT-ADD: ' + ', '.join(added))
+HOTADD_PYEOF
+        2>/dev/null || true)
+        [ -n "$HOTADD_RESULT" ] && log "$HOTADD_RESULT" && echo "[$(date '+%Y-%m-%d %H:%M:%S')] [watchdog] $HOTADD_RESULT" >> "$HOME/.claude/logs/window-events.log"
+    fi
+
     # 5. tmux CC 클라이언트 연결 상태 모니터링 (모든 active 세션)
     # auto-restore / auto-attach 실행 중이면 cc-fix 전체 스킵 (BUG-001 fix: 중복 창 방지)
     RESTORE_RUNNING=false
@@ -725,6 +793,62 @@ except: pass
         echo "$NOW_OS" > "$ORPHAN_SYNC_LOCK"
         SYNC_RESULT=$(python3 "$HOME/.claude/scripts/active-sessions-sync.py" 2>/dev/null || true)
         [ -n "$SYNC_RESULT" ] && log "[orphan-sync] $SYNC_RESULT"
+
+        # activated-sessions.json 자동 스캔 — ~/claude의 새 디렉토리 추가
+        DIRSCAN_RESULT=$(python3 << 'DIRSCAN_PYEOF'
+import json, os, tempfile, sys
+
+CLAUDE_DIR = os.path.expanduser('~/claude')
+AS_PATH = os.path.expanduser('~/.claude/activated-sessions.json')
+
+# 무시 패턴 (TP_skills index.md 기준)
+IGNORE_PREFIXES = ('Claude_code_', '_archived', 'archive', 'claude-squad', 'claude_squad',
+                   'teamplean-github-pages', 'teamplayer-github-pages', '.', 'claude_')
+IGNORE_CONTAINS = ('아카이빙', '쓰레기', '_archived_', '-archived-')
+IGNORE_EXACT = {'CLAUDE.md', 'SESSION_STATE.md', 'test', 'claude_gpt'}
+IGNORE_SUFFIXES = ('.md', '.html', '.js', '.json', '.txt', '.py')
+
+try:
+    with open(AS_PATH) as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(0)
+
+existing = set(data.get('activated', []))
+new_entries = []
+
+for name in sorted(os.listdir(CLAUDE_DIR)):
+    if name in IGNORE_EXACT:
+        continue
+    if any(name.startswith(p) for p in IGNORE_PREFIXES):
+        continue
+    if any(name.endswith(s) for s in IGNORE_SUFFIXES):
+        continue
+    if any(kw in name for kw in IGNORE_CONTAINS):
+        continue
+    full = os.path.join(CLAUDE_DIR, name)
+    if not os.path.isdir(full):
+        continue
+    if full not in existing:
+        new_entries.append(full)
+        existing.add(full)
+
+if not new_entries:
+    sys.exit(0)
+
+# 원자적 업데이트
+data['activated'] = sorted(existing)
+import time
+data['last_updated'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+dir_ = os.path.dirname(AS_PATH)
+fd, tmp = tempfile.mkstemp(dir=dir_, suffix='.tmp')
+with os.fdopen(fd, 'w') as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+os.replace(tmp, AS_PATH)
+print('DIR-SCAN added: ' + ', '.join(os.path.basename(p) for p in new_entries))
+DIRSCAN_PYEOF
+        2>/dev/null || true)
+        [ -n "$DIRSCAN_RESULT" ] && log "[dir-scan] $DIRSCAN_RESULT"
     fi
 
     # 6. orphan linked session 정리 (BUG-005 fix)
