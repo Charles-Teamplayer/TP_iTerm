@@ -1,0 +1,83 @@
+[
+  {
+    "profileNames": [
+      "ClaudeChat",
+      "Claude_Code_TPWriter",
+      "IMS_AutoContact_New",
+      "IMS_publishManager",
+      "IPinside.app",
+      "NewSilentCamera",
+      "NextLevelSilentCamera",
+      "SilentCameraApp_v0.5_backup",
+      "TP-Firewall",
+      "TP_A.iMessage_standalone_01067051080",
+      "TP_BTT",
+      "TP_GIT_Publisher",
+      "TP_MailSystem",
+      "TP_Markdown_Mermaid_Editor",
+      "TP_StatusDash",
+      "TP_TESLA_LVDS",
+      "TP_autoSwitch_Macmini",
+      "TP_distAPP",
+      "a.imessage",
+      "ai-chatbot-solution",
+      "blender-mcp",
+      "brandtalk-test",
+      "demo.imsms.im",
+      "genesys-voip-app",
+      "imbot-chat",
+      "imessage-ids-lookup",
+      "imsms-console-system",
+      "imsms.im-website",
+      "iros-registry-extractor",
+      "link-preview-test",
+      "seanJ-FIFA26",
+      "teamplayer-actual-site",
+      "teamplayer-demo",
+      "teamplayer-website-backup-real",
+      "test",
+      "TP_history",
+      "Claude-Code-System",
+      "Claude-Code-Usage-Monitor",
+      "IMS_AutoContact_아카이빙(쓰레기)",
+      "IMS_ShareContact_archived_20251211_아카이빙(쓰레기)",
+      "TP_Infra_reduce_Project"
+    ],
+    "isWaitingList": true,
+    "id": "7E0CA4C1-66C6-4B96-9053-65B6542F1D3C",
+    "name": "대기 목록",
+    "sessionName": "__waiting__"
+  },
+  {
+    "profileNames": [
+      "teamplean-website",
+      "universalMAC_Converter_gensys_calude",
+      "ims_Auto_Contact APP",
+      "AppleTV_ScreenSaver.app",
+      "TP-BP_Knowledgebase",
+      "TP_Status",
+      "TP_iTerm",
+      "SJ_MindMap",
+      "testCalculator"
+    ],
+    "isWaitingList": false,
+    "id": "B8D20FF6-2D83-4EB7-95B6-757F0C38224D",
+    "name": "메인",
+    "sessionName": "claude-work"
+  },
+  {
+    "profileNames": [
+      "terminal-mirror",
+      "TP_skills",
+      "TP_MDM",
+      "TP_MindMap_AutoCC",
+      "TP_Worker+QA_Project-singleProject",
+      "TP_newIMSMS",
+      "TP_newIMSMS_Agent"
+    ],
+    "isWaitingList": false,
+    "id": "325BF5ED-489A-4CAB-A03B-A6AF2368C2B9",
+    "name": "takedown",
+    "sessionName": "claude-takedown"
+  }
+]
