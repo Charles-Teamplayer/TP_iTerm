@@ -61,13 +61,14 @@ _map_project() {
     local RAW="${1:-$(basename "$PWD")}"
     if command -v jq &>/dev/null; then
         local MAPPED
-        MAPPED=$(jq -r ".project_names[\"$RAW\"] // \"$RAW\"" "$CONFIG" 2>/dev/null)
+        MAPPED=$(jq -r --arg raw "$RAW" '.project_names[$raw] // $raw' "$CONFIG" 2>/dev/null)
         echo "${MAPPED:-$RAW}"
     else
-        python3 -c "
-import json
-d = json.load(open('$CONFIG'))
-print(d.get('project_names', {}).get('$RAW', '$RAW'))
+        _MP_CFG="$CONFIG" _MP_RAW="$RAW" python3 -c "
+import json, os
+cfg=os.environ['_MP_CFG']; raw=os.environ['_MP_RAW']
+d = json.load(open(cfg))
+print(d.get('project_names', {}).get(raw, raw))
 " 2>/dev/null || echo "$RAW"
     fi
 }
