@@ -171,7 +171,8 @@ except: pass
     }
 
     private func attachTmuxToITerm() async {
-        // BUG-MONITOR-ODETECT fix: monitor 창 외에 실제 작업 창에도 붙어있어야 "이미 연결됨"으로 판단
+        // BUG-CC-MODE fix: control-mode 검사 제거 → plain attach(linked session) 방식에서 항상 미감지 문제 수정
+        // linked sessions(-vN)에 non-monitor 클라이언트가 있으면 이미 연결됨으로 판단
         let alreadyAttached = await ShellService.runAsync("""
             python3 -c "
 import json, os, subprocess
@@ -180,16 +181,16 @@ try:
     for g in groups:
         sn = g.get('sessionName','')
         if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
-            # main session + linked sessions(-vN) 모두 확인
             sessions_to_check = [sn]
             ls_r = subprocess.run(['tmux','list-sessions','-F','#{session_name}'], capture_output=True, text=True)
             for s in ls_r.stdout.strip().split('\\n'):
                 if s.startswith(sn + '-v'):
                     sessions_to_check.append(s)
             for sess in sessions_to_check:
-                r = subprocess.run(['tmux','list-clients','-t',sess,'-F','#{client_flags} #{window_name}'], capture_output=True, text=True)
+                r = subprocess.run(['tmux','list-clients','-t',sess,'-F','#{window_name}'], capture_output=True, text=True)
                 for line in r.stdout.strip().split('\\n'):
-                    if 'control-mode' in line and 'monitor' not in line:
+                    wname = line.strip()
+                    if wname and wname != 'monitor':
                         print('YES')
                         exit(0)
 except: pass
@@ -203,7 +204,8 @@ except: pass
 
         restoreLog += "\n🔗 iTerm2 새 탭으로 연결 중..."
 
-        // 첫 번째 active 세션에 attach (claude-work 하드코딩 제거)
+        // BUG-CC-MODE fix: tmux -CC attach 대신 linked session 방식 사용 (현재 시스템 표준)
+        // 첫 번째 active 세션의 첫 번째 non-monitor 창에 linked session 생성 후 attach
         let firstSession = await ShellService.runAsync("""
             python3 -c "
 import json, os
@@ -221,17 +223,18 @@ except: pass
 " 2>/dev/null
 """).trimmingCharacters(in: .whitespacesAndNewlines)
         let targetSession = firstSession.isEmpty ? "claude-work" : firstSession
+        let esc = ShellService.shellq(targetSession)
 
-        let script = """
-        osascript -e 'tell application "iTerm2"
-            tell current window
-                create tab with default profile
-                tell current session of current tab
-                    write text "tmux -CC attach -t \(targetSession)"
-                end tell
-            end tell
-        end tell' 2>&1
-        """
+        // 첫 번째 non-monitor 창 인덱스 조회 → linked session 생성 후 attach
+        let firstWinIdx = await ShellService.runAsync(
+            "tmux list-windows -t \(esc) -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' '$2!=\"monitor\" && $2!=\"_init_\"{print $1; exit}'"
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        let winIdx = firstWinIdx.isEmpty ? "0" : firstWinIdx
+        let linkedName = "\(targetSession)-v\(winIdx)"
+        let linkedEsc = ShellService.shellq(linkedName)
+        let cmd = "/bin/bash -lc 'tmux has-session -t \(linkedName) 2>/dev/null || tmux new-session -d -s \(linkedName) -t \(targetSession) 2>/dev/null; tmux select-window -t \(linkedName):\(winIdx) 2>/dev/null; tmux attach-session -t \(linkedName); exec /bin/zsh -l'"
+
+        let script = "osascript << '__APPLES__'\ntell application \"iTerm2\"\n    activate\n    create window with default profile command \"\(cmd)\"\nend tell\n__APPLES__"
         let result = await ShellService.runAsync(script)
         if result.lowercased().contains("error") {
             restoreLog += "\n⚠️ iTerm2 연결 실패: \(String(result.prefix(120)))"
