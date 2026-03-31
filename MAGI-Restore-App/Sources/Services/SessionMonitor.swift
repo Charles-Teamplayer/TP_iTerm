@@ -1016,14 +1016,24 @@ final class SessionMonitor: ObservableObject {
         }
     }
 
-    // 즉시 적용: 배정된 pane의 중단된 세션 모두 시작 + 모든 그룹 탭 순서 재배치
+    // 즉시 적용: 배정된 pane의 중단된 세션 모두 시작 + 모든 그룹 탭 순서 재배치 + iTerm 탭 재연결
     func applyNow() async {
         selectAllLaunchable()
         await restoreSelected()
-        // 모든 활성 그룹 탭 순서 재배치 + monitor 보장
+        // 모든 활성 그룹 탭 순서 재배치 + monitor 보장 + iTerm 탭 연결 확인
         for group in windowGroupService.groups where !group.isWaitingList {
             await reorderTabs(for: group)
             await ensureMonitorWindow(sessionName: group.sessionName)
+            // linked session이 monitor에만 붙어있으면 iTerm 탭 재연결
+            let sn = shellEscape(group.sessionName)
+            let properAttach = await ShellService.runAsync("""
+                tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E '^\(sn)-v' | while read s; do
+                    tmux list-clients -t "$s" -F '#{client_flags} #{window_name}' 2>/dev/null
+                done | grep 'control-mode' | grep -v 'monitor'
+            """)
+            if properAttach.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                await openITermTabs(for: group)
+            }
         }
     }
 
