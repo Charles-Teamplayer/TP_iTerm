@@ -72,12 +72,14 @@ except:
                     "${_COLOR_R:-0}" "${_COLOR_G:-220}" "${_COLOR_B:-0}" > "/dev/$CURRENT_TTY" 2>/dev/null
                 # timestamp 갱신 (watchdog aging 방지)
                 _TSF2="$STATE_FILE" python3 -c "
-import json, datetime, os
+import json, datetime, os, tempfile
 f=os.environ['_TSF2']
 try:
     with open(f) as fp: d=json.load(fp)
     d['timestamp']=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    with open(f,'w') as fp: json.dump(d,fp)
+    fd,tmp=tempfile.mkstemp(dir=os.path.dirname(f),suffix='.tmp')
+    with os.fdopen(fd,'w') as fp: json.dump(d,fp)
+    os.replace(tmp,f)
 except: pass
 " 2>/dev/null
                 exit 0
