@@ -60,9 +60,9 @@ notify() {
     tail -30 "$LOG_FILE" 2>/dev/null >> /tmp/watchdog-latest-event.txt
     # MAGI-Restore-App 토스트 큐에 추가
     local queue_file="/tmp/magi-toast.json"
-    local safe_title="${title//\"/\\\"}"
-    local safe_msg="${msg//\"/\\\"}"
-    local safe_icon="${icon//\"/\\\"}"
+    local safe_title="${title//\\/\\\\}"; safe_title="${safe_title//\"/\\\"}"
+    local safe_msg="${msg//\\/\\\\}"; safe_msg="${safe_msg//\"/\\\"}"
+    local safe_icon="${icon//\\/\\\\}"; safe_icon="${safe_icon//\"/\\\"}"
     local new_entry="{\"title\":\"${safe_title}\",\"message\":\"${safe_msg}\",\"icon\":\"${safe_icon}\"}"
     if [ -f "$queue_file" ]; then
         # 기존 배열에 append
@@ -898,6 +898,12 @@ DIRSCAN_PYEOF
     _FMP_LOG="$HOME/.claude/logs/focus-monitor-py.log"
     if [ -f "$_FMP_LOG" ] && [ "$(wc -l < "$_FMP_LOG" 2>/dev/null)" -gt 5000 ] 2>/dev/null; then
         tail -2500 "$_FMP_LOG" > "${_FMP_LOG}.tmp" && mv "${_FMP_LOG}.tmp" "$_FMP_LOG" 2>/dev/null || true
+    fi
+
+    # window-events.log 로테이션 (10000줄 초과 시 5000줄 유지)
+    _WE_LOG="$HOME/.claude/logs/window-events.log"
+    if [ -f "$_WE_LOG" ] && [ "$(wc -l < "$_WE_LOG" 2>/dev/null)" -gt 10000 ] 2>/dev/null; then
+        tail -5000 "$_WE_LOG" > "${_WE_LOG}.tmp" && mv "${_WE_LOG}.tmp" "$_WE_LOG" 2>/dev/null || true
     fi
 
     # launchd-stdout.log / launchd-stderr.log 로테이션 (session-manager auto-commit 누적 방지)
