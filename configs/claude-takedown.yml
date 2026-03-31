@@ -1,0 +1,30 @@
+session: claude-takedown
+windows:
+  - name: terminal-mirror
+    root: /Users/teample.casper/claude/terminal-mirror
+    commands:
+      - sleep 0 && bash ~/.claude/scripts/tab-status.sh starting 'terminal-mirror' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_skills
+    root: ~/claude/TP_skills
+    commands:
+      - sleep 5 && bash ~/.claude/scripts/tab-status.sh starting 'TP_skills' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_MDM
+    root: /Users/teample.casper/claude/TP_MDM
+    commands:
+      - sleep 10 && bash ~/.claude/scripts/tab-status.sh starting 'TP_MDM' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_MindMap_AutoCC
+    root: /Users/teample.casper/claude/TP_MindMap_AutoCC
+    commands:
+      - sleep 15 && bash ~/.claude/scripts/tab-status.sh starting 'TP_MindMap_AutoCC' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_Worker+QA_Project-singleProject
+    root: /Users/teample.casper/claude/TP_Worker+QA_Project-singleProject
+    commands:
+      - sleep 20 && bash ~/.claude/scripts/tab-status.sh starting 'TP_Worker+QA_Project-singleProject' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_newIMSMS
+    root: /Users/teample.casper/claude/TP_newIMSMS
+    commands:
+      - sleep 25 && bash ~/.claude/scripts/tab-status.sh starting 'TP_newIMSMS' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
+  - name: TP_newIMSMS_Agent
+    root: /Users/teample.casper/claude/TP_newIMSMS_Agent
+    commands:
+      - sleep 30 && bash ~/.claude/scripts/tab-status.sh starting 'TP_newIMSMS_Agent' && unset CLAUDECODE && claude --dangerously-skip-permissions --continue
