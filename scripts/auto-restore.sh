@@ -249,8 +249,9 @@ except:
         if [ -n "$WIN_ID_AR" ]; then
             tmux set-window-option -t "$WIN_ID_AR" automatic-rename off 2>/dev/null || true
             tmux rename-window -t "$WIN_ID_AR" "$PROFILE_NAME" 2>/dev/null || true
+            _SAFE_PN=$(printf '%q' "$PROFILE_NAME")
             tmux send-keys -t "$WIN_ID_AR" \
-                "sleep $DELAY && (bash ~/.claude/scripts/tab-status.sh starting '$PROFILE_NAME' 2>/dev/null || true) && unset CLAUDECODE && $CLAUDE_CMD" Enter
+                "sleep $DELAY && (bash ~/.claude/scripts/tab-status.sh starting ${_SAFE_PN} 2>/dev/null || true) && unset CLAUDECODE && $CLAUDE_CMD" Enter
         else
             log "WARN: $PROFILE_NAME 창 생성 실패 (tmux new-window)"
         fi
