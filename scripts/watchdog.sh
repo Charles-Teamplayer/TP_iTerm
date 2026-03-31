@@ -894,6 +894,12 @@ DIRSCAN_PYEOF
     # stderr.log 로테이션 (매 루프마다 체크)
     rotate_stderr_log
 
+    # focus-monitor-py.log 로테이션 (5000줄 초과 시 2500줄 유지)
+    _FMP_LOG="$HOME/.claude/logs/focus-monitor-py.log"
+    if [ -f "$_FMP_LOG" ] && [ "$(wc -l < "$_FMP_LOG" 2>/dev/null)" -gt 5000 ] 2>/dev/null; then
+        tail -2500 "$_FMP_LOG" > "${_FMP_LOG}.tmp" && mv "${_FMP_LOG}.tmp" "$_FMP_LOG" 2>/dev/null || true
+    fi
+
     # 30초 대기
     sleep 30
 done
