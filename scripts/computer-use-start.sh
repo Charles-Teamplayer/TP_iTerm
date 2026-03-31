@@ -4,9 +4,9 @@
 OVERLAY_DIR="/Users/teample.casper/claude/TP_skills/dummy-overlay"
 
 # M+N 상태 서버 시작 (이미 실행 중이면 무시)
-python3 -c "
-import sys, threading
-sys.path.insert(0, '$OVERLAY_DIR')
+_CS_OD="$OVERLAY_DIR" python3 -c "
+import sys, os, threading
+sys.path.insert(0, os.environ['_CS_OD'])
 import mn_status_server as srv
 try:
     srv.start()
