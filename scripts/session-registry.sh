@@ -94,7 +94,10 @@ PYEOF
                     [ -f "$PROTECTED_FILE" ] && grep -v '^$' "$PROTECTED_FILE"
                     echo "$PID"
                 } | sort -u | while read -r pp; do
-                    kill -0 "$pp" 2>/dev/null && echo "$pp"
+                    if kill -0 "$pp" 2>/dev/null; then
+                        _cmd=$(ps -o comm= -p "$pp" 2>/dev/null | tr -d ' ')
+                        [ "$_cmd" = "claude" ] && echo "$pp"
+                    fi
                 done > "${PROTECTED_FILE}.tmp" 2>/dev/null && mv "${PROTECTED_FILE}.tmp" "$PROTECTED_FILE" 2>/dev/null || true
             ) 9>"$PROTECTED_LOCK" 2>/dev/null || true
         fi
