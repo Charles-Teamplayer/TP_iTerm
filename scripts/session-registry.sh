@@ -120,6 +120,7 @@ with open(lpath, 'w') as lf:
         fi
         # BUG-INTENTIONAL-STOP-CLEAR fix: 세션 등록 시 intentional-stops.json에서 해당 프로젝트 제거
         # 사용자가 의도적으로 세션을 다시 열었으면, 이전 intentional-stop 기록은 무효화해야 함
+        # BUG-REGISTER-CLEAR fix: window_name + project 이중 매칭 (DIR_TO_WINDOW 매핑 대응)
         STOPS_FILE_REG="$HOME/.claude/intentional-stops.json"
         if [ -f "$STOPS_FILE_REG" ]; then
             WINDOW_NAME_REG=$(basename "$PROJECT_DIR")
@@ -131,7 +132,10 @@ try:
     with open(path, 'r') as f:
         data = json.load(f)
     before = len(data.get('stops', []))
-    data['stops'] = [s for s in data.get('stops', []) if s.get('window_name', '') != window_name]
+    # BUG-REGISTER-CLEAR fix: window_name OR project 중 하나가 일치하면 제거
+    # intentional-stop 저장 시: window_name=매핑명(a.imessage), project=basename(TP_A.iMessage_...)
+    # register 호출 시: window_name=basename → 매핑명과 불일치 문제 해결
+    data['stops'] = [s for s in data.get('stops', []) if window_name not in (s.get('window_name', ''), s.get('project', ''))]
     after = len(data.get('stops', []))
     if before != after:
         fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))

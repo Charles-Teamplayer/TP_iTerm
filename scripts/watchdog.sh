@@ -267,12 +267,21 @@ try:
     now = datetime.now(timezone.utc)
     # BUG-STALE-STOP fix: compact 재개 시 register 미실행으로 intentional-stop 잔류 문제
     # active-sessions에 이미 등록된 세션은 intentional-stop 무효화 (사용자가 다시 열었음)
+    # BUG-STALE-STOP-MATCH fix: DIR_TO_WINDOW 매핑 대응 — project/dir 모두 비교
     active_path = os.path.expanduser('~/.claude/active-sessions.json')
+    _DIR_TO_WINDOW = {
+        os.path.expanduser('~/claude/TP_A.iMessage_standalone_01067051080'): 'a.imessage',
+        os.path.expanduser('~/claude/AppleTV_ScreenSaver.app'): 'AppleTV_ScreenSaver.app',
+    }
     try:
         with open(active_path) as _af:
             active = json.load(_af)
-        if any(s.get('project','') == wn for s in active.get('sessions',[])):
-            print('no'); sys.exit(0)
+        for _s in active.get('sessions', []):
+            _proj = _s.get('project', '')
+            _dir = _s.get('dir', '')
+            _mapped = _DIR_TO_WINDOW.get(_dir, os.path.basename(_dir) if _dir else '')
+            if wn in (_proj, _mapped):
+                print('no'); sys.exit(0)
     except Exception:
         pass
     for s in d.get('stops', []):
