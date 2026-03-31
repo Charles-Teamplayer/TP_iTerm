@@ -748,9 +748,10 @@ for g in groups:
             subprocess.run(['tmux', 'set-window-option', '-t', wid, 'automatic-rename', 'off'],
                            capture_output=True)
             subprocess.run(['tmux', 'rename-window', '-t', wid, pname], capture_output=True)
+            import shlex
             claude_cmd = "unset CLAUDECODE && claude --dangerously-skip-permissions --continue"
             subprocess.run(['tmux', 'send-keys', '-t', wid,
-                            f"(bash ~/.claude/scripts/tab-status.sh starting '{pname}' 2>/dev/null || true) && {claude_cmd}",
+                            f"(bash ~/.claude/scripts/tab-status.sh starting {shlex.quote(pname)} 2>/dev/null || true) && {claude_cmd}",
                             'Enter'], capture_output=True)
             added.append(f"{sn}/{pname}")
 
