@@ -125,6 +125,17 @@ get_path_for_name() {
     python3 -c "
 import json, os, sys, re
 name = sys.argv[1]
+# BUG-AUTORESTORE-GETPATH fix: DIR_TO_WINDOW 역매핑 — window_name → 실제 경로
+# (a.imessage → ~/claude/TP_A.iMessage_standalone_01067051080)
+WINDOW_TO_DIR = {
+    'a.imessage': os.path.expanduser('~/claude/TP_A.iMessage_standalone_01067051080'),
+    'AppleTV_ScreenSaver.app': os.path.expanduser('~/claude/AppleTV_ScreenSaver.app'),
+}
+if name in WINDOW_TO_DIR:
+    real = WINDOW_TO_DIR[name]
+    if os.path.isdir(real):
+        print(real)
+        sys.exit(0)
 # 공백/밑줄을 동일하게 취급: 공백→_ 정규화 후 비교
 def normalize(s):
     return re.sub(r'[ _]+', '_', s).lower()
