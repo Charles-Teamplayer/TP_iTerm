@@ -882,9 +882,9 @@ final class SessionMonitor: ObservableObject {
         // auto-restore.sh 실행 중이면 충돌 방지 — LOCK 파일 체크
         let autoRestoreLock = "/tmp/.auto-restore.lock"
         if FileManager.default.fileExists(atPath: autoRestoreLock),
-           let lockPid = try? String(contentsOfFile: autoRestoreLock, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
-           !lockPid.isEmpty {
-            let alive = await ShellService.runAsync("kill -0 \(lockPid) 2>/dev/null && echo yes || echo no")
+           let lockPidStr = try? String(contentsOfFile: autoRestoreLock, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+           let lockPidInt = Int(lockPidStr), lockPidInt > 0 {
+            let alive = await ShellService.runAsync("kill -0 \(lockPidInt) 2>/dev/null && echo yes || echo no")
             if alive.trimmingCharacters(in: .whitespacesAndNewlines) == "yes" { return }
         }
         // auto-restore.sh가 최근 5분 내 완료된 경우 충돌 방지 (부팅 직후 경쟁 방지)
