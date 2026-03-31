@@ -174,30 +174,20 @@ PYEOF
         ;;
 
     intentional-stop)
-        # 의도적 종료 (Stop hook에서 호출) — unregister + 제외 목록 기록
+        # 의도적 종료 (Stop hook에서 호출) — intentional-stops.json만 기록 (unregister 없음)
+        # BUG-RACE-STOP v2 fix: unregister를 제거해 race condition 근본 차단.
+        # - 정상 종료: PID 사망 → crash-detect(30s)가 active-sessions에서 자동 제거
+        # - Ralph Loop: PID 유지 → SessionStart가 re-register + intentional-stop 클리어
+        # - watchdog restart 방지: BUG-STALE-STOP fix(active-sessions 교차 검증)가 계속 담당
         TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
         STOPS_FILE="$HOME/.claude/intentional-stops.json"
 
-        # 현재 claude PID 찾기 (Race condition fix: Stop hook이 뒤늦게 실행될 때 새 세션 등록 보호)
-        IS_CURRENT_PID=""
-        _SRCH_PID=$$
-        for _i in 1 2 3 4 5 6; do
-            _SRCH_PID=$(ps -o ppid= -p "$_SRCH_PID" 2>/dev/null | tr -d ' ')
-            [ -z "$_SRCH_PID" ] && break
-            _SRCH_CMD=$(ps -o comm= -p "$_SRCH_PID" 2>/dev/null)
-            if echo "$_SRCH_CMD" | grep -q "claude" 2>/dev/null; then
-                IS_CURRENT_PID="$_SRCH_PID"
-                break
-            fi
-        done
-
-        # 먼저 unregister 실행
+        # intentional-stops.json 기록만 수행 (unregister 없음)
         IS_REGISTRY="$REGISTRY" \
         IS_PROJECT_DIR="$PROJECT_DIR" \
         IS_PROJECT_NAME="$PROJECT_NAME" \
         IS_TIMESTAMP="$TIMESTAMP" \
         IS_STOPS_FILE="$STOPS_FILE" \
-        IS_CURRENT_PID="$IS_CURRENT_PID" \
         python3 << 'PYEOF'
 import json, os, sys, tempfile
 
@@ -206,39 +196,6 @@ project_dir = os.environ['IS_PROJECT_DIR']
 project_name = os.environ['IS_PROJECT_NAME']
 timestamp = os.environ['IS_TIMESTAMP']
 stops_path = os.environ['IS_STOPS_FILE']
-current_pid = os.environ.get('IS_CURRENT_PID', '').strip()
-
-# unregister — Race condition fix: Ralph Loop 재시작 시 새 세션이 이미 등록된 경우 스킵
-with open(registry_path, 'r') as f:
-    data = json.load(f)
-
-matched = next((s for s in data['sessions'] if s.get('dir') == project_dir), None)
-skip_unregister = False
-if matched and current_pid:
-    reg_pid = str(matched.get('pid', '')).strip()
-    if reg_pid and reg_pid != current_pid:
-        # 새 세션이 이미 다른 PID로 등록됨 → unregister 스킵
-        print(f"[URD] SKIP unregister: {project_name} (reg_pid={reg_pid}, current={current_pid})")
-        skip_unregister = True
-
-if not skip_unregister:
-    before = len(data['sessions'])
-    data['sessions'] = [s for s in data['sessions'] if s.get('dir') != project_dir]
-    after = len(data['sessions'])
-    data['last_updated'] = timestamp
-
-    dir_name = os.path.dirname(registry_path)
-    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
-    try:
-        with os.fdopen(fd, 'w') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp_path, registry_path)
-    except:
-        os.unlink(tmp_path)
-        raise
-
-    if before > after:
-        print(f"[URD] Session unregistered: {project_name}")
 
 # dir → window_name 매핑 (profile name = window-groups.json profileNames 기준)
 # BUG-REGMAP fix: basename과 다른 profile name만 명시 (나머지는 fallback basename 사용)
