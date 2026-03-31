@@ -1025,10 +1025,13 @@ final class SessionMonitor: ObservableObject {
             await reorderTabs(for: group)
             await ensureMonitorWindow(sessionName: group.sessionName)
             // linked session이 monitor에만 붙어있으면 iTerm 탭 재연결
-            // NOTE: grep 패턴에는 raw session name 사용 (shellEscape는 shell 인자용이므로 제외)
+            // BUG-APPLYNOW-REGEX fix: grep -E에 raw session name 삽입 시 regex 메타문자(`.+*` 등) 오매칭
+            // → python3 re.escape 방식으로 통일 (closeExistingITermWindows/startGroup과 동일)
             let rawSn = group.sessionName
             let properAttach = await ShellService.runAsync("""
-                tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E '^\(rawSn)-v' | while read s; do
+                SNAME=\(ShellService.shellq(rawSn)) tmux list-sessions -F '#{session_name}' 2>/dev/null \
+                  | python3 -c "import sys,os,re; sn=os.environ['SNAME']; [print(l.strip()) for l in sys.stdin if re.fullmatch(re.escape(sn)+r'-v[0-9]+', l.strip())]" \
+                  | while read s; do
                     tmux list-clients -t "$s" -F '#{client_flags} #{window_name}' 2>/dev/null
                 done | grep 'control-mode' | grep -v 'monitor'
             """)
