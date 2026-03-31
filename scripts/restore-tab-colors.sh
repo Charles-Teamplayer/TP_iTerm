@@ -12,10 +12,11 @@ for JSON_FILE in "$STATE_DIR"/*.json; do
     [ -w "$TTY_PATH" ] || continue
 
     # BUG#5 fix: 2회 파일 읽기 → 1회 통합
-    _DATA=$(python3 -c "
-import json
+    _DATA=$(_JF="$JSON_FILE" python3 -c "
+import json, os
 try:
-    d=json.load(open('$JSON_FILE'))
+    with open(os.environ['_JF']) as _f:
+        d=json.load(_f)
     print(d.get('type','idle')); print(d.get('project',''))
 except:
     print('idle'); print('')
