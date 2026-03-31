@@ -85,22 +85,38 @@ except:
 print(f"[URD] Session registered: {project_name} (PID: {pid})")
 PYEOF
         # 보호 PID 파일 업데이트: 활성 세션 PID를 ~/.claude/protected-claude-pids 에 기록
-        # flock 기반 원자적 업데이트 — 다중 세션 동시 register 시 race condition 방지
+        # Python fcntl.flock 원자적 업데이트 — macOS flock(1) 미설치 대응
         if [ -n "$PID" ] && [ "$PID" != "unknown" ]; then
-            PROTECTED_FILE="$HOME/.claude/protected-claude-pids"
-            PROTECTED_LOCK="/tmp/.protected-pids.lock"
-            (
-                flock -x 9
-                {
-                    [ -f "$PROTECTED_FILE" ] && grep -v '^$' "$PROTECTED_FILE"
-                    echo "$PID"
-                } | sort -u | while read -r pp; do
-                    if kill -0 "$pp" 2>/dev/null; then
-                        _cmd=$(ps -o comm= -p "$pp" 2>/dev/null | tr -d ' ')
-                        [ "$_cmd" = "claude" ] && echo "$pp"
-                    fi
-                done > "${PROTECTED_FILE}.tmp" 2>/dev/null && mv "${PROTECTED_FILE}.tmp" "$PROTECTED_FILE" 2>/dev/null || true
-            ) 9>"$PROTECTED_LOCK" 2>/dev/null || true
+            _PP_FILE="$HOME/.claude/protected-claude-pids" \
+            _PP_LOCK="/tmp/.protected-pids.lock" \
+            _PP_PID="$PID" python3 -c "
+import os, fcntl, subprocess, tempfile
+pfile = os.environ['_PP_FILE']
+lpath = os.environ['_PP_LOCK']
+new_pid = os.environ['_PP_PID']
+with open(lpath, 'w') as lf:
+    fcntl.flock(lf, fcntl.LOCK_EX)
+    try:
+        existing = open(pfile).read().splitlines() if os.path.exists(pfile) else []
+        pids = set(existing) | {new_pid}
+        valid = []
+        for pp in sorted(pids):
+            pp = pp.strip()
+            if not pp: continue
+            try:
+                os.kill(int(pp), 0)
+                r = subprocess.run(['ps','-o','comm=','-p',pp], capture_output=True, text=True)
+                if r.stdout.strip() == 'claude':
+                    valid.append(pp)
+            except (ProcessLookupError, ValueError, PermissionError):
+                pass
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(pfile))
+        with os.fdopen(fd, 'w') as f:
+            f.write('\n'.join(valid) + ('\n' if valid else ''))
+        os.replace(tmp, pfile)
+    finally:
+        fcntl.flock(lf, fcntl.LOCK_UN)
+" 2>/dev/null || true
         fi
         # BUG-INTENTIONAL-STOP-CLEAR fix: 세션 등록 시 intentional-stops.json에서 해당 프로젝트 제거
         # 사용자가 의도적으로 세션을 다시 열었으면, 이전 intentional-stop 기록은 무효화해야 함
