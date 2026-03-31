@@ -146,12 +146,12 @@ for i in $(seq 1 18); do
         ITERM_READY=1
         break
     fi
-    log "iTerm2 대기 중... (${i}/12)"
+    log "iTerm2 대기 중... (${i}/18)"
     sleep 5
 done
 
 if [ $ITERM_READY -eq 0 ]; then
-    log "ERROR: iTerm2 60초 내 시작 실패 — 스킵"
+    log "ERROR: iTerm2 90초 내 시작 실패 — 스킵"
     exit 1
 fi
 
