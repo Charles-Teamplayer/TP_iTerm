@@ -900,6 +900,13 @@ DIRSCAN_PYEOF
         tail -2500 "$_FMP_LOG" > "${_FMP_LOG}.tmp" && mv "${_FMP_LOG}.tmp" "$_FMP_LOG" 2>/dev/null || true
     fi
 
+    # launchd-stdout.log / launchd-stderr.log 로테이션 (session-manager auto-commit 누적 방지)
+    for _ld_log in "$HOME/.claude/launchd-stdout.log" "$HOME/.claude/launchd-stderr.log"; do
+        if [ -f "$_ld_log" ] && [ "$(wc -l < "$_ld_log" 2>/dev/null)" -gt 10000 ] 2>/dev/null; then
+            tail -5000 "$_ld_log" > "${_ld_log}.tmp" && mv "${_ld_log}.tmp" "$_ld_log" 2>/dev/null || true
+        fi
+    done
+
     # 30초 대기
     sleep 30
 done
