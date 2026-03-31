@@ -276,7 +276,7 @@ try:
     except Exception:
         pass
     for s in d.get('stops', []):
-        if s.get('window_name', s.get('project', '')) == wn:
+        if wn in (s.get('window_name', ''), s.get('project', '')):
             # TTL 체크 — 48시간 초과 항목은 만료 처리 (auto-restore와 동일 정책)
             stopped_at = s.get('stopped_at', '')
             if stopped_at:
