@@ -906,6 +906,13 @@ DIRSCAN_PYEOF
         tail -5000 "$_WE_LOG" > "${_WE_LOG}.tmp" && mv "${_WE_LOG}.tmp" "$_WE_LOG" 2>/dev/null || true
     fi
 
+    # tab-focus-monitor.log / tab-status-debug.log 로테이션 (5000줄 초과 시 2500줄 유지)
+    for _tab_log in "$HOME/.claude/logs/tab-focus-monitor.log" "$HOME/.claude/logs/tab-status-debug.log"; do
+        if [ -f "$_tab_log" ] && [ "$(wc -l < "$_tab_log" 2>/dev/null)" -gt 5000 ] 2>/dev/null; then
+            tail -2500 "$_tab_log" > "${_tab_log}.tmp" && mv "${_tab_log}.tmp" "$_tab_log" 2>/dev/null || true
+        fi
+    done
+
     # launchd-stdout.log / launchd-stderr.log 로테이션 (session-manager auto-commit 누적 방지)
     for _ld_log in "$HOME/.claude/launchd-stdout.log" "$HOME/.claude/launchd-stderr.log"; do
         if [ -f "$_ld_log" ] && [ "$(wc -l < "$_ld_log" 2>/dev/null)" -gt 10000 ] 2>/dev/null; then
