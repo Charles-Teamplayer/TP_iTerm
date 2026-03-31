@@ -244,7 +244,7 @@ while IFS= read -r sname; do
         # linked session(-vN)도 포함하여 실제 클라이언트 수 확인 (BUG-HEALTH-LINKED fix)
         LINKED_CNT=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${sname}-v" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' ')
         TOTAL_CNT=$((CNT + LINKED_CNT))
-        EXT=$(tmux list-clients -t "$sname" 2>/dev/null | grep -c "control-mode\|extended-output" 2>/dev/null; true)
+        EXT=$(tmux list-clients -t "$sname" 2>/dev/null | grep -ci "control mode\|ControlMode\|control-mode" 2>/dev/null; true)
         CLIENT_COUNT=$((CLIENT_COUNT + TOTAL_CNT))
         EXTENDED_CHK=$((EXTENDED_CHK + EXT))
         if [ "$TOTAL_CNT" -ge 1 ]; then

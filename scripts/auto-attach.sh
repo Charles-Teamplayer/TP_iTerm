@@ -5,6 +5,10 @@
 LOG="$HOME/.claude/logs/auto-restore.log"
 WINDOW_GROUPS="$HOME/.claude/window-groups.json"
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [auto-attach] $1" >> "$LOG"; }
+# 로그 로테이션 (10000줄 초과 시 5000줄 유지)
+if [ -f "$LOG" ] && [ "$(wc -l < "$LOG" 2>/dev/null)" -gt 10000 ] 2>/dev/null; then
+    tail -5000 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG" 2>/dev/null || true
+fi
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
