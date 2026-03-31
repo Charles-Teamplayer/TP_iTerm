@@ -80,7 +80,9 @@ _save_state() {
     local ESCAPED_PROJECT
     ESCAPED_PROJECT=$(printf '%s' "$PROJECT" | sed 's/\\/\\\\/g; s/"/\\"/g')
     # iter57: CC_PROCESS_PID(tab-status.sh에서 전달된 실제 CC PID) 사용 — watchdog aging 방지
+    # BUG-PID-NULL fix: "null" 문자열 방어 — 정수 아닌 값은 0으로 강제
     local _STATE_PID=${CC_PROCESS_PID:-0}
+    [[ ! "$_STATE_PID" =~ ^[0-9]+$ ]] && _STATE_PID=0
     printf '{"session_id":"%s","type":"%s","project":"%s","tty":"/dev/%s","pid":%d,"timestamp":"%s","color":{"r":%d,"g":%d,"b":%d}}\n' \
         "$TTY_NAME" "$STATE" "$ESCAPED_PROJECT" "$TTY_NAME" $_STATE_PID \
         "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$R" "$G" "$B" > "$JSON_FILE"
