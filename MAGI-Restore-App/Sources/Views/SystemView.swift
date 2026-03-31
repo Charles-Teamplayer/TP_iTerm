@@ -171,7 +171,7 @@ except: pass
     }
 
     private func attachTmuxToITerm() async {
-        // 모든 active 세션 중 하나라도 control-mode로 연결되어 있으면 OK
+        // BUG-MONITOR-ODETECT fix: monitor 창 외에 실제 작업 창에도 붙어있어야 "이미 연결됨"으로 판단
         let alreadyAttached = await ShellService.runAsync("""
             python3 -c "
 import json, os, subprocess
@@ -180,16 +180,24 @@ try:
     for g in groups:
         sn = g.get('sessionName','')
         if not g.get('isWaitingList', False) and sn and sn != '__waiting__':
-            r = subprocess.run(['tmux','list-clients','-t',sn,'-F','#{client_flags}'], capture_output=True, text=True)
-            if 'control-mode' in r.stdout:
-                print('YES')
-                break
+            # main session + linked sessions(-vN) 모두 확인
+            sessions_to_check = [sn]
+            ls_r = subprocess.run(['tmux','list-sessions','-F','#{session_name}'], capture_output=True, text=True)
+            for s in ls_r.stdout.strip().split('\\n'):
+                if s.startswith(sn + '-v'):
+                    sessions_to_check.append(s)
+            for sess in sessions_to_check:
+                r = subprocess.run(['tmux','list-clients','-t',sess,'-F','#{client_flags} #{window_name}'], capture_output=True, text=True)
+                for line in r.stdout.strip().split('\\n'):
+                    if 'control-mode' in line and 'monitor' not in line:
+                        print('YES')
+                        exit(0)
 except: pass
 " 2>/dev/null
 """)
 
         if alreadyAttached.contains("YES") {
-            restoreLog += "\n✅ iTerm2 이미 연결됨"
+            restoreLog += "\n✅ iTerm2 이미 연결됨 (비-monitor 탭 확인)"
             return
         }
 
