@@ -149,7 +149,7 @@ if [ -z "$APPLE_SCRIPT" ]; then
     exit 1
 fi
 
-TAB_COUNT=$(echo "$RAW_WINS" | grep -v '^$' | grep -cv 'monitor' || echo 0)
+TAB_COUNT=$(echo "$RAW_WINS" | grep -v '^$' | grep -cv 'monitor'; true)
 log "linked session 기반 iTerm 창+탭 생성 시작 (${TAB_COUNT}개 탭)"
 
 # iter57: osascript 실패 시 최대 3회 retry (AppleEvent 시간 초과 -1712 대응)
