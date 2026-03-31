@@ -53,14 +53,7 @@ ITERM_AUTOLAUNCH="$HOME/.config/iterm2/AppSupport/Scripts/AutoLaunch"
 mkdir -p "$ITERM_AUTOLAUNCH"
 echo "  ✓ iTerm2 AutoLaunch 디렉토리 준비 (tab_focus_status.py는 tab-focus-monitor.sh로 대체)"
 
-# 4b. iterm-config.json → ~/.claude/config/
-mkdir -p "$CLAUDE_DIR/config"
-if [ -f "$SCRIPT_DIR/configs/iterm-config.json" ]; then
-    cp "$SCRIPT_DIR/configs/iterm-config.json" "$CLAUDE_DIR/config/iterm-config.json"
-    echo "  ✓ iterm-config.json → ~/.claude/config/"
-fi
-
-# 4c. settings.json 적용 안내 (자동 덮어쓰기 위험하므로 안내만)
+# 4b. settings.json 적용 안내 (자동 덮어쓰기 위험하므로 안내만)
 if [ -f "$SCRIPT_DIR/configs/settings.json" ]; then
     echo ""
     echo "⚠️  ~/.claude/settings.json 설정이 필요합니다:"
