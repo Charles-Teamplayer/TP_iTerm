@@ -33,7 +33,8 @@ case "$ACTION" in
         done
         # PID 못 찾으면 fallback — TTY가 있는 claude 프로세스만 선택
         if [ -z "$PID" ]; then
-            PID=$(ps -ax -o pid=,tty=,command= | grep "[c]laude" | grep -v "??" | grep -v "Claude.app\|Helper\|watchdog\|auto-restore" | awk '{print $1}' | tail -1)
+            # ps comm= 방식: tmux/bash 인자 오탐 방지 (health-check와 동일 패턴)
+            PID=$(ps -ax -o pid=,tty=,comm= | awk '$2!="??" && $3=="claude" {print $1}' | tail -1)
         fi
         if [ -n "$PID" ]; then
             SESSION_TTY=$(ps -o tty= -p "$PID" 2>/dev/null | tr -d ' ')
