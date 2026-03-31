@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/opt/homebrew/bin/bash
 # iTerm2 탭 포커스 감지 데몬 v6 — 다중 tmux 세션 지원
 # tmux display-message로 활성 윈도우 감지 → waiting/attention → active 복원
 
