@@ -104,7 +104,8 @@ fi
 
 # 3. Claude 프로세스 상태
 echo -e "\n${BOLD}[3] Claude Code 프로세스${NC}"
-CLAUDE_PROCS=$(ps aux | grep "[c]laude" | grep -v "Claude.app\|Helper\|ShipIt\|watchdog\|auto-restore\|tab-focus\|session-registry\|health-check\|cc-fix\|MAGI" | grep -v "??" | wc -l | tr -d ' ')
+# ps -A -o comm 방식: tmux/bash 안의 "claude-work" 등 인자 오탐 방지 (정확한 바이너리명 매칭)
+CLAUDE_PROCS=$(ps -A -o pid=,comm= 2>/dev/null | awk '$2 == "claude" {count++} END {print count+0}')
 # 기대값: activated-sessions 전체가 아닌 활성 그룹(non-waiting)의 profileNames 합산
 EXPECTED_PROCS=$(python3 -c "
 import json, os
