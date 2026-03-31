@@ -39,6 +39,17 @@
       "flash": true,
       "flash_interval": 1.0,
       "flash_alt_color": [220, 220, 220]
+    },
+    "starting": {
+      "color": [0, 180, 255],
+      "title_prefix": "\u23f3 "
+    },
+    "crashed": {
+      "color": [255, 30, 30],
+      "title_prefix": "\ud83d\udca5 ",
+      "flash": true,
+      "flash_interval": 0.5,
+      "flash_alt_color": [255, 150, 0]
     }
   },
   "focus_clear_states": ["waiting", "attention", "idle_10m", "idle_1h", "idle_1d", "idle_3d"],

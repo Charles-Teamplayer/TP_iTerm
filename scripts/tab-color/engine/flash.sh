@@ -41,6 +41,11 @@ AR=$(echo "$ALT_COLOR" | cut -d'|' -f1)
 AG=$(echo "$ALT_COLOR" | cut -d'|' -f2)
 AB=$(echo "$ALT_COLOR" | cut -d'|' -f3)
 
+# TTY 쓰기 권한 전역 체크 (Operation not permitted 방지 — bash stdout redirection 오류 억제)
+if [ ! -c "$TTY_PATH" ] || [ ! -w "$TTY_PATH" ]; then
+    exit 0
+fi
+
 apply_color() {
     local R=$1 G=$2 B=$3
     printf '\e]6;1;bg;red;brightness;%s\a\e]6;1;bg;green;brightness;%s\a\e]6;1;bg;blue;brightness;%s\a' \
@@ -50,6 +55,7 @@ apply_color() {
 if [ "$STATE" = "crashed" ]; then
     # crashed: 10회 후 종료
     for i in $(seq 1 10); do
+        [ ! -w "$TTY_PATH" ] && exit 0
         apply_color $AR $AG $AB; sleep "$INTERVAL"
         apply_color $MR $MG $MB; sleep "$INTERVAL"
     done
