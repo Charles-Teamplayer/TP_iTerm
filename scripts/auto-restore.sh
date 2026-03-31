@@ -215,7 +215,8 @@ try:
         d = json.load(f)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
     for s in d.get('stops', []):
-        if s.get('window_name','') != profile:
+        # BUG-AUTORESTORE-MATCH fix: window_name + project 이중 매칭 (DIR_TO_WINDOW 매핑 대응)
+        if profile not in (s.get('window_name',''), s.get('project','')):
             continue
         ts_str = s.get('stopped_at','1970-01-01T00:00:00Z').replace('Z','+00:00')
         ts = datetime.fromisoformat(ts_str)
