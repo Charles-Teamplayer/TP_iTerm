@@ -16,12 +16,22 @@ try:
 except Exception as e:
     exit(0)
 
-# activated-sessions: name → path 맵
+# BUG-SYNC-REGCHECK fix: DIR_TO_WINDOW 역매핑 — window_name → project_dir
+# pname이 매핑된 이름(a.imessage)이어도 실제 프로젝트 경로를 올바르게 찾도록
+DIR_TO_WINDOW = {
+    os.path.expanduser('~/claude/TP_A.iMessage_standalone_01067051080'): 'a.imessage',
+    os.path.expanduser('~/claude/AppleTV_ScreenSaver.app'): 'AppleTV_ScreenSaver.app',
+}
+WINDOW_TO_DIR = {v: k for k, v in DIR_TO_WINDOW.items()}
+
+# activated-sessions: name → path 맵 (basename 기반)
 name_to_path = {}
 for p in act.get('activated', []):
     name_to_path[os.path.basename(p)] = p
 
 reg_projects = {s['project'] for s in reg['sessions']}
+# BUG-SYNC-REGCHECK fix: reg_dirs도 추적 — dir 기반 중복 방지
+reg_dirs = {s.get('dir', '') for s in reg['sessions']}
 added = []
 
 for g in groups:
@@ -30,7 +40,12 @@ for g in groups:
     if not sname: continue
 
     for pname in g.get('profileNames', []):
-        if pname in reg_projects: continue
+        # BUG-SYNC-REGCHECK fix: window_name 기반 중복 체크 + DIR_TO_WINDOW 역매핑 대응
+        real_dir = WINDOW_TO_DIR.get(pname, name_to_path.get(pname, os.path.expanduser(f'~/claude/{pname}')))
+        real_project = os.path.basename(real_dir)
+        # 이미 등록된 경우 스킵 (project 이름 또는 dir 기반 중복 방지)
+        if pname in reg_projects or real_project in reg_projects or real_dir in reg_dirs:
+            continue
 
         # tmux 창에서 window_id 찾기
         r = subprocess.run(['tmux', 'list-windows', '-t', sname, '-F', '#{window_id}|#{window_name}'],
@@ -67,7 +82,8 @@ for g in groups:
                     claude_pid = parts[0]; break
         if not claude_pid: continue
 
-        proj_dir = name_to_path.get(pname, os.path.expanduser(f'~/claude/{pname}'))
+        # BUG-SYNC-REGCHECK fix: 실제 프로젝트 경로 사용 (매핑 이름 → 실제 dir)
+        proj_dir = real_dir
         reg['sessions'] = [s for s in reg['sessions'] if s['project'] != pname]
         reg['sessions'].append({
             'project': pname, 'dir': proj_dir,
