@@ -231,7 +231,6 @@ except: pass
         ).trimmingCharacters(in: .whitespacesAndNewlines)
         let winIdx = firstWinIdx.isEmpty ? "0" : firstWinIdx
         let linkedName = "\(targetSession)-v\(winIdx)"
-        let linkedEsc = ShellService.shellq(linkedName)
         let cmd = "/bin/bash -lc 'tmux has-session -t \(linkedName) 2>/dev/null || tmux new-session -d -s \(linkedName) -t \(targetSession) 2>/dev/null; tmux select-window -t \(linkedName):\(winIdx) 2>/dev/null; tmux attach-session -t \(linkedName); exec /bin/zsh -l'"
 
         let script = "osascript << '__APPLES__'\ntell application \"iTerm2\"\n    activate\n    create window with default profile command \"\(cmd)\"\nend tell\n__APPLES__"
