@@ -15,9 +15,9 @@ mkdir -p "$(dirname "$LOG_FILE")"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
-    # 로그 로테이션 (50000줄 초과 시)
-    if [ "$(wc -l < "$LOG_FILE" 2>/dev/null)" -gt 50000 ] 2>/dev/null; then
-        tail -25000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null
+    # 로그 로테이션 (20000줄 초과 시 10000줄 유지)
+    if [ "$(wc -l < "$LOG_FILE" 2>/dev/null)" -gt 20000 ] 2>/dev/null; then
+        tail -10000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null
     fi
 }
 
