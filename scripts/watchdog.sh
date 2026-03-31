@@ -456,13 +456,15 @@ for path in d.get('activated', []):
                         sleep 0.5
                     done
                 fi
+                # printf '%q': WINDOW_NAME 직접 삽입 → shell injection 방지
+                _SAFE_WN=$(printf '%q' "$WINDOW_NAME")
                 if [ -n "$WIN_IDX_NEW" ]; then
                     tmux set-window-option -t "$TARGET_SESSION:$WIN_IDX_NEW" automatic-rename off 2>/dev/null
-                    tmux send-keys -t "$TARGET_SESSION:$WIN_IDX_NEW" "(bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
+                    tmux send-keys -t "$TARGET_SESSION:$WIN_IDX_NEW" "(bash ~/.claude/scripts/tab-status.sh starting ${_SAFE_WN} 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
                 elif [ -n "$WIN_ID_NEW" ]; then
                     # window_id(@N) 기반 fallback — dot 이름 포함 세션 안전 처리
                     tmux set-window-option -t "$WIN_ID_NEW" automatic-rename off 2>/dev/null
-                    tmux send-keys -t "$WIN_ID_NEW" "(bash ~/.claude/scripts/tab-status.sh starting '$WINDOW_NAME' 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
+                    tmux send-keys -t "$WIN_ID_NEW" "(bash ~/.claude/scripts/tab-status.sh starting ${_SAFE_WN} 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
                 else
                     log "WARN: $WINDOW_NAME 창 index/id 조회 실패 — 재시작 명령 스킵"
                 fi
