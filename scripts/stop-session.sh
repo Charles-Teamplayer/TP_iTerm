@@ -98,10 +98,10 @@ else:
 
     "")
         echo "사용법:"
-        echo "  $(basename $0) <window-name>    정지 목록에 추가"
-        echo "  $(basename $0) --list           목록 확인"
-        echo "  $(basename $0) --remove <name>  목록에서 제거"
-        echo "  $(basename $0) --clear          전체 초기화"
+        echo "  $(basename "$0") <window-name>    정지 목록에 추가"
+        echo "  $(basename "$0") --list           목록 확인"
+        echo "  $(basename "$0") --remove <name>  목록에서 제거"
+        echo "  $(basename "$0") --clear          전체 초기화"
         echo ""
         echo "유효한 window 이름 (window-groups.json 기준):"
         get_valid_windows | while read -r w; do echo "  $w"; done
