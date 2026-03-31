@@ -621,7 +621,7 @@ print(' '.join(s.get('tty','') for s in d.get('sessions',[]) if s.get('tty',''))
     fi
 
     # 3. 좀비 프로세스 감지 (72시간 이상 + tty 없음)
-    ZOMBIES=$(ps -eo pid,tty,etime,command 2>/dev/null | grep "[c]laude" | grep -v "Claude.app\|Helper\|watchdog\|auto-restore" | awk '{
+    ZOMBIES=$(ps -eo pid,tty,etime,command 2>/dev/null | grep "[c]laude" | grep -v "Claude.app\|Helper\|watchdog\|auto-restore\|tmux\|bash.*claude-work\|bash.*claude-takedown" | awk '{
         # etime 형식: DD-HH:MM:SS 또는 HH:MM:SS 또는 MM:SS
         split($3, parts, "-");
         days = 0;

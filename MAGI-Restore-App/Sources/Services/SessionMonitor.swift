@@ -1028,12 +1028,14 @@ final class SessionMonitor: ObservableObject {
             // BUG-APPLYNOW-REGEX fix: grep -E에 raw session name 삽입 시 regex 메타문자(`.+*` 등) 오매칭
             // → python3 re.escape 방식으로 통일 (closeExistingITermWindows/startGroup과 동일)
             let rawSn = group.sessionName
+            // BUG-APPLYNOW-CTRL fix: CC 모드 폐지 후 plain attach로 전환됨 →
+            // control-mode 필터 제거, 모든 클라이언트 감지 (monitor 창 제외)
             let properAttach = await ShellService.runAsync("""
                 SNAME=\(ShellService.shellq(rawSn)) tmux list-sessions -F '#{session_name}' 2>/dev/null \
                   | python3 -c "import sys,os,re; sn=os.environ['SNAME']; [print(l.strip()) for l in sys.stdin if re.fullmatch(re.escape(sn)+r'-v[0-9]+', l.strip())]" \
                   | while read s; do
-                    tmux list-clients -t "$s" -F '#{client_flags} #{window_name}' 2>/dev/null
-                done | grep 'control-mode' | grep -v 'monitor'
+                    tmux list-clients -t "$s" -F '#{window_name}' 2>/dev/null
+                done | grep -v '^$' | grep -v '^monitor$'
             """)
             if properAttach.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 await openITermTabs(for: group)
@@ -1229,9 +1231,11 @@ final class SessionMonitor: ObservableObject {
         // AppleScript: linked session 방식 (각 탭이 독립적인 창 추적)
         // tmux attach-session -t session:N 방식은 마지막 N이 session 전체 current window를 덮어씀
         // → {sname}-v{winIdx} linked session 생성으로 각 탭 독립 창 보장
+        // BUG-ITERM-ESCAPE fix: sname을 tmux 타겟에 사용 시 shellEscape 적용 (single-quote injection 방지)
+        let escapedSn = shellEscape(sname)
         let firstWinIdx = realPairs[0].0
-        let firstLinked = "\(sname)-v\(firstWinIdx)"
-        let firstCmd = "/bin/bash -lc 'tmux has-session -t \(firstLinked) 2>/dev/null || tmux new-session -d -s \(firstLinked) -t \(sname) 2>/dev/null; tmux select-window -t \(firstLinked):\(firstWinIdx) 2>/dev/null; tmux attach-session -t \(firstLinked); exec /bin/zsh -l'"
+        let firstLinked = "\(escapedSn)-v\(firstWinIdx)"
+        let firstCmd = "/bin/bash -lc 'tmux has-session -t \(firstLinked) 2>/dev/null || tmux new-session -d -s \(firstLinked) -t \(escapedSn) 2>/dev/null; tmux select-window -t \(firstLinked):\(firstWinIdx) 2>/dev/null; tmux attach-session -t \(firstLinked); exec /bin/zsh -l'"
         // BUG-ITERM-GROUPTABS fix: 단일 tell newWin 블록으로 모든 탭 생성, create window 후 delay 1 추가
         // BUG-010 fix: try-on error 추가 — 첫 창 생성 실패 시 전체 블록 silently fail 방지
         var lines: [String] = [
@@ -1244,8 +1248,8 @@ final class SessionMonitor: ObservableObject {
         if !realPairs.dropFirst().isEmpty {
             lines.append("        tell newWin")
             for (winIdx, _) in realPairs.dropFirst() {
-                let linkedName = "\(sname)-v\(winIdx)"
-                let cmd = "/bin/bash -lc 'tmux has-session -t \(linkedName) 2>/dev/null || tmux new-session -d -s \(linkedName) -t \(sname) 2>/dev/null; tmux select-window -t \(linkedName):\(winIdx) 2>/dev/null; tmux attach-session -t \(linkedName); exec /bin/zsh -l'"
+                let linkedName = "\(escapedSn)-v\(winIdx)"
+                let cmd = "/bin/bash -lc 'tmux has-session -t \(linkedName) 2>/dev/null || tmux new-session -d -s \(linkedName) -t \(escapedSn) 2>/dev/null; tmux select-window -t \(linkedName):\(winIdx) 2>/dev/null; tmux attach-session -t \(linkedName); exec /bin/zsh -l'"
                 lines.append("            delay 0.5")
                 lines.append("            create tab with default profile command \"\(cmd)\"")
             }
