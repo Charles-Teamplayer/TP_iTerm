@@ -10,7 +10,7 @@ mkdir -p "$BACKUP_DIR"
 
 # 현재 프로젝트의 최신 JSONL 대화 파일 백업
 # Claude Code는 PWD의 /._를 모두 -로 치환하여 프로젝트 디렉토리명 생성
-CONV_DIR="$HOME/.claude/projects/$(printf '%s' "$PWD" | tr '/._' '-' | sed 's/^-//')"
+CONV_DIR="$HOME/.claude/projects/$(printf '%s' "$PWD" | tr '/._' '-')"
 if [ -d "$CONV_DIR" ]; then
     LATEST_JSONL=$(ls -t "$CONV_DIR"/*.jsonl 2>/dev/null | head -1)
     if [ -n "$LATEST_JSONL" ]; then
