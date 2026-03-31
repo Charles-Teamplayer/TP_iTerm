@@ -151,7 +151,7 @@ try:
     for line in f:
       try:
         e = json.loads(line.strip())
-        if e.get('timestamp','') >= cutoff:
+        if e.get('date', e.get('timestamp','')) >= cutoff:
           count += 1
       except: pass
 except: pass
