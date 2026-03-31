@@ -195,7 +195,7 @@ elif [ "$STATE" != "attention" ] && [ "$STATE" != "crashed" ]; then
 fi
 
 # macOS 알림 (attention만)
-NOTIFY=$(jq -r ".states[\"$STATE\"].macos_notify // false" "$CONFIG" 2>/dev/null || echo "false")
+NOTIFY=$(jq -r --arg state "$STATE" '.states[$state].macos_notify // false' "$CONFIG" 2>/dev/null || echo "false")
 if [ "$NOTIFY" = "true" ]; then
     osascript -e "display notification \"$PROJECT 세션이 입력을 기다리고 있습니다\" with title \"Claude Code\" subtitle \"⚠️ Attention Required\"" 2>/dev/null &
 fi
