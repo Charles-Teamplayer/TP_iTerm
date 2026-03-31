@@ -105,13 +105,12 @@ fi
 
 # config에서 색상 읽기
 if command -v jq &>/dev/null; then
-    READ_COLOR=$(jq -r ".states[\"$STATE\"] | \"\(.color[0])|\(.color[1])|\(.color[2])\"" "$CONFIG" 2>/dev/null)
+    READ_COLOR=$(jq -r --arg state "$STATE" '.states[$state] | "\(.color[0])|\(.color[1])|\(.color[2])"' "$CONFIG" 2>/dev/null)
 else
-    READ_COLOR=$(python3 -c "
-import json
-d = json.load(open('$CONFIG'))
-c = d['states'].get('$STATE', {}).get('color', [128,128,128])
-# None 값 방어 (BUG-NULL-COLOR: json null → Python None → 'None' 문자열 방지)
+    READ_COLOR=$(_SC_CFG="$CONFIG" _SC_ST="$STATE" python3 -c "
+import json, os
+d = json.load(open(os.environ['_SC_CFG']))
+c = d['states'].get(os.environ['_SC_ST'], {}).get('color', [128,128,128])
 print('|'.join(str(v) if v is not None else '128' for v in c[:3]))
 " 2>/dev/null)
 fi
@@ -129,12 +128,12 @@ PROJECT=$(_map_project "$PROJECT")
 
 # 탭 제목 prefix
 if command -v jq &>/dev/null; then
-    PREFIX=$(jq -r ".states[\"$STATE\"].title_prefix // \"\"" "$CONFIG" 2>/dev/null)
+    PREFIX=$(jq -r --arg state "$STATE" '.states[$state].title_prefix // ""' "$CONFIG" 2>/dev/null)
 else
-    PREFIX=$(python3 -c "
-import json
-d = json.load(open('$CONFIG'))
-print(d['states'].get('$STATE', {}).get('title_prefix', ''))
+    PREFIX=$(_SC_CFG="$CONFIG" _SC_ST="$STATE" python3 -c "
+import json, os
+d = json.load(open(os.environ['_SC_CFG']))
+print(d['states'].get(os.environ['_SC_ST'], {}).get('title_prefix', ''))
 " 2>/dev/null)
 fi
 TITLE="${PREFIX:+$PREFIX }${PROJECT}"
@@ -151,9 +150,13 @@ printf '\e]6;1;bg;red;brightness;%s\a\e]6;1;bg;green;brightness;%s\a\e]6;1;bg;bl
 BADGE_ENABLED=$(jq -r '.badge_enabled // false' "$CONFIG" 2>/dev/null || echo "false")
 if [ "$BADGE_ENABLED" = "true" ]; then
     if command -v jq &>/dev/null; then
-        BADGE=$(jq -r ".states[\"$STATE\"].badge // \"\"" "$CONFIG" 2>/dev/null)
+        BADGE=$(jq -r --arg state "$STATE" '.states[$state].badge // ""' "$CONFIG" 2>/dev/null)
     else
-        BADGE=$(python3 -c "import json; d=json.load(open('$CONFIG')); print(d['states'].get('$STATE',{}).get('badge',''))" 2>/dev/null)
+        BADGE=$(_SC_CFG="$CONFIG" _SC_ST="$STATE" python3 -c "
+import json, os
+d=json.load(open(os.environ['_SC_CFG']))
+print(d['states'].get(os.environ['_SC_ST'],{}).get('badge',''))
+" 2>/dev/null)
     fi
     [ -n "$BADGE" ] && printf '\e]1337;SetBadgeFormat=%s\a' "$(printf '%s' "$BADGE" | base64)" > "$TTY_PATH" 2>/dev/null
 fi
@@ -168,7 +171,7 @@ mkdir -p "$COMPAT_STATE_DIR"
 echo "${STATE}|${PROJECT}|$(date +%s)" > "$COMPAT_STATE_DIR/$TTY_NAME"
 
 # flash 처리
-FLASH=$(jq -r ".states[\"$STATE\"].flash // false" "$CONFIG" 2>/dev/null || echo "false")
+FLASH=$(jq -r --arg state "$STATE" '.states[$state].flash // false' "$CONFIG" 2>/dev/null || echo "false")
 FLASH_ENGINE="$HOME/.claude/tab-color/engine/flash.sh"
 
 if [ "$FLASH" = "true" ] && [ -f "$FLASH_ENGINE" ]; then
