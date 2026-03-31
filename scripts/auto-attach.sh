@@ -154,15 +154,16 @@ fi
 sleep 3  # 창 완전 초기화 대기
 
 # window-groups.json에서 활성 그룹(isWaitingList=false) 읽기
-GROUPS_JSON=$(python3 -c "
-import json, sys
-path = '$WINDOW_GROUPS'
+GROUPS_JSON=$(_AA_WG="$WINDOW_GROUPS" python3 -c "
+import json, os
+path = os.environ['_AA_WG']
 try:
-    groups = json.load(open(path))
+    with open(path) as _f:
+        groups = json.load(_f)
     active = [g for g in groups if not g.get('isWaitingList', False)]
     for g in active:
         print(g['sessionName'])
-except Exception as e:
+except Exception:
     pass
 " 2>/dev/null)
 

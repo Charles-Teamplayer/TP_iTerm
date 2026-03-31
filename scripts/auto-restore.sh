@@ -310,13 +310,13 @@ os.replace(tmp, path)
 
 # intentional-stops.json — 48시간 이상 된 항목만 제거 (최근 의도적 중지는 보존)
 if [ -f "$STOPS_FILE" ]; then
-    python3 -c "
+    _AR_SF="$STOPS_FILE" python3 -c "
 import json, os, tempfile
 from datetime import datetime, timezone, timedelta
-path = os.path.expanduser('$STOPS_FILE')
+path = os.environ['_AR_SF']
 try:
-    with open(path) as f:
-        data = json.load(f)
+    with open(path) as _f:
+        data = json.load(_f)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
     stops = data.get('stops', [])
     kept = [s for s in stops if datetime.fromisoformat(s.get('stopped_at','1970-01-01T00:00:00Z').replace('Z','+00:00')) > cutoff]
