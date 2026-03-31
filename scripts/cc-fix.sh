@@ -96,6 +96,9 @@ import sys, os
 session = os.environ['CCFIX_SESSION']
 raw = os.environ['CCFIX_RAW_WINS']
 
+def as_escape(s):
+    return s.replace('\\', '\\\\').replace('"', '\\"')
+
 winPairs = []
 for line in raw.strip().split('\n'):
     if not line.strip():
@@ -113,9 +116,10 @@ realPairs = [(idx, name) for idx, name in winPairs if name != 'monitor']
 if not realPairs:
     sys.exit(0)
 
+safe_session = as_escape(session)
 firstIdx, firstName = realPairs[0]
-firstLinked = f"{session}-v{firstIdx}"
-firstCmd = f"/bin/bash -lc 'tmux has-session -t {firstLinked} 2>/dev/null || tmux new-session -d -s {firstLinked} -t {session} 2>/dev/null; tmux select-window -t {firstLinked}:{firstIdx} 2>/dev/null; tmux attach-session -t {firstLinked}; exec /bin/zsh -l'"
+firstLinked = f"{safe_session}-v{firstIdx}"
+firstCmd = f"/bin/bash -lc 'tmux has-session -t {firstLinked} 2>/dev/null || tmux new-session -d -s {firstLinked} -t {as_escape(session)} 2>/dev/null; tmux select-window -t {firstLinked}:{firstIdx} 2>/dev/null; tmux attach-session -t {firstLinked}; exec /bin/zsh -l'"
 
 # BUG-ITERM-GROUPTABS fix: 단일 tell newWin 블록 + delay 1
 # BUG-010 fix (cc-fix): try-on-error 추가 — 첫 창 실패 시 전체 탭 생성 포기 방지
@@ -130,8 +134,8 @@ lines = [
 if realPairs[1:]:
     lines.append('        tell newWin')
     for (winIdx, name) in realPairs[1:]:
-        linkedName = f"{session}-v{winIdx}"
-        cmd = f"/bin/bash -lc 'tmux has-session -t {linkedName} 2>/dev/null || tmux new-session -d -s {linkedName} -t {session} 2>/dev/null; tmux select-window -t {linkedName}:{winIdx} 2>/dev/null; tmux attach-session -t {linkedName}; exec /bin/zsh -l'"
+        linkedName = f"{safe_session}-v{winIdx}"
+        cmd = f"/bin/bash -lc 'tmux has-session -t {linkedName} 2>/dev/null || tmux new-session -d -s {linkedName} -t {as_escape(session)} 2>/dev/null; tmux select-window -t {linkedName}:{winIdx} 2>/dev/null; tmux attach-session -t {linkedName}; exec /bin/zsh -l'"
         lines.append('            delay 0.5')
         lines.append(f'            create tab with default profile command "{cmd}"')
     lines.append('        end tell')
