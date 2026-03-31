@@ -29,6 +29,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/cross-impact.sh\" check || true",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
             "command": "bash \"$HOME/.claude/hooks/session-start.sh\" || true",
             "timeout": 60000
           },
@@ -105,8 +110,18 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/ralph-report.sh\" 2>/dev/null || true",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
             "command": "bash \"$HOME/.claude/scripts/tab-status.sh\" waiting \"$(basename \"$PWD\")\"",
             "timeout": 3000
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/scripts/session-registry.sh\" intentional-stop",
+            "timeout": 5000
           },
           {
             "type": "command",
@@ -128,7 +143,7 @@
           {
             "type": "command",
             "command": "bash \"$HOME/.claude/scripts/session-registry.sh\" heartbeat",
-            "timeout": 3000
+            "timeout": 5000
           }
         ]
       }
@@ -166,7 +181,22 @@
           },
           {
             "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/cross-impact.sh\" record || true",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
             "command": "bash \"$HOME/claude/TP_skills/session-manager/periodic-notion-log.sh\" 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/stale-skills-check.sh\" 2>/dev/null || true",
             "timeout": 5000
           }
         ]
@@ -180,7 +210,7 @@
             "timeout": 5000
           }
         ]
-      },
+      }
     ]
   },
   "mcpServers": {
