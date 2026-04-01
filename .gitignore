@@ -34,3 +34,6 @@ TP-iTerm-Restore-App/.build/
 # Ralph Loop
 .claude/ralph-loop.local.md
 */.claude/ralph-loop.local.md
+
+# Backup
+activated-sessions.json.bak
