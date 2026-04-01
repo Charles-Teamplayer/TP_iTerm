@@ -104,15 +104,17 @@ print([x['sessionName'] for x in g])
 fi
 
 # Watchdog 중복실행 방지 (self-lock)
+# SEC-002 fix: set -C (noclobber) 원자적 쓰기로 TOCTOU race 방지 (auto-restore.sh 패턴과 일관성)
 WATCHDOG_LOCK="/tmp/.watchdog.lock"
-if [ -f "$WATCHDOG_LOCK" ]; then
+if ! (set -C; echo $$ > "$WATCHDOG_LOCK") 2>/dev/null; then
     OLD_WD_PID=$(cat "$WATCHDOG_LOCK" 2>/dev/null)
     if [ -n "$OLD_WD_PID" ] && kill -0 "$OLD_WD_PID" 2>/dev/null; then
         echo "[$(date '+%H:%M:%S')] Watchdog 이미 실행 중 (PID: $OLD_WD_PID) — 종료" >> "$LOG_FILE"
         exit 0
     fi
+    # 이전 프로세스 종료 후 재시도
+    echo $$ > "$WATCHDOG_LOCK"
 fi
-echo $$ > "$WATCHDOG_LOCK"
 trap 'rm -f "$WATCHDOG_LOCK"' EXIT
 
 # 환경변수 로드 (.zshrc source 금지: iTerm2 integration/conda init 부작용 방지)

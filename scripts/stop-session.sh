@@ -80,16 +80,25 @@ else:
         _CLEAR_TS=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
         _CLEAR_FILE="$STOPS_FILE"
         _CLEAR_TS="$_CLEAR_TS" _CLEAR_FILE="$_CLEAR_FILE" python3 -c "
-import json, os, tempfile
+import json, os, tempfile, shutil
 path = os.environ['_CLEAR_FILE']
 ts = os.environ['_CLEAR_TS']
-data = {'stops': [], 'last_updated': ts}
-tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(path))
-with os.fdopen(tmp_fd, 'w') as f:
-    json.dump(data, f, indent=2)
-os.rename(tmp_path, path)
+try:
+    data = {'stops': [], 'last_updated': ts}
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(path))
+    with os.fdopen(tmp_fd, 'w') as f:
+        json.dump(data, f, indent=2)
+    try:
+        os.rename(tmp_path, path)
+    except OSError as e:
+        if e.errno == 18:  # EXDEV: Invalid cross-device link
+            shutil.move(tmp_path, path)
+        else:
+            raise
+except Exception as e:
+    print(f'ERROR: 파일 저장 실패: {e}', file=__import__('sys').stderr)
 " 2>/dev/null
-        echo "정지 목록 초기화 완료 — 다음 복원 시 모든 프로젝트 시작"
+        echo "✅ 정지 목록 초기화 완료 — 다음 복원 시 모든 프로젝트 시작"
         ;;
 
     --remove)
@@ -100,24 +109,34 @@ os.rename(tmp_path, path)
         fi
         init_stops
         # iter59: BUG-INJECT-01 fix — 환경변수로 전달 (window name에 ' 또는 \ 포함 시 injection 방지)
+        # iter90: BUG-FILE-PERMISSIONS-RENAME fix — os.rename 실패 시 shutil.move 대체
         _REMOVE_WINDOW="$WINDOW" _STOPS_FILE="$STOPS_FILE" python3 -c "
-import json, os, tempfile
+import json, os, tempfile, shutil
 stops_path = os.environ['_STOPS_FILE']
 window = os.environ['_REMOVE_WINDOW']
-with open(stops_path) as f:
-    d = json.load(f)
-before = len(d.get('stops', []))
-d['stops'] = [s for s in d.get('stops', []) if s.get('window_name') != window]
-after = len(d['stops'])
-import datetime; d['last_updated'] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(stops_path))
-with os.fdopen(tmp_fd, 'w') as f:
-    json.dump(d, f, indent=2, ensure_ascii=False)
-os.rename(tmp_path, stops_path)
-if before > after:
-    print(f'✅ {window} 제거됨 — 다음 복원 시 포함')
-else:
-    print(f'⚠️  {window} 목록에 없음')
+try:
+    with open(stops_path) as f:
+        d = json.load(f)
+    before = len(d.get('stops', []))
+    d['stops'] = [s for s in d.get('stops', []) if s.get('window_name') != window]
+    after = len(d['stops'])
+    import datetime; d['last_updated'] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(stops_path))
+    with os.fdopen(tmp_fd, 'w') as f:
+        json.dump(d, f, indent=2, ensure_ascii=False)
+    try:
+        os.rename(tmp_path, stops_path)
+    except OSError as e:
+        if e.errno == 18:  # EXDEV: Invalid cross-device link
+            shutil.move(tmp_path, stops_path)
+        else:
+            raise
+    if before > after:
+        print(f'✅ {window} 제거됨 — 다음 복원 시 포함')
+    else:
+        print(f'⚠️  {window} 목록에 없음')
+except Exception as e:
+    print(f'ERROR: 파일 저장 실패: {e}', file=__import__('sys').stderr)
 " 2>/dev/null
         ;;
 

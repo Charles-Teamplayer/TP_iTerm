@@ -282,12 +282,18 @@ PYEOF
     crash-detect)
         # 크래시 감지 (watchdog에서 호출)
         CD_REGISTRY="$REGISTRY" \
+        CD_LOCK="$REGISTRY_LOCK" \
         CD_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
         python3 << 'PYEOF'
-import json, subprocess, os, tempfile
+import json, subprocess, os, tempfile, fcntl
 
 registry_path = os.environ['CD_REGISTRY']
+lock_path = os.environ.get('CD_LOCK', '/tmp/.active-sessions.lock')
 cd_timestamp = os.environ['CD_TIMESTAMP']
+
+_lock_fh = open(lock_path, 'w')
+fcntl.flock(_lock_fh, fcntl.LOCK_EX)
+
 with open(registry_path, 'r') as f:
     data = json.load(f)
 
@@ -461,32 +467,39 @@ PYEOF
     heartbeat)
         # heartbeat 갱신 (UserPromptSubmit hook에서 호출)
         HB_REGISTRY="$REGISTRY" \
+        HB_LOCK="$REGISTRY_LOCK" \
         HB_PROJECT_DIR="$PROJECT_DIR" \
         HB_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
         python3 << 'PYEOF'
-import json, os, tempfile
+import json, os, tempfile, fcntl
 
 registry_path = os.environ['HB_REGISTRY']
+lock_path = os.environ.get('HB_LOCK', '/tmp/.active-sessions.lock')
 project_dir = os.environ['HB_PROJECT_DIR']
 timestamp = os.environ['HB_TIMESTAMP']
 
-with open(registry_path, 'r') as f:
-    data = json.load(f)
+with open(lock_path, 'w') as lf:
+    fcntl.flock(lf, fcntl.LOCK_EX)
+    try:
+        with open(registry_path, 'r') as f:
+            data = json.load(f)
 
-for s in data['sessions']:
-    if s.get('dir') == project_dir:
-        s['last_heartbeat'] = timestamp
-        break
+        for s in data['sessions']:
+            if s.get('dir') == project_dir:
+                s['last_heartbeat'] = timestamp
+                break
 
-dir_name = os.path.dirname(registry_path)
-fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
-try:
-    with os.fdopen(fd, 'w') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    os.replace(tmp_path, registry_path)
-except Exception:
-    os.unlink(tmp_path)
-    raise
+        dir_name = os.path.dirname(registry_path)
+        fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_path, registry_path)
+        except Exception:
+            os.unlink(tmp_path)
+            raise
+    finally:
+        fcntl.flock(lf, fcntl.LOCK_UN)
 PYEOF
         ;;
 
