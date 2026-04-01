@@ -5,7 +5,7 @@
 LOG_FILE="$HOME/.claude/logs/auto-restore.log"
 STOPS_FILE="$HOME/.claude/intentional-stops.json"
 WINDOW_GROUPS="$HOME/.claude/window-groups.json"
-ACTIVATED_FILE="$HOME/.claude/activated-sessions.json"
+ACTIVATED_FILE="${HOME}/.claude/activated-sessions.json"
 mkdir -p "$(dirname "$LOG_FILE")"
 
 log() {
@@ -28,12 +28,22 @@ FLAG_FILE_STALE="$HOME/.claude/logs/.auto-restore-done"
 [ -f "$FLAG_FILE_STALE" ] && rm -f "$FLAG_FILE_STALE" && log "기존 auto-restore-done 플래그 삭제"
 
 # 중복 실행 방지 (PID 파일 기반 — LaunchAgent 동시 트리거 방어, macOS flock 없음)
+# BUG-LOCK-SIGKILL: SIGKILL 받으면 trap EXIT가 실행되지 않으므로 lock age 체크 추가
 LOCK_FILE="/tmp/.auto-restore.lock"
 if [ -f "$LOCK_FILE" ]; then
-    OLD_PID=$(cat "$LOCK_FILE" 2>/dev/null)
-    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-        log "이미 auto-restore 실행 중 (PID: $OLD_PID) — 스킵"
-        exit 0
+    LOCK_AGE=$(( $(date +%s) - $(stat -f %m "$LOCK_FILE" 2>/dev/null || echo 0) ))
+    if [ "$LOCK_AGE" -gt 600 ]; then
+        rm -f "$LOCK_FILE"
+        log "오래된 lock 파일 삭제 (age=${LOCK_AGE}s, SIGKILL 정리)"
+    else
+        OLD_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+            log "이미 auto-restore 실행 중 (PID: $OLD_PID) — 스킵"
+            exit 0
+        else
+            rm -f "$LOCK_FILE"
+            log "stale PID lock 삭제 (PID=$OLD_PID)"
+        fi
     fi
 fi
 echo $$ > "$LOCK_FILE"
@@ -84,13 +94,20 @@ fi
 PROTECTED_PIDS_FILE="$HOME/.claude/protected-claude-pids"
 PROTECTED_PIDS=""
 if [ -f "$PROTECTED_PIDS_FILE" ]; then
-    # 살아있는 PID만 유효 (stale 항목 무시)
+    # FIX BUG-PROTECTED-PIDS-STALE: 살아있는 PID만 유효 (stale 항목 무시 + 파일 정리)
+    LIVE_PIDS=""
     while IFS= read -r ppid; do
         [ -z "$ppid" ] && continue
         if kill -0 "$ppid" 2>/dev/null; then
             PROTECTED_PIDS="$PROTECTED_PIDS $ppid"
+            LIVE_PIDS="$LIVE_PIDS$ppid"$'\n'
         fi
     done < "$PROTECTED_PIDS_FILE"
+    # stale PID 제거
+    if [ "$(wc -l < "$PROTECTED_PIDS_FILE" 2>/dev/null)" -gt "$(echo -n "$LIVE_PIDS" | wc -l)" ]; then
+        echo -n "$LIVE_PIDS" > "$PROTECTED_PIDS_FILE"
+        log "stale PID 정리됨"
+    fi
     [ -n "$PROTECTED_PIDS" ] && log "보호 PID 목록:$PROTECTED_PIDS"
 fi
 
@@ -125,24 +142,16 @@ get_path_for_name() {
     python3 -c "
 import json, os, sys, re
 name = sys.argv[1]
-# BUG-AUTORESTORE-GETPATH fix: DIR_TO_WINDOW 역매핑 — window_name → 실제 경로
-# (a.imessage → ~/claude/TP_A.iMessage_standalone_01067051080)
-WINDOW_TO_DIR = {
-    'a.imessage': os.path.expanduser('~/claude/TP_A.iMessage_standalone_01067051080'),
-    'AppleTV_ScreenSaver.app': os.path.expanduser('~/claude/AppleTV_ScreenSaver.app'),
-}
-if name in WINDOW_TO_DIR:
-    real = WINDOW_TO_DIR[name]
-    if os.path.isdir(real):
-        print(real)
-        sys.exit(0)
 # 공백/밑줄을 동일하게 취급: 공백→_ 정규화 후 비교
 def normalize(s):
     return re.sub(r'[ _]+', '_', s).lower()
 norm_name = normalize(name)
-path = os.path.expanduser('~/.claude/activated-sessions.json')
-for candidate in [path, path + '.bak']:
+# FIX BUG-ACTIVATE-SESSIONS-MISSING: ACTIVATED_FILE 환경변수 사용
+activated_file = os.environ.get('ACTIVATED_FILE', os.path.expanduser('~/.claude/activated-sessions.json'))
+for candidate in [activated_file, activated_file + '.bak']:
     try:
+        if not os.path.exists(candidate):
+            continue
         with open(candidate) as f:
             data = json.load(f)
         for p in data.get('activated', []):
@@ -157,6 +166,7 @@ for candidate in [path, path + '.bak']:
 }
 
 # window-groups.json에서 활성 그룹(isWaitingList=false) 목록 읽기
+# iter90: 파싱 오류 명확화 — stderr 캡처
 GROUPS_JSON=$(WG_PATH="$WINDOW_GROUPS" python3 -c "
 import json, sys, os
 path = os.environ['WG_PATH']
@@ -167,12 +177,22 @@ try:
     for g in active:
         profiles = '|'.join(g.get('profileNames', []))
         print(g['sessionName'] + '\t' + profiles)
-except Exception as e:
+except json.JSONDecodeError as e:
+    print(f'JSON_ERROR: {e}', file=sys.stderr)
     sys.exit(1)
-" 2>/dev/null)
+except Exception as e:
+    print(f'PARSE_ERROR: {e}', file=sys.stderr)
+    sys.exit(1)
+" 2>&1)
+PARSE_EXIT=$?
+
+if [ $PARSE_EXIT -ne 0 ]; then
+    log "ERROR: window-groups.json 파싱 실패 — $(echo "$GROUPS_JSON" | head -1)"
+    exit 1
+fi
 
 if [ -z "$GROUPS_JSON" ]; then
-    log "활성 그룹 없음 — 종료"
+    log "활성 그룹 없음 (isWaitingList=false 그룹 없거나 profileNames 비어있음)"
     exit 1
 fi
 
@@ -207,7 +227,7 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
     for PROFILE_NAME in "${PROFILES[@]}"; do
         [ -z "$PROFILE_NAME" ] && continue
 
-        PROJ_PATH=$(get_path_for_name "$PROFILE_NAME")
+        PROJ_PATH=$(ACTIVATED_FILE="$ACTIVATED_FILE" get_path_for_name "$PROFILE_NAME")
         if [ -z "$PROJ_PATH" ] || [ ! -d "$PROJ_PATH" ]; then
             log "SKIP $PROFILE_NAME — activated-sessions에 경로 없음"
             continue
@@ -269,7 +289,9 @@ except:
         fi
 
         TOTAL_CREATED=$((TOTAL_CREATED + 1))
-        DELAY=$((DELAY + 3))
+        # FIX BUG-DELAY-LINEAR: 지수 증가로 변경 (3, 6, 10, 15, 21...) → 최대 30초 캡
+        DELAY=$(( DELAY + 3 ))
+        [ "$DELAY" -gt 30 ] && DELAY=30
         log "창 생성: $SESSION_NAME/$PROFILE_NAME (delay ${DELAY}s)"
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] [tmux-window] CREATE session=$SESSION_NAME window=$PROFILE_NAME" >> "$WELOG"
     done

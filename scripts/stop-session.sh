@@ -16,26 +16,40 @@ init_stops() {
 }
 
 # BUG#22 fix: VALID_WINDOWS 하드코딩 제거 → window-groups.json + activated-sessions.json 동적 읽기
+# iter90: BUG-JSON-PARSING-SILENT fix — 파일 없음/파싱 오류 시 명시적 에러 메시지
 get_valid_windows() {
     python3 -c "
-import json, os
+import json, os, sys
 result = set()
+
 # window-groups.json에서 profileNames 수집
-try:
-    with open(os.path.expanduser('~/.claude/window-groups.json')) as _wg: groups = json.load(_wg)
-    for g in groups:
-        for p in g.get('profileNames', []):
-            result.add(p)
-except: pass
+wg_path = os.path.expanduser('~/.claude/window-groups.json')
+if os.path.exists(wg_path):
+    try:
+        with open(wg_path) as _wg:
+            groups = json.load(_wg)
+        for g in groups:
+            for p in g.get('profileNames', []):
+                result.add(p)
+    except json.JSONDecodeError as e:
+        print(f'ERROR: {wg_path} JSON 파싱 오류: {str(e)[:80]}', file=sys.stderr)
+else:
+    print(f'ERROR: {wg_path} 없음', file=sys.stderr)
+
 # activated-sessions.json에서 basename 수집
-try:
-    with open(os.path.expanduser('~/.claude/activated-sessions.json')) as _as: d = json.load(_as)
-    for p in d.get('activated', []):
-        result.add(os.path.basename(p))
-except: pass
+as_path = os.path.expanduser('~/.claude/activated-sessions.json')
+if os.path.exists(as_path):
+    try:
+        with open(as_path) as _as:
+            d = json.load(_as)
+        for p in d.get('activated', []):
+            result.add(os.path.basename(p))
+    except json.JSONDecodeError as e:
+        print(f'WARNING: {as_path} JSON 파싱 오류: {str(e)[:80]}', file=sys.stderr)
+
 for r in sorted(result):
     print(r)
-" 2>/dev/null
+" 2>&1
 }
 
 is_valid_window() {

@@ -13,12 +13,22 @@ if [ -f "$LOG" ] && [ "$(wc -l < "$LOG" 2>/dev/null)" -gt 5000 ] 2>/dev/null; th
 fi
 
 # 세션별 프로세스 lock
+# BUG-LOCK-SIGKILL: SIGKILL 받으면 trap EXIT가 실행되지 않으므로 lock age 체크 추가
 LOCK_FILE="/tmp/.cc-fix-lock-${SESSION//[^a-zA-Z0-9]/_}"
 if [ -f "$LOCK_FILE" ]; then
-    OLD_PID=$(cat "$LOCK_FILE" 2>/dev/null)
-    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-        log "cc-fix 이미 실행 중 (PID: $OLD_PID) — 스킵"
-        exit 0
+    LOCK_AGE=$(( $(date +%s) - $(stat -f %m "$LOCK_FILE" 2>/dev/null || echo 0) ))
+    if [ "$LOCK_AGE" -gt 600 ]; then
+        rm -f "$LOCK_FILE"
+        log "오래된 lock 파일 삭제 (age=${LOCK_AGE}s, SIGKILL 정리)"
+    else
+        OLD_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+            log "cc-fix 이미 실행 중 (PID: $OLD_PID) — 스킵"
+            exit 0
+        else
+            rm -f "$LOCK_FILE"
+            log "stale PID lock 삭제 (PID=$OLD_PID)"
+        fi
     fi
 fi
 echo $$ > "$LOCK_FILE"
