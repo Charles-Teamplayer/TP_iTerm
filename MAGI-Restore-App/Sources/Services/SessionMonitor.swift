@@ -1327,8 +1327,10 @@ final class SessionMonitor: ObservableObject {
         let escapedName = shellEscape(safeName)
         let escapedDir = shellEscape(safeDir)
         let escapedSession = shellEscape(targetSession)
-        let nameForStatus = safeName.replacingOccurrences(of: "\"", with: "\\\"")
-                                     .replacingOccurrences(of: "'", with: "'\\''")
+        // SEC-001 fix: send-keys 인수를 싱글쿼트로 래핑 (launchProfile/restoreSession과 일관성)
+        let nameForStatus = safeName.replacingOccurrences(of: "'", with: "'\\''")
+        let claudeEntryCreate = "(bash ~/.claude/scripts/tab-status.sh starting '\(nameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions"
+        let escapedClaudeEntryCreate = claudeEntryCreate.replacingOccurrences(of: "'", with: "'\\''")
         // BUG-B fix: -P -F '#{window_id}' 즉시 캡처 → automatic-rename off 즉시 설정
         let cmd = """
         mkdir -p '\(escapedDir)' 2>/dev/null; \
@@ -1337,7 +1339,7 @@ final class SessionMonitor: ObservableObject {
           if [ -n \"$_WID\" ]; then \
             tmux set-window-option -t \"$_WID\" automatic-rename off 2>/dev/null || true; \
             tmux rename-window -t \"$_WID\" '\(escapedName)' 2>/dev/null || true; \
-            tmux send-keys -t \"$_WID\" "(bash ~/.claude/scripts/tab-status.sh starting '\(nameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions" Enter 2>/dev/null; \
+            tmux send-keys -t \"$_WID\" '\(escapedClaudeEntryCreate)' Enter 2>/dev/null; \
           fi; \
         fi; true
         """
