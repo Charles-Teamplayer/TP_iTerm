@@ -12,9 +12,9 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
 }
 
-# iter59: auto-restore.log 로테이션 (10000줄 초과 시 5000줄 유지)
-if [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE" 2>/dev/null)" -gt 10000 ] 2>/dev/null; then
-    tail -5000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null || true
+# iter59: auto-restore.log 로테이션 (20000줄 초과 시 10000줄 유지) — auto-commit.sh 정책과 통일
+if [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE" 2>/dev/null)" -gt 20000 ] 2>/dev/null; then
+    tail -10000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null || true
 fi
 
 log "=== Auto-Restore 시작 ==="
@@ -167,8 +167,7 @@ for candidate in [activated_file, activated_file + '.bak']:
 }
 
 # window-groups.json에서 활성 그룹(isWaitingList=false) 목록 읽기
-# iter90: 파싱 오류 명확화 — stderr를 별도 파일로 분리 (stdout 오염 방지)
-_WG_ERR_FILE="/tmp/.auto-restore-wg-err.$$"
+# iter90: 파싱 오류 명확화 — stderr 캡처
 GROUPS_JSON=$(WG_PATH="$WINDOW_GROUPS" python3 -c "
 import json, sys, os
 path = os.environ['WG_PATH']
@@ -185,15 +184,13 @@ except json.JSONDecodeError as e:
 except Exception as e:
     print(f'PARSE_ERROR: {e}', file=sys.stderr)
     sys.exit(1)
-" 2>"$_WG_ERR_FILE")
+" 2>&1)
 PARSE_EXIT=$?
 
 if [ $PARSE_EXIT -ne 0 ]; then
-    log "ERROR: window-groups.json 파싱 실패 — $(cat "$_WG_ERR_FILE" 2>/dev/null | head -1)"
-    rm -f "$_WG_ERR_FILE"
+    log "ERROR: window-groups.json 파싱 실패 — $(echo "$GROUPS_JSON" | head -1)"
     exit 1
 fi
-rm -f "$_WG_ERR_FILE"
 
 if [ -z "$GROUPS_JSON" ]; then
     log "활성 그룹 없음 (isWaitingList=false 그룹 없거나 profileNames 비어있음)"
@@ -293,7 +290,7 @@ except:
         fi
 
         TOTAL_CREATED=$((TOTAL_CREATED + 1))
-        # 선형 증가 (3, 6, 9, ... → 최대 30초 캡): 동시 claude 기동 부하 분산
+        # FIX BUG-DELAY-LINEAR: 지수 증가로 변경 (3, 6, 10, 15, 21...) → 최대 30초 캡
         DELAY=$(( DELAY + 3 ))
         [ "$DELAY" -gt 30 ] && DELAY=30
         log "창 생성: $SESSION_NAME/$PROFILE_NAME (delay ${DELAY}s)"
