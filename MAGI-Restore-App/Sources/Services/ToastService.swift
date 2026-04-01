@@ -34,6 +34,7 @@ final class ToastService {
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
               let entries = try? JSONDecoder().decode([ToastEntry].self, from: data),
               !entries.isEmpty else { return }
+        // 파싱 성공 후 삭제 (파싱 실패 시 항목 유실 방지)
         try? FileManager.default.removeItem(atPath: path)
         for entry in entries {
             show(title: entry.title, body: entry.message, icon: entry.icon)
