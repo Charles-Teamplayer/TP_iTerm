@@ -9,8 +9,13 @@ mkdir -p "$(dirname "$LOG")"
 
 rotate_log() {
     local logfile="$1"
-    if [ -f "$logfile" ] && [ "$(wc -l < "$logfile")" -gt 5000 ]; then
-        tail -n 2500 "$logfile" > "${logfile}.tmp" && mv "${logfile}.tmp" "$logfile"
+    if [ -f "$logfile" ]; then
+        local size=$(wc -c < "$logfile")
+        local lines=$(wc -l < "$logfile")
+        # 라인 수 초과 (5000줄) 또는 파일 크기 초과 (150KB)
+        if [ "$lines" -gt 5000 ] || [ "$size" -gt 153600 ]; then
+            tail -n 1000 "$logfile" > "${logfile}.tmp" && mv "${logfile}.tmp" "$logfile"
+        fi
     fi
 }
 
@@ -102,7 +107,7 @@ except:
             TAB_PROJECT=$(printf '%s' "$_TAB_DATA" | sed -n '2p')
 
             case "$TAB_STATUS" in
-                waiting|attention|crashed|idle_10m|idle_1h|idle_1d|idle_3d|starting)
+                waiting|attention|idle_10m|idle_1h|idle_1d|idle_3d|starting)
                     if [ -c "$PANE_TTY" ]; then
                         # flash 종료
                         FLASH_PID_FILE="/tmp/tab-flash-${TTY_NAME}.pid"

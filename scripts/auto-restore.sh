@@ -12,9 +12,13 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
 }
 
-# iter59: auto-restore.log 로테이션 (20000줄 초과 시 10000줄 유지) — auto-commit.sh 정책과 통일
-if [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE" 2>/dev/null)" -gt 20000 ] 2>/dev/null; then
-    tail -10000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null || true
+# iter59 + size: auto-restore.log 로테이션 (20000줄 또는 300KB 초과 시 10000줄 유지)
+if [ -f "$LOG_FILE" ]; then
+    _size=$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)
+    _lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo 0)
+    if [ "$_lines" -gt 20000 ] || [ "$_size" -gt 307200 ]; then
+        tail -10000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null || true
+    fi
 fi
 
 log "=== Auto-Restore 시작 ==="

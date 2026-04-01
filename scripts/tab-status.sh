@@ -4,10 +4,14 @@
 
 STATE="${1:-}"
 
-# debug log rotation (iter56: 5000줄 초과 시 마지막 2500줄 유지)
+# debug log rotation (iter56 + size: 5000줄 또는 150KB 초과 시 마지막 2500줄 유지)
 _DEBUG_LOG="$HOME/.claude/logs/tab-status-debug.log"
-if [ -f "$_DEBUG_LOG" ] && [ "$(wc -l < "$_DEBUG_LOG" 2>/dev/null)" -gt 5000 ] 2>/dev/null; then
-    tail -2500 "$_DEBUG_LOG" > "${_DEBUG_LOG}.tmp" && mv "${_DEBUG_LOG}.tmp" "$_DEBUG_LOG" 2>/dev/null || true
+if [ -f "$_DEBUG_LOG" ]; then
+    _dbg_size=$(wc -c < "$_DEBUG_LOG" 2>/dev/null || echo 0)
+    _dbg_lines=$(wc -l < "$_DEBUG_LOG" 2>/dev/null || echo 0)
+    if [ "$_dbg_lines" -gt 5000 ] || [ "$_dbg_size" -gt 153600 ]; then
+        tail -2500 "$_DEBUG_LOG" > "${_DEBUG_LOG}.tmp" && mv "${_DEBUG_LOG}.tmp" "$_DEBUG_LOG" 2>/dev/null || true
+    fi
 fi
 
 # iter57: PPID 체인으로 CC 실제 PID 캡처 → set-color.sh pid 필드 수정 (watchdog aging 방지)

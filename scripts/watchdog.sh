@@ -15,8 +15,10 @@ mkdir -p "$(dirname "$LOG_FILE")"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
-    # 로그 로테이션 (20000줄 초과 시 10000줄 유지)
-    if [ "$(wc -l < "$LOG_FILE" 2>/dev/null)" -gt 20000 ] 2>/dev/null; then
+    # 로그 로테이션 (20000줄 또는 300KB 초과 시 10000줄 유지)
+    local _size=$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)
+    local _lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo 0)
+    if [ "$_lines" -gt 20000 ] || [ "$_size" -gt 307200 ]; then
         tail -10000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE" 2>/dev/null
     fi
 }
@@ -56,7 +58,6 @@ notify() {
     local icon="${3:-bell.fill}"
     local title="${4:-MAGI+NORN Watchdog}"
     # 최근 이벤트 파일 저장 (상세 확인용)
-    # SEC-004: 권한 0600 — protected PID 등 민감 정보 포함, 소유자만 읽기 허용
     printf "[%s] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$msg" > /tmp/watchdog-latest-event.txt
     chmod 0600 /tmp/watchdog-latest-event.txt 2>/dev/null || true
     tail -30 "$LOG_FILE" 2>/dev/null >> /tmp/watchdog-latest-event.txt
@@ -106,7 +107,6 @@ print([x['sessionName'] for x in g])
 fi
 
 # Watchdog 중복실행 방지 (self-lock)
-# SEC-002 fix: set -C (noclobber) 원자적 쓰기로 TOCTOU race 방지 (auto-restore.sh 패턴과 일관성)
 WATCHDOG_LOCK="/tmp/.watchdog.lock"
 if ! (set -C; echo $$ > "$WATCHDOG_LOCK") 2>/dev/null; then
     OLD_WD_PID=$(cat "$WATCHDOG_LOCK" 2>/dev/null)
@@ -114,7 +114,6 @@ if ! (set -C; echo $$ > "$WATCHDOG_LOCK") 2>/dev/null; then
         echo "[$(date '+%H:%M:%S')] Watchdog 이미 실행 중 (PID: $OLD_WD_PID) — 종료" >> "$LOG_FILE"
         exit 0
     fi
-    # 이전 프로세스 종료 후 재시도
     echo $$ > "$WATCHDOG_LOCK"
 fi
 trap 'rm -f "$WATCHDOG_LOCK"' EXIT
@@ -646,27 +645,21 @@ print(' '.join(s.get('tty','') for s in d.get('sessions',[]) if s.get('tty',''))
         [ "$LEGACY_CLEANED" -gt 0 ] && log "CLEANUP: orphan legacy tab-states ${LEGACY_CLEANED}개 정리"
     fi
 
-    # BUG-WATCHDOG-ZOMBIE-CLEANUP fix: 좀비 프로세스 감지 + 정리 (kill -9 + waitpid)
     # 3. 좀비 프로세스 감지 (72시간 이상 + tty 없음)
     ZOMBIES=$(ps -eo pid,tty,etime,command 2>/dev/null | grep "[c]laude" | grep -v "Claude.app\|Helper\|watchdog\|auto-restore\|tmux\|bash.*claude-work\|bash.*claude-takedown" | awk '{
         # etime 형식: DD-HH:MM:SS 또는 HH:MM:SS 또는 MM:SS
         split($3, parts, "-");
         days = 0;
         if (length(parts) == 2) { days = parts[1]+0; }
-        if (days >= 3 && $2 == "??") print $1
+        if (days >= 3 && $2 == "??") print $1, $4
     }' 2>/dev/null || true)
 
     if [ -n "$ZOMBIES" ]; then
         log "ZOMBIE DETECTED: $ZOMBIES"
-        # 감지된 좀비 프로세스 정리 (부모 프로세스도 함께 kill)
         echo "$ZOMBIES" | while read -r zpid; do
-            # 부모 PID 조회
             ppid=$(ps -o ppid= -p "$zpid" 2>/dev/null | tr -d ' ')
-            # 자식 프로세스 먼저 kill
             pkill -P "$zpid" 2>/dev/null || true
-            # 좀비 프로세스 자체 kill -9
             kill -9 "$zpid" 2>/dev/null || true
-            # 부모가 좀비 자식을 기다리도록 유도 (wait() 호출)
             if [ -n "$ppid" ] && [ "$ppid" != "1" ]; then
                 kill -0 "$ppid" 2>/dev/null && kill -CHLD "$ppid" 2>/dev/null || true
             fi
@@ -965,5 +958,5 @@ DIRSCAN_PYEOF
     done
 
     # 30초 대기
-    sleep 30
+    sleep 15
 done
