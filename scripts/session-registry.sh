@@ -461,6 +461,9 @@ if crashed:
 
 if not crashed:
     print("[URD] All sessions alive")
+
+fcntl.flock(_lock_fh, fcntl.LOCK_UN)
+_lock_fh.close()
 PYEOF
         ;;
 

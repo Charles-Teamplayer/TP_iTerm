@@ -56,7 +56,9 @@ notify() {
     local icon="${3:-bell.fill}"
     local title="${4:-MAGI+NORN Watchdog}"
     # 최근 이벤트 파일 저장 (상세 확인용)
+    # SEC-004: 권한 0600 — protected PID 등 민감 정보 포함, 소유자만 읽기 허용
     printf "[%s] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$msg" > /tmp/watchdog-latest-event.txt
+    chmod 0600 /tmp/watchdog-latest-event.txt 2>/dev/null || true
     tail -30 "$LOG_FILE" 2>/dev/null >> /tmp/watchdog-latest-event.txt
     # MAGI-Restore-App 토스트 큐에 추가
     local queue_file="/tmp/magi-toast.json"

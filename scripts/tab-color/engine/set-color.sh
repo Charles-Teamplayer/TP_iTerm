@@ -178,8 +178,9 @@ fi
 # macOS 알림 (attention만)
 NOTIFY=$(jq -r --arg state "$STATE" '.states[$state].macos_notify // false' "$CONFIG" 2>/dev/null || echo "false")
 if [ "$NOTIFY" = "true" ]; then
-    _SAFE_PROJECT=$(printf '%s' "$PROJECT" | sed 's/\\/\\\\/g; s/"/\\"/g')
-    osascript -e "display notification \"${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다\" with title \"Claude Code\" subtitle \"⚠️ Attention Required\"" 2>/dev/null &
+    # SEC-003 fix: 개행·백틱·$() 제거 후 백슬래시·더블쿼트 이스케이프 (osascript 문자열 인젝션 방지)
+    _SAFE_PROJECT=$(printf '%s' "$PROJECT" | tr -d '\n\r`$' | sed 's/\\/\\\\/g; s/"/\\"/g')
+    osascript -e "display notification \"${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다\" with title \"Claude Code\" subtitle \"Attention Required\"" 2>/dev/null &
 fi
 
 _log "state=$STATE project=$PROJECT tty=$TTY_NAME color=[$R,$G,$B]"

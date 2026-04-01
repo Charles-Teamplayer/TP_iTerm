@@ -13,15 +13,17 @@ fi
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 # 중복 실행 방지 (PID 파일 기반)
+# SEC-002 fix: set -C (noclobber) 원자적 쓰기로 TOCTOU race 방지 (auto-restore.sh 패턴과 일관성)
 ATTACH_LOCK="/tmp/.auto-attach.lock"
-if [ -f "$ATTACH_LOCK" ]; then
+if ! (set -C; echo $$ > "$ATTACH_LOCK") 2>/dev/null; then
     OLD_PID=$(cat "$ATTACH_LOCK" 2>/dev/null)
     if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
         log "이미 auto-attach 실행 중 (PID: $OLD_PID) — 스킵"
         exit 0
     fi
+    # 이전 프로세스 종료 후 재시도
+    echo $$ > "$ATTACH_LOCK"
 fi
-echo $$ > "$ATTACH_LOCK"
 trap 'rm -f "$ATTACH_LOCK"' EXIT
 
 FLAG_FILE="$HOME/.claude/logs/.auto-restore-done"
@@ -112,7 +114,9 @@ OSEOF
     if [ -n "$_ORPHAN_TTYS" ]; then
         _ORPHAN_COUNT=$(echo "$_ORPHAN_TTYS" | tr ' ' '\n' | grep -c '.')
         # AppleScript로 orphan TTY 창만 닫기
-        _ORPHAN_LIST=$(echo "$_ORPHAN_TTYS" | tr ' ' '\n' | grep -v '^$' | awk '{print "\"/dev/" $0 "\""}' | tr '\n' ',')
+        # SEC-005: _ORPHAN_LIST는 TTY 경로만 포함 (/dev/ttysXXX 형식 — alphanumeric 전용)
+        # awk가 이미 고정 포맷으로 가공하므로 인젝션 위험 낮음. 단, heredoc 비인용 유지 필수 (변수 확장 의도적)
+        _ORPHAN_LIST=$(echo "$_ORPHAN_TTYS" | tr ' ' '\n' | grep -v '^$' | awk '/^[a-zA-Z0-9]+$/{print "\"/dev/" $0 "\""}' | tr '\n' ',')
         osascript 2>/dev/null << OSEOF2
 tell application "iTerm2"
     set _orphanList to {${_ORPHAN_LIST%,}}

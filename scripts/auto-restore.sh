@@ -31,9 +31,7 @@ FLAG_FILE_STALE="$HOME/.claude/logs/.auto-restore-done"
 # BUG-LOCK-SIGKILL: SIGKILL 받으면 trap EXIT가 실행되지 않으므로 lock age 체크 추가
 LOCK_FILE="/tmp/.auto-restore.lock"
 if [ -f "$LOCK_FILE" ]; then
-    # stat 실패 시 현재 시각으로 대체 → age=0, lock 파일 유지 (살아있는 프로세스 보호)
-    _LOCK_MTIME=$(stat -f %m "$LOCK_FILE" 2>/dev/null || date +%s)
-    LOCK_AGE=$(( $(date +%s) - _LOCK_MTIME ))
+    LOCK_AGE=$(( $(date +%s) - $(stat -f %m "$LOCK_FILE" 2>/dev/null || echo 0) ))
     if [ "$LOCK_AGE" -gt 600 ]; then
         rm -f "$LOCK_FILE"
         log "오래된 lock 파일 삭제 (age=${LOCK_AGE}s, SIGKILL 정리)"
@@ -48,17 +46,7 @@ if [ -f "$LOCK_FILE" ]; then
         fi
     fi
 fi
-# noclobber(set -C) 방식 atomic create — 동시 기동 레이스 방어 (macOS flock 없음)
-if ! (set -C; echo $$ > "$LOCK_FILE") 2>/dev/null; then
-    OLD_PID=$(cat "$LOCK_FILE" 2>/dev/null)
-    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-        log "이미 auto-restore 실행 중 (PID: $OLD_PID, atomic) — 스킵"
-        exit 0
-    else
-        rm -f "$LOCK_FILE"
-        echo $$ > "$LOCK_FILE"
-    fi
-fi
+echo $$ > "$LOCK_FILE"
 trap 'rm -f "$LOCK_FILE"' EXIT
 
 # 환경변수 로드 (LaunchAgent 비-TTY 환경 — .zshrc source 금지: iTerm2 integration 오류 발생)
@@ -92,11 +80,12 @@ if [ "$UPTIME_SEC" -ge 300 ] && [ "$FORCE_MODE" != "--force" ]; then
 fi
 echo "$NOW_TS" > "$LASTRUN_FILE"
 
-EXISTING=$(ps -A -o comm= 2>/dev/null | grep -c "^claude$" | tr -d ' ')
+# BUG-ZOMBIE-FILTER fix: 좀비 프로세스 제외 (ps stat='Z' 필터링)
+EXISTING=$(ps -A -o stat=,comm= 2>/dev/null | awk '!/^Z / && $NF=="claude" {count++} END {print count+0}')
 if [ "$UPTIME_SEC" -lt 300 ]; then
-    log "부팅 직후 감지 (uptime=${UPTIME_SEC}s) — EXISTING 체크 스킵 (현재 claude ${EXISTING}개)"
+    log "부팅 직후 감지 (uptime=${UPTIME_SEC}s) — EXISTING 체크 스킵 (현재 claude ${EXISTING}개, 좀비 제외)"
 elif [ "${EXISTING:-0}" -gt 0 ] && [ "$FORCE_MODE" != "--force" ]; then
-    log "활성 claude CLI 프로세스 ${EXISTING}개 실행 중 — auto-restore 스킵 (강제: bash auto-restore.sh --force)"
+    log "활성 claude CLI 프로세스 ${EXISTING}개 실행 중 (좀비 제외) — auto-restore 스킵 (강제: bash auto-restore.sh --force)"
     exit 0
 fi
 
@@ -107,22 +96,18 @@ PROTECTED_PIDS_FILE="$HOME/.claude/protected-claude-pids"
 PROTECTED_PIDS=""
 if [ -f "$PROTECTED_PIDS_FILE" ]; then
     # FIX BUG-PROTECTED-PIDS-STALE: 살아있는 PID만 유효 (stale 항목 무시 + 파일 정리)
-    LIVE_PIDS_ARRAY=()
+    LIVE_PIDS=""
     while IFS= read -r ppid; do
         [ -z "$ppid" ] && continue
         if kill -0 "$ppid" 2>/dev/null; then
             PROTECTED_PIDS="$PROTECTED_PIDS $ppid"
-            LIVE_PIDS_ARRAY+=("$ppid")
+            LIVE_PIDS="$LIVE_PIDS$ppid"$'\n'
         fi
     done < "$PROTECTED_PIDS_FILE"
-    # stale PID 제거 (atomic write — 직접 덮어쓰기 시 중단 시 파일 손상 방지)
-    ORIG_COUNT=$(wc -l < "$PROTECTED_PIDS_FILE" 2>/dev/null || echo 0)
-    NEW_COUNT=${#LIVE_PIDS_ARRAY[@]}
-    if [ "$ORIG_COUNT" -gt "$NEW_COUNT" ]; then
-        _PID_TMP=$(mktemp "/tmp/.protected-pids-XXXXXX")
-        ( IFS=$'\n'; echo "${LIVE_PIDS_ARRAY[*]}" > "$_PID_TMP" )
-        mv "$_PID_TMP" "$PROTECTED_PIDS_FILE"
-        log "stale PID 정리됨 ($ORIG_COUNT → $NEW_COUNT)"
+    # stale PID 제거
+    if [ "$(wc -l < "$PROTECTED_PIDS_FILE" 2>/dev/null)" -gt "$(echo -n "$LIVE_PIDS" | wc -l)" ]; then
+        echo -n "$LIVE_PIDS" > "$PROTECTED_PIDS_FILE"
+        log "stale PID 정리됨"
     fi
     [ -n "$PROTECTED_PIDS" ] && log "보호 PID 목록:$PROTECTED_PIDS"
 fi

@@ -161,21 +161,31 @@ except Exception as e:
         fi
         init_stops
         # iter59: BUG-INJECT-02 fix — 환경변수 방식으로 injection 방지
+        # iter90: BUG-FILE-PERMISSIONS-RENAME fix — os.rename 실패 시 shutil.move 대체
         _STOP_WINDOW="$WINDOW" _STOPS_FILE="$STOPS_FILE" python3 -c "
-import json, os, tempfile, datetime
+import json, os, tempfile, datetime, shutil
 stops_path = os.environ['_STOPS_FILE']
 window = os.environ['_STOP_WINDOW']
 ts = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-with open(stops_path) as f:
-    d = json.load(f)
-d['stops'] = [s for s in d.get('stops', []) if s.get('window_name') != window]
-d['stops'].append({'project': window, 'window_name': window, 'stopped_at': ts})
-d['last_updated'] = ts
-tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(stops_path))
-with os.fdopen(tmp_fd, 'w') as f:
-    json.dump(d, f, indent=2, ensure_ascii=False)
-os.rename(tmp_path, stops_path)
-print(f'✅ {window} → 정지 목록 추가됨 (다음 복원 시 제외)')
+try:
+    with open(stops_path) as f:
+        d = json.load(f)
+    d['stops'] = [s for s in d.get('stops', []) if s.get('window_name') != window]
+    d['stops'].append({'project': window, 'window_name': window, 'stopped_at': ts})
+    d['last_updated'] = ts
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(stops_path))
+    with os.fdopen(tmp_fd, 'w') as f:
+        json.dump(d, f, indent=2, ensure_ascii=False)
+    try:
+        os.rename(tmp_path, stops_path)
+    except OSError as e:
+        if e.errno == 18:  # EXDEV: Invalid cross-device link
+            shutil.move(tmp_path, stops_path)
+        else:
+            raise
+    print(f'✅ {window} → 정지 목록 추가됨 (다음 복원 시 제외)')
+except Exception as e:
+    print(f'ERROR: 파일 저장 실패: {e}', file=__import__('sys').stderr)
 " 2>/dev/null
         ;;
 esac
