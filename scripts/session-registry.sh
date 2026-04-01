@@ -10,9 +10,11 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 [ -n "$2" ] && PROJECT_DIR="$2"
 PROJECT_NAME=$(basename "$PROJECT_DIR")
 
-# 레지스트리 초기화
+# 레지스트리 초기화 (원자적 쓰기)
 if [ ! -f "$REGISTRY" ]; then
-    echo '{"sessions":[],"last_updated":"","version":"1.0"}' > "$REGISTRY"
+    _INIT_TMP=$(mktemp "${REGISTRY}.XXXXXX")
+    echo '{"sessions":[],"last_updated":"","version":"1.0"}' > "$_INIT_TMP"
+    mv -n "$_INIT_TMP" "$REGISTRY" 2>/dev/null || rm -f "$_INIT_TMP"
 fi
 
 case "$ACTION" in
@@ -133,24 +135,31 @@ with open(lpath, 'w') as lf:
         if [ -f "$STOPS_FILE_REG" ]; then
             WINDOW_NAME_REG=$(basename "$PROJECT_DIR")
             python3 -c "
-import json, os, tempfile, sys
+import json, os, tempfile, fcntl, sys
 path = os.path.expanduser('~/.claude/intentional-stops.json')
+lock_path = '/tmp/.intentional-stops.lock'
 window_name = sys.argv[1]
 try:
-    with open(path, 'r') as f:
-        data = json.load(f)
-    before = len(data.get('stops', []))
-    # BUG-REGISTER-CLEAR fix: window_name OR project 중 하나가 일치하면 제거
-    # intentional-stop 저장 시: window_name=매핑명(a.imessage), project=basename(TP_A.iMessage_...)
-    # register 호출 시: window_name=basename → 매핑명과 불일치 문제 해결
-    data['stops'] = [s for s in data.get('stops', []) if window_name not in (s.get('window_name', ''), s.get('project', ''))]
-    after = len(data.get('stops', []))
-    if before != after:
-        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
-        with os.fdopen(fd, 'w') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, path)
-        print(f'[URD] intentional-stop cleared: {window_name}')
+    with open(lock_path, 'w') as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        try:
+            with open(path, 'r') as f:
+                data = json.load(f)
+            before = len(data.get('stops', []))
+            data['stops'] = [s for s in data.get('stops', []) if window_name not in (s.get('window_name', ''), s.get('project', ''))]
+            after = len(data.get('stops', []))
+            if before != after:
+                fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
+                try:
+                    with os.fdopen(fd, 'w') as f:
+                        json.dump(data, f, indent=2, ensure_ascii=False)
+                    os.replace(tmp, path)
+                except Exception:
+                    os.unlink(tmp)
+                    raise
+                print(f'[URD] intentional-stop cleared: {window_name}')
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
 except Exception as e:
     pass
 " "$WINDOW_NAME_REG" 2>/dev/null || true
@@ -249,31 +258,39 @@ if not window_name:
     print(f"[URD] SKIP intentional-stop: unknown dir {project_dir}", file=sys.stderr)
     sys.exit(0)
 
-# intentional-stops.json 기록
-if os.path.exists(stops_path):
-    with open(stops_path, 'r') as f:
-        data = json.load(f)
-else:
-    data = {"stops": [], "last_updated": ""}
+# intentional-stops.json 기록 (fcntl.flock으로 동시성 보호)
+import fcntl
+lock_path = '/tmp/.intentional-stops.lock'
 
-data['stops'] = [s for s in data['stops'] if s.get('window_name') != window_name]
+with open(lock_path, 'w') as lf:
+    fcntl.flock(lf, fcntl.LOCK_EX)
+    try:
+        if os.path.exists(stops_path):
+            with open(stops_path, 'r') as f:
+                data = json.load(f)
+        else:
+            data = {"stops": [], "last_updated": ""}
 
-data['stops'].append({
-    "project": os.path.basename(project_dir),
-    "dir": project_dir,
-    "window_name": window_name,
-    "stopped_at": timestamp
-})
-data['last_updated'] = timestamp
+        data['stops'] = [s for s in data['stops'] if s.get('window_name') != window_name]
 
-tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(stops_path))
-try:
-    with os.fdopen(tmp_fd, 'w') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    os.replace(tmp_path, stops_path)
-except:
-    os.unlink(tmp_path)
-    raise
+        data['stops'].append({
+            "project": os.path.basename(project_dir),
+            "dir": project_dir,
+            "window_name": window_name,
+            "stopped_at": timestamp
+        })
+        data['last_updated'] = timestamp
+
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(stops_path))
+        try:
+            with os.fdopen(tmp_fd, 'w') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_path, stops_path)
+        except:
+            os.unlink(tmp_path)
+            raise
+    finally:
+        fcntl.flock(lf, fcntl.LOCK_UN)
 
 print(f"[URD] Intentional stop recorded: {window_name} ({os.path.basename(project_dir)})")
 PYEOF

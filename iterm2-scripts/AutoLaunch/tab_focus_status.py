@@ -99,26 +99,29 @@ async def main(connection):
 
     async with iterm2.FocusMonitor(connection) as monitor:
         while True:
-            update = await monitor.async_get_next_update()
+            try:
+                update = await monitor.async_get_next_update()
 
-            # active_session_changed: 세션 직접 전환
-            if update.active_session_changed:
-                session_id = update.active_session_changed.session_id
-                _log(f"active_session_changed: {session_id[:8]}")
-                await _handle_session(app, session_id)
+                # active_session_changed: 세션 직접 전환
+                if update.active_session_changed:
+                    session_id = update.active_session_changed.session_id
+                    _log(f"active_session_changed: {session_id[:8]}")
+                    await _handle_session(app, session_id)
 
-            # selected_tab_changed: tmux -CC 탭 전환 시 발생
-            elif update.selected_tab_changed:
-                tab_id = update.selected_tab_changed.tab_id
-                _log(f"selected_tab_changed: {tab_id[:8]}")
-                # 탭의 current session 가져오기
-                for window in app.windows:
-                    for tab in window.tabs:
-                        if tab.tab_id == tab_id:
-                            session = tab.current_session
-                            if session:
-                                await _handle_session(app, session.session_id)
-                            break
+                # selected_tab_changed: tmux -CC 탭 전환 시 발생
+                elif update.selected_tab_changed:
+                    tab_id = update.selected_tab_changed.tab_id
+                    _log(f"selected_tab_changed: {tab_id[:8]}")
+                    for window in app.windows:
+                        for tab in window.tabs:
+                            if tab.tab_id == tab_id:
+                                session = tab.current_session
+                                if session:
+                                    await _handle_session(app, session.session_id)
+                                break
+            except Exception as e:
+                _log(f"main loop error: {e}")
+                await asyncio.sleep(1)
 
 
 iterm2.run_forever(main)
