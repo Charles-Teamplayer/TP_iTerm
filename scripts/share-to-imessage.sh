@@ -157,7 +157,10 @@ fi
 # ─── API 호출 ────────────────────────────────────────────────────────────────
 info "발송 중..."
 
-HTTP_CODE=$(curl -s -o /tmp/imsms_send_result.json -w "%{http_code}" \
+RESULT_TEMP=$(mktemp /tmp/imsms_send_result_XXXXXX.json)
+trap "rm -f '$RESULT_TEMP'" EXIT
+
+HTTP_CODE=$(curl -s -o "$RESULT_TEMP" -w "%{http_code}" \
     --max-time "$TIMEOUT" \
     -X POST "${AGENT_URL}/api/send" \
     -H "Content-Type: application/json" \
@@ -168,7 +171,7 @@ if [ "$HTTP_CODE" = "000" ]; then
     exit 2
 fi
 
-RESPONSE=$(cat /tmp/imsms_send_result.json 2>/dev/null || echo "{}")
+RESPONSE=$(cat "$RESULT_TEMP" 2>/dev/null || echo "{}")
 RESULT_CD=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('resultCd','ERR'))" 2>/dev/null || echo "ERR")
 RESULT_MSG=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('resultMsg','알 수 없는 오류'))" 2>/dev/null || echo "알 수 없는 오류")
 IMS_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('imsId',''))" 2>/dev/null || echo "")

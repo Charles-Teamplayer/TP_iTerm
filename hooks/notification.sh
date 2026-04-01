@@ -9,6 +9,8 @@ ACTION="${1:-attention}"
 PROJECT="${2:-$(basename "$PWD")}"
 TAB_STATUS="$HOME/.claude/scripts/tab-status.sh"
 
+[ -f "$TAB_STATUS" ] || exit 0
+
 case "$ACTION" in
     attention)
         bash "$TAB_STATUS" attention "$PROJECT"

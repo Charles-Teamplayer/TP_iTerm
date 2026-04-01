@@ -75,6 +75,13 @@ else
             FAIL_COUNT=0
         fi
         sleep "$INTERVAL"
-        apply_color $MR $MG $MB; sleep "$INTERVAL"
+        apply_color $MR $MG $MB
+        if [ $? -ne 0 ]; then
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            [ $FAIL_COUNT -ge 3 ] && exit 0
+        else
+            FAIL_COUNT=0
+        fi
+        sleep "$INTERVAL"
     done
 fi

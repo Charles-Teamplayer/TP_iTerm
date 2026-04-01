@@ -252,9 +252,13 @@ data['stops'].append({
 data['last_updated'] = timestamp
 
 tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(stops_path))
-with os.fdopen(tmp_fd, 'w') as f:
-    json.dump(data, f, indent=2, ensure_ascii=False)
-os.rename(tmp_path, stops_path)
+try:
+    with os.fdopen(tmp_fd, 'w') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, stops_path)
+except:
+    os.unlink(tmp_path)
+    raise
 
 print(f"[URD] Intentional stop recorded: {window_name} ({os.path.basename(project_dir)})")
 PYEOF

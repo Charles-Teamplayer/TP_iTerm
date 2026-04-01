@@ -31,7 +31,17 @@ if [ -f "$LOCK_FILE" ]; then
         fi
     fi
 fi
-echo $$ > "$LOCK_FILE"
+# noclobber 방식 atomic create
+if ! (set -C; echo $$ > "$LOCK_FILE") 2>/dev/null; then
+    OLD_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        log "cc-fix 이미 실행 중 (PID: $OLD_PID, atomic) — 스킵"
+        exit 0
+    else
+        rm -f "$LOCK_FILE"
+        echo $$ > "$LOCK_FILE"
+    fi
+fi
 trap 'rm -f "$LOCK_FILE"' EXIT
 
 # auto-restore 실행 중이면 스킵
@@ -74,7 +84,7 @@ if [ "${CLIENT_COUNT:-0}" -gt 0 ]; then
     exit 0
 fi
 # linked session(-vN)에도 클라이언트 있으면 스킵 (BUG-CCFIX-LINKEDCHECK 보완)
-LINKED_CLI=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${SESSION}-v" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' ')
+LINKED_CLI=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E "^${SESSION}-v[0-9]+$" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' ')
 if [ "${LINKED_CLI:-0}" -gt 0 ]; then
     log "linked session 클라이언트 있음 (${LINKED_CLI}개) — 스킵"
     exit 0

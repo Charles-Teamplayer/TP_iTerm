@@ -102,7 +102,7 @@ except:
             TAB_PROJECT=$(printf '%s' "$_TAB_DATA" | sed -n '2p')
 
             case "$TAB_STATUS" in
-                waiting|attention|idle_10m|idle_1h|idle_1d|idle_3d|starting)
+                waiting|attention|crashed|idle_10m|idle_1h|idle_1d|idle_3d|starting)
                     if [ -c "$PANE_TTY" ]; then
                         # flash 종료
                         FLASH_PID_FILE="/tmp/tab-flash-${TTY_NAME}.pid"

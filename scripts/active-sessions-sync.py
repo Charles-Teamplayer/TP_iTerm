@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # active-sessions orphan-sync
 # window-groups.json의 프로파일 중 active-sessions에 없는 것을 tmux 기반으로 등록
-import json, os, subprocess, tempfile
+import json, os, re, subprocess, tempfile
 from datetime import datetime, timezone
 
 now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -14,6 +14,8 @@ try:
     with open(wg_path) as f: groups = json.load(f)
     with open(act_path) as f: act = json.load(f)
 except Exception as e:
+    import sys
+    print(f"[active-sessions-sync] load error: {e}", file=sys.stderr)
     exit(0)
 
 # BUG-SYNC-REGCHECK fix: DIR_TO_WINDOW 역매핑 — window_name → project_dir
@@ -77,7 +79,6 @@ for g in groups:
             if len(parts) < 2: continue
             cmd = parts[1]
             if 'claude' in cmd and not any(x in cmd for x in exclude):
-                import re
                 if re.search(r'(?:^|/)claude(?:\s|$|--)', cmd):
                     claude_pid = parts[0]; break
         if not claude_pid: continue

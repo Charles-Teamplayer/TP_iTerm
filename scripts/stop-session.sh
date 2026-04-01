@@ -53,7 +53,7 @@ for r in sorted(result):
 }
 
 is_valid_window() {
-    get_valid_windows | grep -qxF "$1"
+    get_valid_windows 2>/dev/null | grep -qxF "$1"
 }
 
 case "${1:-}" in
