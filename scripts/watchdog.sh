@@ -9,6 +9,7 @@ RESTART_LOG="$HOME/.claude/logs/restart-history.log"
 CRASH_COUNT_DIR="$HOME/.claude/crash-counts"  # 연속 크래시 카운터 (타임스탬프 기반 만료)
 CRASH_MAX=5  # 이 횟수 초과 시 intentional-stop 등록
 CRASH_COUNT_TTL=86400  # 24시간 이상된 카운터 자동 만료
+MONITOR_COOLDOWN=120  # MONITOR 창 복구 쿨다운(초) — 같은 세션 120초 내 재복구 방지
 mkdir -p "$CRASH_COUNT_DIR"
 
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -363,6 +364,11 @@ for path in d.get('activated', []):
                     # login shell로 생성해야 PATH에 claude 포함됨
                     # BUG-B fix: -P -F로 window_id 즉시 캡처 → automatic-rename 비활성화 (자동 "bash" 이름변경 방지)
                     INIT_WIN_ID=$(tmux new-window -t "$TARGET_SESSION" -n "$WINDOW_NAME" -c "$PROJ_ROOT" '/bin/bash -l' -P -F '#{window_id}' 2>/dev/null || true)
+                    # BUG-INIT-WID fix: -P -F가 빈 문자열 반환 시 list-windows fallback 조회
+                    if [ -z "$INIT_WIN_ID" ]; then
+                        sleep 0.3
+                        INIT_WIN_ID=$(tmux list-windows -t "$TARGET_SESSION" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' -v w="$WINDOW_NAME" '$2==w{print $1; exit}')
+                    fi
                     if [ -n "$INIT_WIN_ID" ]; then
                         tmux set-window-option -t "$INIT_WIN_ID" automatic-rename off 2>/dev/null || true
                         tmux rename-window -t "$INIT_WIN_ID" "$WINDOW_NAME" 2>/dev/null || true
@@ -689,6 +695,15 @@ except: pass
     for MON_SESSION in $ACTIVE_SESSIONS_MON; do
         if tmux has-session -t "$MON_SESSION" 2>/dev/null; then
             if ! tmux list-windows -t "$MON_SESSION" -F "#{window_name}" 2>/dev/null | grep -q "^monitor$"; then
+                # BUG-MONITOR-LOOP fix: 세션별 쿨다운 — 120초 내 동일 세션 재복구 방지
+                _MON_CD_FILE="/tmp/.monitor-cooldown-${MON_SESSION}"
+                if [ -f "$_MON_CD_FILE" ]; then
+                    _MON_LAST=$(cat "$_MON_CD_FILE" 2>/dev/null || echo 0)
+                    _MON_NOW=$(date +%s)
+                    if [ $((_MON_NOW - ${_MON_LAST:-0})) -lt "$MONITOR_COOLDOWN" ]; then
+                        continue
+                    fi
+                fi
                 log "MONITOR 창 없음 ($MON_SESSION) — 자동 복구"
                 # BUG-MONITOR-CMD fix: 명령 인수 포함 시 -P -F #{window_id} 출력 안됨
                 # → 창 먼저 생성(-c start-dir) 후 send-keys로 명령 전송
@@ -698,9 +713,11 @@ except: pass
                     tmux set-window-option -t "$_MON_WID" automatic-rename off 2>/dev/null || true
                     tmux rename-window -t "$_MON_WID" monitor 2>/dev/null || true
                     tmux move-window -s "$_MON_WID" -t "$MON_SESSION:999" 2>/dev/null || true
+                    date +%s > "$_MON_CD_FILE"
                     log "MONITOR 창 복구 완료 ($MON_SESSION)"
                     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [tmux-window] MONITOR_RECOVER session=$MON_SESSION wid=$_MON_WID" >> "$HOME/.claude/logs/window-events.log"
                 else
+                    date +%s > "$_MON_CD_FILE"
                     log "ERROR: MONITOR 창 복구 실패 ($MON_SESSION)"
                     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [tmux-window] MONITOR_FAIL session=$MON_SESSION" >> "$HOME/.claude/logs/window-events.log"
                 fi
