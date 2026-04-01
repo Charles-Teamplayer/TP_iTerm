@@ -3,6 +3,7 @@
 # 사용법: session-registry.sh register|unregister|list|crash-detect
 
 REGISTRY="$HOME/.claude/active-sessions.json"
+REGISTRY_LOCK="/tmp/.active-sessions.lock"
 ACTION="${1:-list}"
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 # 앱에서 두 번째 인자로 PROJECT_DIR을 전달하는 경우 우선 사용
@@ -186,7 +187,7 @@ try:
     with os.fdopen(fd, 'w') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     os.replace(tmp_path, registry_path)
-except:
+except Exception:
     os.unlink(tmp_path)
     raise
 
@@ -434,7 +435,7 @@ if crashed:
         with os.fdopen(fd, 'w') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         os.replace(tmp_path, registry_path)
-    except:
+    except Exception:
         os.unlink(tmp_path)
         raise
 
@@ -469,7 +470,7 @@ try:
     with os.fdopen(fd, 'w') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     os.replace(tmp_path, registry_path)
-except:
+except Exception:
     os.unlink(tmp_path)
     raise
 PYEOF

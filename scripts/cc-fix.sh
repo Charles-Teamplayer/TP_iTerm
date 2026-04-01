@@ -12,11 +12,14 @@ if [ -f "$LOG" ] && [ "$(wc -l < "$LOG" 2>/dev/null)" -gt 5000 ] 2>/dev/null; th
     tail -2500 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG" 2>/dev/null || true
 fi
 
-# 세션별 프로세스 lock
+# 세션별 프로세스 lock (해시화로 예측 불가능성 강화)
 # BUG-LOCK-SIGKILL: SIGKILL 받으면 trap EXIT가 실행되지 않으므로 lock age 체크 추가
-LOCK_FILE="/tmp/.cc-fix-lock-${SESSION//[^a-zA-Z0-9]/_}"
+LOCK_HASH=$(printf '%s' "$SESSION" | md5 2>/dev/null | cut -c1-8 || echo "unknown")
+LOCK_FILE="/tmp/.cc-fix-lock-${LOCK_HASH}"
 if [ -f "$LOCK_FILE" ]; then
-    LOCK_AGE=$(( $(date +%s) - $(stat -f %m "$LOCK_FILE" 2>/dev/null || echo 0) ))
+    # stat 실패 시 현재 시각으로 대체 → age=0, lock 파일 유지
+    _LOCK_MTIME=$(stat -f %m "$LOCK_FILE" 2>/dev/null || date +%s)
+    LOCK_AGE=$(( $(date +%s) - _LOCK_MTIME ))
     if [ "$LOCK_AGE" -gt 600 ]; then
         rm -f "$LOCK_FILE"
         log "오래된 lock 파일 삭제 (age=${LOCK_AGE}s, SIGKILL 정리)"

@@ -10,11 +10,10 @@
 
 # 설정
 LOG_FILE="$HOME/claude/TP_history/_global/commits.log"
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 CLAUDE_PROJECTS_DIR="$HOME/claude"  # Claude 작업 디렉토리
 
 log() {
-    echo "[$TIMESTAMP] $1" >> "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
 }
 
 # 로그 로테이션 (20000줄 초과 시 10000줄 유지)
@@ -43,7 +42,7 @@ auto_commit_project() {
     CHANGED_FILES=$(git status --porcelain | wc -l | tr -d ' ')
 
     # 커밋 메시지 생성
-    COMMIT_MSG="Auto-commit: $CHANGED_FILES file(s) changed at $TIMESTAMP
+    COMMIT_MSG="Auto-commit: $CHANGED_FILES file(s) changed at $(date '+%Y-%m-%d %H:%M:%S')
 
 🤖 Generated with Claude Code Auto-Commit
 

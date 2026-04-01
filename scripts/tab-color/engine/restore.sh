@@ -11,18 +11,18 @@ for JSON_FILE in "$STATE_DIR"/*.json; do
     [ -c "$TTY_PATH" ] || continue
     [ -w "$TTY_PATH" ] || continue
 
-    _RST_DATA=$(_JF="$JSON_FILE" python3 -c "
+    # BUG#5 fix: 2회 파일 읽기 → 1회 통합
+    _DATA=$(_JF="$JSON_FILE" python3 -c "
 import json, os
 try:
     with open(os.environ['_JF']) as _f:
         d=json.load(_f)
-    print(d.get('type','idle'))
-    print(d.get('project',''))
+    print(d.get('type','idle')); print(d.get('project',''))
 except:
     print('idle'); print('')
 " 2>/dev/null)
-    STATE=$(printf '%s' "$_RST_DATA" | sed -n '1p')
-    PROJECT=$(printf '%s' "$_RST_DATA" | sed -n '2p')
+    STATE=$(printf '%s' "$_DATA" | sed -n '1p')
+    PROJECT=$(printf '%s' "$_DATA" | sed -n '2p')
 
     TAB_TTY="$TTY_PATH" bash "$HOME/.claude/tab-color/engine/set-color.sh" "$STATE" "$PROJECT"
     RESTORED=$((RESTORED + 1))

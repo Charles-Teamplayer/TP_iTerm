@@ -31,7 +31,9 @@ FLAG_FILE_STALE="$HOME/.claude/logs/.auto-restore-done"
 # BUG-LOCK-SIGKILL: SIGKILL 받으면 trap EXIT가 실행되지 않으므로 lock age 체크 추가
 LOCK_FILE="/tmp/.auto-restore.lock"
 if [ -f "$LOCK_FILE" ]; then
-    LOCK_AGE=$(( $(date +%s) - $(stat -f %m "$LOCK_FILE" 2>/dev/null || echo 0) ))
+    # stat 실패 시 현재 시각으로 대체 → age=0, lock 파일 유지 (살아있는 프로세스 보호)
+    _LOCK_MTIME=$(stat -f %m "$LOCK_FILE" 2>/dev/null || date +%s)
+    LOCK_AGE=$(( $(date +%s) - _LOCK_MTIME ))
     if [ "$LOCK_AGE" -gt 600 ]; then
         rm -f "$LOCK_FILE"
         log "오래된 lock 파일 삭제 (age=${LOCK_AGE}s, SIGKILL 정리)"
