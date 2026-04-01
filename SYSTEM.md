@@ -1,6 +1,6 @@
 # TP_iTerm
 
-> v2.5 | 2026-03-31 | iter135 — SYSTEM.md 현행화 (레거시 파일 삭제 반영)
+> v2.6 | 2026-04-01 | Round 96 — 파일 권한 정책 명문화 (반복 권한 이슈 근절)
 
 ## 개요
 
@@ -141,6 +141,21 @@ bash install.sh
 6. LaunchAgent 등록
 
 필수: iTerm2 + `npm install -g @anthropic-ai/claude-code`
+
+## 파일 권한 정책
+
+> Round 93~95에서 watchdog.sh 권한이 0755→0600→0755로 반복 변경된 이슈 근절 목적 (Round 96 명문화)
+
+| 대상 | 권한 | 이유 |
+|------|:----:|------|
+| `scripts/*.sh` | 0755 | 실행 가능해야 함 (LaunchAgent, Hook에서 직접 호출) |
+| `scripts/*.py` | 0755 | 실행 가능해야 함 |
+| `scripts/tab-color/engine/*.sh` | 0755 | 실행 가능해야 함 |
+| `activated-sessions.json` | 0644 | 데이터 파일 (실행 불필요) |
+| `configs/*.yml`, `configs/*.json` | 0644 | 설정 파일 (실행 불필요) |
+| `configs/*.plist` | 0644 | LaunchAgent 설정 (launchd가 읽기만 함) |
+
+**금지**: 스크립트(.sh, .py)의 실행 권한(+x)을 제거하지 말 것. 제거 시 LaunchAgent/Hook/watchdog 전체 장애 발생.
 
 ## QA 결과 (2026-03-31, Ralph Loop iter107~135 전수조사)
 
