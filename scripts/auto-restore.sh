@@ -46,7 +46,17 @@ if [ -f "$LOCK_FILE" ]; then
         fi
     fi
 fi
-echo $$ > "$LOCK_FILE"
+# noclobber(set -C) 방식 atomic create — 동시 기동 레이스 방어 (macOS flock 없음)
+if ! (set -C; echo $$ > "$LOCK_FILE") 2>/dev/null; then
+    OLD_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        log "이미 auto-restore 실행 중 (PID: $OLD_PID, atomic) — 스킵"
+        exit 0
+    else
+        rm -f "$LOCK_FILE"
+        echo $$ > "$LOCK_FILE"
+    fi
+fi
 trap 'rm -f "$LOCK_FILE"' EXIT
 
 # 환경변수 로드 (LaunchAgent 비-TTY 환경 — .zshrc source 금지: iTerm2 integration 오류 발생)
@@ -95,18 +105,22 @@ PROTECTED_PIDS_FILE="$HOME/.claude/protected-claude-pids"
 PROTECTED_PIDS=""
 if [ -f "$PROTECTED_PIDS_FILE" ]; then
     # FIX BUG-PROTECTED-PIDS-STALE: 살아있는 PID만 유효 (stale 항목 무시 + 파일 정리)
-    LIVE_PIDS=""
+    LIVE_PIDS_ARRAY=()
     while IFS= read -r ppid; do
         [ -z "$ppid" ] && continue
         if kill -0 "$ppid" 2>/dev/null; then
             PROTECTED_PIDS="$PROTECTED_PIDS $ppid"
-            LIVE_PIDS="$LIVE_PIDS$ppid"$'\n'
+            LIVE_PIDS_ARRAY+=("$ppid")
         fi
     done < "$PROTECTED_PIDS_FILE"
-    # stale PID 제거
-    if [ "$(wc -l < "$PROTECTED_PIDS_FILE" 2>/dev/null)" -gt "$(echo -n "$LIVE_PIDS" | wc -l)" ]; then
-        echo -n "$LIVE_PIDS" > "$PROTECTED_PIDS_FILE"
-        log "stale PID 정리됨"
+    # stale PID 제거 (atomic write — 직접 덮어쓰기 시 중단 시 파일 손상 방지)
+    ORIG_COUNT=$(wc -l < "$PROTECTED_PIDS_FILE" 2>/dev/null || echo 0)
+    NEW_COUNT=${#LIVE_PIDS_ARRAY[@]}
+    if [ "$ORIG_COUNT" -gt "$NEW_COUNT" ]; then
+        _PID_TMP=$(mktemp "/tmp/.protected-pids-XXXXXX")
+        ( IFS=$'\n'; echo "${LIVE_PIDS_ARRAY[*]}" > "$_PID_TMP" )
+        mv "$_PID_TMP" "$PROTECTED_PIDS_FILE"
+        log "stale PID 정리됨 ($ORIG_COUNT → $NEW_COUNT)"
     fi
     [ -n "$PROTECTED_PIDS" ] && log "보호 PID 목록:$PROTECTED_PIDS"
 fi
@@ -166,7 +180,8 @@ for candidate in [activated_file, activated_file + '.bak']:
 }
 
 # window-groups.json에서 활성 그룹(isWaitingList=false) 목록 읽기
-# iter90: 파싱 오류 명확화 — stderr 캡처
+# iter90: 파싱 오류 명확화 — stderr를 별도 파일로 분리 (stdout 오염 방지)
+_WG_ERR_FILE="/tmp/.auto-restore-wg-err.$$"
 GROUPS_JSON=$(WG_PATH="$WINDOW_GROUPS" python3 -c "
 import json, sys, os
 path = os.environ['WG_PATH']
@@ -183,13 +198,15 @@ except json.JSONDecodeError as e:
 except Exception as e:
     print(f'PARSE_ERROR: {e}', file=sys.stderr)
     sys.exit(1)
-" 2>&1)
+" 2>"$_WG_ERR_FILE")
 PARSE_EXIT=$?
 
 if [ $PARSE_EXIT -ne 0 ]; then
-    log "ERROR: window-groups.json 파싱 실패 — $(echo "$GROUPS_JSON" | head -1)"
+    log "ERROR: window-groups.json 파싱 실패 — $(cat "$_WG_ERR_FILE" 2>/dev/null | head -1)"
+    rm -f "$_WG_ERR_FILE"
     exit 1
 fi
+rm -f "$_WG_ERR_FILE"
 
 if [ -z "$GROUPS_JSON" ]; then
     log "활성 그룹 없음 (isWaitingList=false 그룹 없거나 profileNames 비어있음)"
@@ -289,7 +306,7 @@ except:
         fi
 
         TOTAL_CREATED=$((TOTAL_CREATED + 1))
-        # FIX BUG-DELAY-LINEAR: 지수 증가로 변경 (3, 6, 10, 15, 21...) → 최대 30초 캡
+        # 선형 증가 (3, 6, 9, ... → 최대 30초 캡): 동시 claude 기동 부하 분산
         DELAY=$(( DELAY + 3 ))
         [ "$DELAY" -gt 30 ] && DELAY=30
         log "창 생성: $SESSION_NAME/$PROFILE_NAME (delay ${DELAY}s)"
