@@ -29,7 +29,7 @@ macOS Claude Code 세션 자동화. iTerm2 + tmux + LaunchAgent 기반.
 
 - **운영 경로**: `~/claude/TP_iTerm/`
 - **스크립트 실행 경로**: `~/.claude/scripts/`
-- **smug 설정**: `~/claude/TP_iTerm/smug/claude-work.yml` (동적 생성)
+- **smug 설정**: `~/claude/TP_iTerm/configs/claude-work.yml` (동적 생성)
 - **activated-sessions**: `~/claude/TP_iTerm/activated-sessions.json` (SPOF — 백업 필수)
 
 ## 작업 체크리스트
