@@ -49,7 +49,8 @@ if os.path.exists(as_path):
 
 for r in sorted(result):
     print(r)
-" 2>&1
+"
+# stderr는 터미널에 직접 출력 (is_valid_window grep 오염 방지)
 }
 
 is_valid_window() {

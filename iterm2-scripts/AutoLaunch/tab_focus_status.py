@@ -32,9 +32,13 @@ def _kill_flash(tty_name):
         return False
     try:
         with open(pid_file) as f:
-            pid = int(f.read().strip())
+            pid_str = f.read().strip()
+        if not pid_str:
+            os.remove(pid_file)
+            return False
+        pid = int(pid_str)
         os.kill(pid, signal.SIGTERM)
-    except Exception:
+    except (ValueError, ProcessLookupError, PermissionError, FileNotFoundError):
         pass
     try:
         os.remove(pid_file)

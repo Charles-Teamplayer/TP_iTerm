@@ -43,45 +43,52 @@ case "$ACTION" in
         fi
 
         REG_REGISTRY="$REGISTRY" \
+        REG_LOCK="$REGISTRY_LOCK" \
         REG_PROJECT_DIR="$PROJECT_DIR" \
         REG_PROJECT_NAME="$PROJECT_NAME" \
         REG_PID="${PID:-unknown}" \
         REG_TTY="${SESSION_TTY:-}" \
         REG_TIMESTAMP="$TIMESTAMP" \
         python3 << 'PYEOF'
-import json, os, tempfile
+import json, os, tempfile, fcntl
 
 registry_path = os.environ['REG_REGISTRY']
+lock_path = os.environ.get('REG_LOCK', '/tmp/.active-sessions.lock')
 project_dir = os.environ['REG_PROJECT_DIR']
 project_name = os.environ['REG_PROJECT_NAME']
 pid = os.environ['REG_PID']
 tty = os.environ['REG_TTY']
 timestamp = os.environ['REG_TIMESTAMP']
 
-with open(registry_path, 'r') as f:
-    data = json.load(f)
+with open(lock_path, 'w') as lf:
+    fcntl.flock(lf, fcntl.LOCK_EX)
+    try:
+        with open(registry_path, 'r') as f:
+            data = json.load(f)
 
-data['sessions'] = [s for s in data['sessions'] if s.get('dir') != project_dir]
+        data['sessions'] = [s for s in data['sessions'] if s.get('dir') != project_dir]
 
-data['sessions'].append({
-    "project": project_name,
-    "dir": project_dir,
-    "pid": pid,
-    "tty": tty,
-    "started": timestamp,
-    "last_heartbeat": timestamp
-})
-data['last_updated'] = timestamp
+        data['sessions'].append({
+            "project": project_name,
+            "dir": project_dir,
+            "pid": pid,
+            "tty": tty,
+            "started": timestamp,
+            "last_heartbeat": timestamp
+        })
+        data['last_updated'] = timestamp
 
-dir_name = os.path.dirname(registry_path)
-fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
-try:
-    with os.fdopen(fd, 'w') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    os.replace(tmp_path, registry_path)
-except Exception:
-    os.unlink(tmp_path)
-    raise
+        dir_name = os.path.dirname(registry_path)
+        fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_path, registry_path)
+        except Exception:
+            os.unlink(tmp_path)
+            raise
+    finally:
+        fcntl.flock(lf, fcntl.LOCK_UN)
 
 print(f"[URD] Session registered: {project_name} (PID: {pid})")
 PYEOF

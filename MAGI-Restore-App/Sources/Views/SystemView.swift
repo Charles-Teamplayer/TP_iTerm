@@ -25,7 +25,7 @@ final class SystemViewModel: ObservableObject {
 
     private func shellq(_ s: String) -> String { ShellService.shellq(s) }
 
-func startAutoRefresh() {
+    func startAutoRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }

@@ -4,6 +4,7 @@ import AppKit
 // MARK: - Debug Logger
 
 func badgeLog(_ msg: String) {
+    #if DEBUG
     let line = "[\(Date())] \(msg)\n"
     let path = "/tmp/badge_debug.log"
     if let data = line.data(using: .utf8) {
@@ -15,6 +16,7 @@ func badgeLog(_ msg: String) {
             try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
         }
     }
+    #endif
 }
 
 // MARK: - Full-Row Native Drag Overlay

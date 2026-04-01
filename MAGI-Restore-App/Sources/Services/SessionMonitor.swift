@@ -1292,13 +1292,12 @@ final class SessionMonitor: ObservableObject {
         }
 
         // 최종 순서로 이동 (1부터 시작)
-        for (i, profile) in order.enumerated() {
+        for i in order.indices {
             let tempIdx = tempBase + i
             let targetIdx = i + 1
             await ShellService.runAsync(
                 "tmux move-window -s '\(shellEscape(sname)):\(tempIdx)' -t '\(shellEscape(sname)):\(targetIdx)' 2>/dev/null; true"
             )
-            _ = profile
         }
 
         // BUG-001 fix: 999에 다른 창이 있으면 먼저 900번대 임시 위치로 이동 후 monitor 배치

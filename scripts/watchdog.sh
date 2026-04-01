@@ -642,17 +642,32 @@ print(' '.join(s.get('tty','') for s in d.get('sessions',[]) if s.get('tty',''))
         [ "$LEGACY_CLEANED" -gt 0 ] && log "CLEANUP: orphan legacy tab-states ${LEGACY_CLEANED}개 정리"
     fi
 
+    # BUG-WATCHDOG-ZOMBIE-CLEANUP fix: 좀비 프로세스 감지 + 정리 (kill -9 + waitpid)
     # 3. 좀비 프로세스 감지 (72시간 이상 + tty 없음)
     ZOMBIES=$(ps -eo pid,tty,etime,command 2>/dev/null | grep "[c]laude" | grep -v "Claude.app\|Helper\|watchdog\|auto-restore\|tmux\|bash.*claude-work\|bash.*claude-takedown" | awk '{
         # etime 형식: DD-HH:MM:SS 또는 HH:MM:SS 또는 MM:SS
         split($3, parts, "-");
         days = 0;
         if (length(parts) == 2) { days = parts[1]+0; }
-        if (days >= 3 && $2 == "??") print $1, $4
+        if (days >= 3 && $2 == "??") print $1
     }' 2>/dev/null || true)
 
     if [ -n "$ZOMBIES" ]; then
         log "ZOMBIE DETECTED: $ZOMBIES"
+        # 감지된 좀비 프로세스 정리 (부모 프로세스도 함께 kill)
+        echo "$ZOMBIES" | while read -r zpid; do
+            # 부모 PID 조회
+            ppid=$(ps -o ppid= -p "$zpid" 2>/dev/null | tr -d ' ')
+            # 자식 프로세스 먼저 kill
+            pkill -P "$zpid" 2>/dev/null || true
+            # 좀비 프로세스 자체 kill -9
+            kill -9 "$zpid" 2>/dev/null || true
+            # 부모가 좀비 자식을 기다리도록 유도 (wait() 호출)
+            if [ -n "$ppid" ] && [ "$ppid" != "1" ]; then
+                kill -0 "$ppid" 2>/dev/null && kill -CHLD "$ppid" 2>/dev/null || true
+            fi
+            log "ZOMBIE CLEANUP: PID $zpid 정리 완료 (parent=$ppid)"
+        done
     fi
 
     # 4. iTerm2 생존 확인 (ps -A 사용 — tmux sandbox에서 pgrep -x 오탐 방지)

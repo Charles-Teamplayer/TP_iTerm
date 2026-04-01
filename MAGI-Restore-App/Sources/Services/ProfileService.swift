@@ -55,8 +55,9 @@ final class ProfileService: ObservableObject {
     }
 
     func save(_ profiles: [SmugProfile]) {
+        // delay가 0인 항목만 index * 5로 채움 — 수동 설정 delay는 유지
         let normalized = profiles.enumerated().map { idx, p in
-            SmugProfile(id: p.id, name: p.name, root: p.root, delay: idx * 5, enabled: p.enabled)
+            SmugProfile(id: p.id, name: p.name, root: p.root, delay: p.delay > 0 ? p.delay : idx * 5, enabled: p.enabled)
         }
         let yml = generateYml(normalized, sessionName: "claude-work")
         try? yml.write(toFile: defaultYmlPath, atomically: true, encoding: .utf8)

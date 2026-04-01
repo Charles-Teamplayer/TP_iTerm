@@ -117,17 +117,14 @@ except: pass
 
     // iTerm2를 열고 tmux -CC attach 실행 (작업탭 표시)
     func openInITerm(sessionName: String = "claude-work") {
-        let safeSession = sessionName
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
+        // ShellService.shellq: 싱글쿼트 래핑 + 내부 싱글쿼트 이스케이프 (shell injection 방지)
+        let quotedSession = ShellService.shellq(sessionName)
         let script = """
         tell application "iTerm2"
             activate
             set newWin to (create window with default profile)
             tell current session of newWin
-                write text "tmux -CC attach -t \(safeSession) 2>/dev/null || echo 'tmux: \(safeSession)'"
+                write text "tmux -CC attach -t \(quotedSession) 2>/dev/null || echo 'tmux: session not found'"
             end tell
         end tell
         """

@@ -3,9 +3,7 @@ import SwiftUI
 struct BackupView: View {
     @StateObject private var service = BackupService()
     @State private var snapshotToRestore: ConfigSnapshot? = nil
-    @State private var showRestoreConfirm = false
     @State private var snapshotToDelete: ConfigSnapshot? = nil
-    @State private var showDeleteConfirm = false
     @State private var isRestoring = false
     @State private var restoreResult: Bool? = nil
 
@@ -65,46 +63,16 @@ struct BackupView: View {
                         Spacer()
                         Button("Restore") {
                             snapshotToRestore = snapshot
-                            showRestoreConfirm = true
                         }
                         .buttonStyle(.bordered)
                         .tint(.orange)
-                        .confirmationDialog(
-                            "Restore '\(snapshot.createdAt)'?\n현재 설정 파일이 덮어써집니다.",
-                            isPresented: $showRestoreConfirm,
-                            titleVisibility: .visible
-                        ) {
-                            Button("Restore", role: .destructive) {
-                                if let snap = snapshotToRestore {
-                                    Task {
-                                        isRestoring = true
-                                        restoreResult = await service.restoreSnapshot(snap)
-                                        isRestoring = false
-                                    }
-                                }
-                            }
-                            Button("Cancel", role: .cancel) {}
-                        }
 
                         Button(role: .destructive) {
                             snapshotToDelete = snapshot
-                            showDeleteConfirm = true
                         } label: {
                             Image(systemName: "trash")
                         }
                         .buttonStyle(.borderless)
-                        .confirmationDialog(
-                            "Delete this snapshot?",
-                            isPresented: $showDeleteConfirm,
-                            titleVisibility: .visible
-                        ) {
-                            Button("Delete", role: .destructive) {
-                                if let snap = snapshotToDelete {
-                                    service.deleteSnapshot(snap)
-                                }
-                            }
-                            Button("Cancel", role: .cancel) {}
-                        }
                     }
                     .padding(.vertical, 4)
                 }
@@ -128,12 +96,11 @@ struct BackupView: View {
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                         .truncationMode(.head)
-                    Spacer()
-                    Button("Change") { selectSnapshotPath() }
-                        .buttonStyle(.link)
-                        .font(.caption)
                 }
                 Spacer()
+                Button("Change") { selectSnapshotPath() }
+                    .buttonStyle(.link)
+                    .font(.caption)
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
@@ -144,6 +111,44 @@ struct BackupView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 restoreResult = nil
             }
+        }
+        // confirmationDialog를 List 밖 (VStack 레벨)에서 단일 등록 — 다중 등록 방지
+        .confirmationDialog(
+            "Restore '\(snapshotToRestore?.createdAt ?? "")'?\n현재 설정 파일이 덮어써집니다.",
+            isPresented: Binding(
+                get: { snapshotToRestore != nil && !isRestoring },
+                set: { if !$0 { snapshotToRestore = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Restore", role: .destructive) {
+                if let snap = snapshotToRestore {
+                    let captured = snap
+                    snapshotToRestore = nil
+                    Task {
+                        isRestoring = true
+                        restoreResult = await service.restoreSnapshot(captured)
+                        isRestoring = false
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { snapshotToRestore = nil }
+        }
+        .confirmationDialog(
+            "Delete this snapshot?",
+            isPresented: Binding(
+                get: { snapshotToDelete != nil },
+                set: { if !$0 { snapshotToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let snap = snapshotToDelete {
+                    service.deleteSnapshot(snap)
+                    snapshotToDelete = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { snapshotToDelete = nil }
         }
     }
 
