@@ -19,27 +19,6 @@ _log() {
     printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*" >> "$LOG_FILE" 2>/dev/null
 }
 
-# --- config 읽기 (jq 우선, python3 fallback) ---
-_config() {
-    local KEY="$1" DEFAULT="${2:-}"
-    if command -v jq &>/dev/null; then
-        jq -r "$KEY // \"$DEFAULT\"" "$CONFIG" 2>/dev/null || echo "$DEFAULT"
-    else
-        python3 -c "
-import json, sys
-try:
-    d = json.load(open('$CONFIG'))
-    keys = '$KEY'.lstrip('.').split('.')
-    v = d
-    for k in keys:
-        v = v[k]
-    print(v if v is not None else '$DEFAULT')
-except:
-    print('$DEFAULT')
-" 2>/dev/null || echo "$DEFAULT"
-    fi
-}
-
 # --- TTY 찾기 (깊이 15) ---
 find_tty() {
     [ -n "${TAB_TTY:-}" ] && [ -c "$TAB_TTY" ] && { echo "$TAB_TTY"; return; }

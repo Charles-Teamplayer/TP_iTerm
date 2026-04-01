@@ -78,7 +78,7 @@ try:
     with os.fdopen(fd, 'w') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     os.replace(tmp_path, registry_path)
-except:
+except Exception:
     os.unlink(tmp_path)
     raise
 

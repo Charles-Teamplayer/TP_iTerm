@@ -146,7 +146,7 @@ fi
 # 부팅/재시작 후 이전 linked sessions 누적 방지
 log "linked session 초기 정리 시작 (15분+ 클라이언트 없음)"
 tmux list-sessions -F '#{session_name}|#{session_created}' 2>/dev/null | grep -E '.*-v[0-9]+\|' | while IFS='|' read -r lsname lscreated; do
-    CLIENT_COUNT_INIT=$(tmux list-clients -t "$lsname" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
+    CLIENT_COUNT_INIT=$(tmux list-clients -t "$lsname" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' \n')
     AGE_INIT=$(( NOW_INIT - ${lscreated:-0} ))
     if [ "${CLIENT_COUNT_INIT:-0}" -eq 0 ] && [ "$AGE_INIT" -gt 900 ]; then
         tmux kill-session -t "$lsname" 2>/dev/null && log "초기 정리: $lsname (${AGE_INIT}초 경과, 클라이언트 없음)"
@@ -465,15 +465,16 @@ for path in d.get('activated', []):
                         sleep 0.5
                     done
                 fi
-                # printf '%q': WINDOW_NAME 직접 삽입 → shell injection 방지
-                _SAFE_WN=$(printf '%q' "$WINDOW_NAME")
+                # BUG-INJECTION fix (iter60): tmux send-keys에 배열 인자 전달 (shell 재평가 원천 차단)
+                # printf '%q'는 불충분 — tmux의 -L flag를 사용하면 리터럴 전달 가능
                 if [ -n "$WIN_IDX_NEW" ]; then
                     tmux set-window-option -t "$TARGET_SESSION:$WIN_IDX_NEW" automatic-rename off 2>/dev/null
-                    tmux send-keys -t "$TARGET_SESSION:$WIN_IDX_NEW" "(bash ~/.claude/scripts/tab-status.sh starting ${_SAFE_WN} 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
+                    # -L flag: 인자들을 개별 리스트로 전달 (shell 파싱 없음)
+                    tmux send-keys -t "$TARGET_SESSION:$WIN_IDX_NEW" -L "(bash ~/.claude/scripts/tab-status.sh starting" "$WINDOW_NAME" "2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions"
                 elif [ -n "$WIN_ID_NEW" ]; then
                     # window_id(@N) 기반 fallback — dot 이름 포함 세션 안전 처리
                     tmux set-window-option -t "$WIN_ID_NEW" automatic-rename off 2>/dev/null
-                    tmux send-keys -t "$WIN_ID_NEW" "(bash ~/.claude/scripts/tab-status.sh starting ${_SAFE_WN} 2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions" Enter
+                    tmux send-keys -t "$WIN_ID_NEW" -L "(bash ~/.claude/scripts/tab-status.sh starting" "$WINDOW_NAME" "2>/dev/null || true) && unset CLAUDECODE && claude --dangerously-skip-permissions --continue 2>/dev/null || claude --dangerously-skip-permissions"
                 else
                     log "WARN: $WINDOW_NAME 창 index/id 조회 실패 — 재시작 명령 스킵"
                 fi
@@ -790,10 +791,10 @@ HOTADD_PYEOF
             # BUG-CCFIX-LINKEDCHECK fix: main session + linked sessions(-vN) 모두 확인
             # linked session이 attached되면 main session 클라이언트는 0으로 보이므로
             # claude-work-v* 등 linked sessions에도 클라이언트가 있으면 cc-fix 스킵
-            CLIENT_COUNT=$(tmux list-clients -t "$CC_SESSION" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
+            CLIENT_COUNT=$(tmux list-clients -t "$CC_SESSION" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' \n')
             if [ "${CLIENT_COUNT:-0}" -eq 0 ]; then
                 # BUG#6 fix: 2개 tmux 호출 → 1개로 통합 (race 제거)
-                LINKED_CLIENT_COUNT=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${CC_SESSION}-v" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' ')
+                LINKED_CLIENT_COUNT=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${CC_SESSION}-v" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' \n')
                 if [ "${LINKED_CLIENT_COUNT:-0}" -gt 0 ]; then
                     continue  # linked session에 클라이언트 있음 — cc-fix 불필요
                 fi
@@ -816,13 +817,28 @@ HOTADD_PYEOF
     # 5.5. active-sessions orphan-sync (1시간 주기)
     # window-groups.json의 프로파일 중 active-sessions에 없는 것을 tmux 기반으로 보완 등록
     ORPHAN_SYNC_LOCK="/tmp/.orphan-sync-last"
+    ORPHAN_SYNC_LOCK_FD="/tmp/.orphan-sync.lock"
     LAST_OS=0
     [ -f "$ORPHAN_SYNC_LOCK" ] && LAST_OS=$(cat "$ORPHAN_SYNC_LOCK" 2>/dev/null || echo 0)
     NOW_OS=$(date +%s)
     if [ $((NOW_OS - LAST_OS)) -gt 3600 ]; then
-        echo "$NOW_OS" > "$ORPHAN_SYNC_LOCK"
-        SYNC_RESULT=$(python3 "$HOME/.claude/scripts/active-sessions-sync.py" 2>/dev/null || true)
-        [ -n "$SYNC_RESULT" ] && log "[orphan-sync] $SYNC_RESULT"
+        # BUG-CRITICAL fix: 파일 쓰기 전 원자적 잠금 (race condition 방지)
+        exec 9>"$ORPHAN_SYNC_LOCK_FD"
+        flock -x -n 9 2>/dev/null || {
+            # 다른 프로세스가 이미 실행 중 → 스킵
+            exec 9>&-
+            continue
+        }
+        # 잠금 획득 후 타임스탬프 재확인 (TOCTOU 방지)
+        LAST_OS=$(cat "$ORPHAN_SYNC_LOCK" 2>/dev/null || echo 0)
+        NOW_OS=$(date +%s)
+        if [ $((NOW_OS - LAST_OS)) -gt 3600 ]; then
+            echo "$NOW_OS" > "$ORPHAN_SYNC_LOCK"
+            SYNC_RESULT=$(python3 "$HOME/.claude/scripts/active-sessions-sync.py" 2>/dev/null || true)
+            [ -n "$SYNC_RESULT" ] && log "[orphan-sync] $SYNC_RESULT"
+        fi
+        flock -u 9
+        exec 9>&-
 
         # activated-sessions.json 자동 스캔 — ~/claude의 새 디렉토리 추가
         DIRSCAN_RESULT=$(python3 << 'DIRSCAN_PYEOF'
@@ -892,7 +908,7 @@ DIRSCAN_PYEOF
         tmux list-sessions -F '#{session_name}|#{session_created}' 2>/dev/null | grep -E '.*-v[0-9]+\|' | while IFS='|' read -r lsname lscreated; do
             # iter57: 세션 존재 재확인 (list-sessions 이후 kill 가능성 방어)
             tmux has-session -t "$lsname" 2>/dev/null || continue
-            CLIENT_COUNT_LS=$(tmux list-clients -t "$lsname" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
+            CLIENT_COUNT_LS=$(tmux list-clients -t "$lsname" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' \n')
             AGE_LS=$(( NOW_CLEANUP - ${lscreated:-0} ))
             if [ "${CLIENT_COUNT_LS:-0}" -eq 0 ] && [ "$AGE_LS" -gt 3600 ]; then  # 1시간 이상 클라이언트 없음
                 tmux kill-session -t "$lsname" 2>/dev/null && log "orphan linked session 정리: $lsname (${AGE_LS}초 전 생성)"
