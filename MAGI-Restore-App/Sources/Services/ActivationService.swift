@@ -6,18 +6,23 @@ import Foundation
 final class ActivationService {
     static let shared = ActivationService()
     private let filePath = NSHomeDirectory() + "/.claude/activated-sessions.json"
+    private var cache: Set<String>? = nil  // in-memory 캐시 (파일 I/O 중복 방지)
 
     private init() {}
 
     // MARK: - Read
 
     func loadActivated() -> Set<String> {
+        if let cached = cache { return cached }
         for path in [filePath, filePath + ".bak"] {
             guard let data = FileManager.default.contents(atPath: path),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let list = obj["activated"] as? [String] else { continue }
-            return Set(list)
+            let result = Set(list)
+            cache = result
+            return result
         }
+        cache = []
         return []
     }
 
@@ -30,12 +35,14 @@ final class ActivationService {
     func activate(root: String) {
         var set = loadActivated()
         set.insert(normalizedRoot(root))
+        cache = set
         persist(set)
     }
 
     func deactivate(root: String) {
         var set = loadActivated()
         set.remove(normalizedRoot(root))
+        cache = set
         persist(set)
     }
 

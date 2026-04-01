@@ -169,34 +169,41 @@ except Exception as e:
     unregister)
         # 세션 해제 (내부용 — intentional-stop에서 호출)
         UNREG_REGISTRY="$REGISTRY" \
+        UNREG_LOCK="$REGISTRY_LOCK" \
         UNREG_PROJECT_DIR="$PROJECT_DIR" \
         UNREG_PROJECT_NAME="$PROJECT_NAME" \
         UNREG_TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
         python3 << 'PYEOF'
-import json, os, tempfile
+import json, os, tempfile, fcntl
 
 registry_path = os.environ['UNREG_REGISTRY']
+lock_path = os.environ.get('UNREG_LOCK', '/tmp/.active-sessions.lock')
 project_dir = os.environ['UNREG_PROJECT_DIR']
 project_name = os.environ['UNREG_PROJECT_NAME']
 timestamp = os.environ['UNREG_TIMESTAMP']
 
-with open(registry_path, 'r') as f:
-    data = json.load(f)
+with open(lock_path, 'w') as lf:
+    fcntl.flock(lf, fcntl.LOCK_EX)
+    try:
+        with open(registry_path, 'r') as f:
+            data = json.load(f)
 
-before = len(data['sessions'])
-data['sessions'] = [s for s in data['sessions'] if s.get('dir') != project_dir]
-after = len(data['sessions'])
-data['last_updated'] = timestamp
+        before = len(data['sessions'])
+        data['sessions'] = [s for s in data['sessions'] if s.get('dir') != project_dir]
+        after = len(data['sessions'])
+        data['last_updated'] = timestamp
 
-dir_name = os.path.dirname(registry_path)
-fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
-try:
-    with os.fdopen(fd, 'w') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    os.replace(tmp_path, registry_path)
-except Exception:
-    os.unlink(tmp_path)
-    raise
+        dir_name = os.path.dirname(registry_path)
+        fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_path, registry_path)
+        except Exception:
+            os.unlink(tmp_path)
+            raise
+    finally:
+        fcntl.flock(lf, fcntl.LOCK_UN)
 
 if before > after:
     print(f"[URD] Session unregistered: {project_name}")

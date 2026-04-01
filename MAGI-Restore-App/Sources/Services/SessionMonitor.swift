@@ -848,8 +848,11 @@ final class SessionMonitor: ObservableObject {
         let escapedSession = shellEscape(safeSession)
         let mkdirPart = createDir ? "mkdir -p '\(escapedRoot)' && " : ""
         let sleepPart = delay > 0 ? "sleep \(delay) && " : ""
-        let winNameForStatus = name.replacingOccurrences(of: "\"", with: "\\\"")
-                                   .replacingOccurrences(of: "'", with: "'\\''")
+        // SEC-001 fix: send-keys 인수를 싱글쿼트로 래핑 (restoreSession/checkAutoSync와 일관성)
+        // 더블쿼트 래핑 시 $(), 백틱 등 쉘 확장 위험 → 싱글쿼트 + '\\'' 이스케이프 사용
+        let winNameForStatus = name.replacingOccurrences(of: "'", with: "'\\''")
+        let claudeEntryLaunch = "\(mkdirPart)\(sleepPart)(bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && \(claudeCmd)"
+        let escapedClaudeEntry = claudeEntryLaunch.replacingOccurrences(of: "'", with: "'\\''")
         // 중복 생성 방지: check+create를 단일 shell 명령으로 atomic하게 처리
         // BUG-SENDKEYS-NOTARGET fix: \; 체인에서 send-keys -t 없으면 외부 실행 시 pane 못 찾음
         // BUG-B fix: -P -F '#{window_id}' 즉시 캡처 → automatic-rename off 즉시 설정 (race 제거)
@@ -859,7 +862,7 @@ final class SessionMonitor: ObservableObject {
           if [ -n \"$_WID\" ]; then \
             tmux set-window-option -t \"$_WID\" automatic-rename off 2>/dev/null || true; \
             tmux rename-window -t \"$_WID\" '\(escapedName)' 2>/dev/null || true; \
-            tmux send-keys -t \"$_WID\" "\(mkdirPart)\(sleepPart)(bash ~/.claude/scripts/tab-status.sh starting '\(winNameForStatus)' 2>/dev/null || true) && unset CLAUDECODE && \(claudeCmd)" Enter 2>/dev/null; \
+            tmux send-keys -t \"$_WID\" '\(escapedClaudeEntry)' Enter 2>/dev/null; \
           fi; \
         fi; \
         true
