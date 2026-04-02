@@ -16,17 +16,18 @@ if [ -f "$_DEBUG_LOG" ]; then
 fi
 
 # iter57: PPID 체인으로 CC 실제 PID 캡처 → set-color.sh pid 필드 수정 (watchdog aging 방지)
-# CC_PROCESS_PID = claude 프로세스 PID (real TTY 가진 첫 ancestor)
+# CC_PROCESS_PID = claude 프로세스 PID (hook 서브프로세스가 아닌 실제 claude 바이너리 PID)
+# BUG-CC-PID fix: 첫 TTY 소유 프로세스가 단명 hook 서브프로세스일 수 있음
+# → comm="claude"인 ancestor를 찾아야 watchdog aging 방지 효과가 유지됨
 _WALK_PID=$$
 CC_PROCESS_PID=0
 for _wi in $(seq 1 20); do
-    _WALK_TTY=$(ps -o tty= -p "$_WALK_PID" 2>/dev/null | tr -d ' ')
-    if [ -n "$_WALK_TTY" ] && [ "$_WALK_TTY" != "??" ]; then
+    _CMD=$(ps -o comm= -p "$_WALK_PID" 2>/dev/null | tr -d ' ')
+    if [ "$_CMD" = "claude" ]; then
         CC_PROCESS_PID="$_WALK_PID"
         break
     fi
     _WALK_PID=$(ps -o ppid= -p "$_WALK_PID" 2>/dev/null | tr -d ' ')
-    # iter59 BUG-OP-PREC fix: && before || 우선순위 오류 → {} 그룹으로 명시
     { [ -z "$_WALK_PID" ] || [ "$_WALK_PID" = "1" ] || [ "$_WALK_PID" = "0" ]; } && break
 done
 export CC_PROCESS_PID
