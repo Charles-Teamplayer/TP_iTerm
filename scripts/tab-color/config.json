@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "_comment": "탭 색상: 대기=초록 / 작업중=노랑 / 완료=파랑 / 탭클릭→초록 복원",
+  "_comment": "탭 색상: 이모지 없음, 색상으로만 표현 — active=초록 / working=노랑 / attention=보라(플래시) / idle 4단계",
   "states": {
     "active": {
       "color": [0, 220, 0],
@@ -8,45 +8,45 @@
     },
     "working": {
       "color": [255, 230, 0],
-      "title_prefix": "\u26a1 "
+      "title_prefix": ""
     },
     "waiting": {
       "color": [0, 120, 255],
-      "title_prefix": "\ud83d\udca4 "
+      "title_prefix": ""
     },
     "attention": {
-      "color": [255, 80, 0],
-      "title_prefix": "\ud83d\udd14 ",
+      "color": [180, 0, 255],
+      "title_prefix": "",
       "flash": true,
       "flash_interval": 0.8,
-      "flash_alt_color": [255, 200, 0]
+      "flash_alt_color": [255, 230, 0]
     },
     "idle_10m": {
       "color": [220, 220, 220],
-      "title_prefix": "\u26aa "
+      "title_prefix": ""
     },
     "idle_1h": {
       "color": [200, 150, 0],
-      "title_prefix": "\ud83d\udfe1 "
+      "title_prefix": ""
     },
     "idle_1d": {
       "color": [200, 50, 50],
-      "title_prefix": "\ud83d\udd34 "
+      "title_prefix": ""
     },
     "idle_3d": {
       "color": [80, 80, 80],
-      "title_prefix": "\ud83d\udd34\u26aa ",
+      "title_prefix": "",
       "flash": true,
       "flash_interval": 1.0,
       "flash_alt_color": [220, 220, 220]
     },
     "starting": {
       "color": [0, 180, 255],
-      "title_prefix": "\u23f3 "
+      "title_prefix": ""
     },
     "crashed": {
       "color": [255, 30, 30],
-      "title_prefix": "\ud83d\udca5 ",
+      "title_prefix": "",
       "flash": true,
       "flash_interval": 0.5,
       "flash_alt_color": [255, 150, 0]
