@@ -73,8 +73,9 @@ except:
                 echo "[$(date '+%H:%M:%S')] tab-status: BLOCKED (active 유지)" >> "$HOME/.claude/logs/tab-status-debug.log"
                 # 시각적 불일치 복원: state=active이지만 TTY 색상이 달라졌을 수 있음 (watchdog 등)
                 # 저장된 color값으로 즉시 재전송
-                printf '\e]6;1;bg;red;brightness;%s\a\e]6;1;bg;green;brightness;%s\a\e]6;1;bg;blue;brightness;%s\a' \
-                    "${_COLOR_R:-0}" "${_COLOR_G:-220}" "${_COLOR_B:-0}" > "/dev/$CURRENT_TTY" 2>/dev/null
+                printf '\033Ptmux;\033\033]6;1;bg;red;brightness;%s\a\033\\' "${_COLOR_R:-0}" > "/dev/$CURRENT_TTY" 2>/dev/null
+                printf '\033Ptmux;\033\033]6;1;bg;green;brightness;%s\a\033\\' "${_COLOR_G:-220}" > "/dev/$CURRENT_TTY" 2>/dev/null
+                printf '\033Ptmux;\033\033]6;1;bg;blue;brightness;%s\a\033\\' "${_COLOR_B:-0}" > "/dev/$CURRENT_TTY" 2>/dev/null
                 # timestamp 갱신 (watchdog aging 방지)
                 _TSF2="$STATE_FILE" python3 -c "
 import json, datetime, os, tempfile
