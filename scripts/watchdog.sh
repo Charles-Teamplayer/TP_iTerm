@@ -589,7 +589,14 @@ except:
                 if [ "$TAB_PID" -gt 0 ] && kill -0 "$TAB_PID" 2>/dev/null; then
                     continue  # PID 살아있음 → aging 스킵
                 fi
-                # PID 없거나 죽었음 → aging 진행
+                # PID 없어도 timestamp 60초 이내면 aging 스킵 (hook subprocess는 pid=0 기록)
+                if [ -n "$LAST_TS_ISO" ]; then
+                    _RECENT_TS=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_TS_ISO" +%s 2>/dev/null || echo 0)
+                    if [ "$_RECENT_TS" -gt 0 ] && [ $(( NOW - _RECENT_TS )) -lt 60 ]; then
+                        continue  # 최근 60초 이내 active/working → aging 스킵
+                    fi
+                fi
+                # PID 없고 60초 이상 경과 → aging 진행
             fi
 
             LAST_TS=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_TS_ISO" +%s 2>/dev/null || echo 0)
