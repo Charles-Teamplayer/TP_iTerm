@@ -197,13 +197,16 @@ while IFS= read -r SESSION_NAME; do
         continue
     fi
 
-    # BUG-ATTACH-DUP fix v2: monitor 창에만 붙은 클라이언트는 무시, 실제 작업 창 클라이언트만 카운트
+    # BUG-ATTACH-DUP fix v3: linked 세션 존재만으로도 중복 판단
+    # (클라이언트 연결 여부만 보면 iTerm2 탭 로딩 중 타이밍 race로 dedup 실패 → 창 중복 생성)
+    _LINKED_EXISTS=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -c "^${SESSION_NAME}-v" || echo 0)
+    _LINKED_EXISTS=${_LINKED_EXISTS:-0}
     _MAIN_CLI=$(tmux list-clients -t "$SESSION_NAME" -F "#{window_name}" 2>/dev/null | grep -vcxF "monitor" | tr -d ' ')
     _MAIN_CLI=${_MAIN_CLI:-0}
     _LINKED_CLI=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${SESSION_NAME}-v" | while read -r ls; do tmux list-clients -t "$ls" -F "#{window_name}" 2>/dev/null; done | grep -vcxF "monitor" | tr -d ' ')
     _LINKED_CLI=${_LINKED_CLI:-0}
-    if [ $(( _MAIN_CLI + _LINKED_CLI )) -gt 0 ]; then
-        log "$SESSION_NAME 이미 iTerm 클라이언트 연결됨 (non-monitor: main=${_MAIN_CLI}, linked=${_LINKED_CLI}) — 중복 창 생성 스킵"
+    if [ $(( _MAIN_CLI + _LINKED_CLI + _LINKED_EXISTS )) -gt 0 ]; then
+        log "$SESSION_NAME 이미 존재/연결됨 (linked_sessions=${_LINKED_EXISTS}, main_cli=${_MAIN_CLI}, linked_cli=${_LINKED_CLI}) — 중복 창 생성 스킵"
         continue
     fi
 
