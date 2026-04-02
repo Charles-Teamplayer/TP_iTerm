@@ -2,6 +2,7 @@
 # tab-status.sh v3 wrapper — 하위호환 유지
 # 실제 로직은 ~/.claude/tab-color/engine/set-color.sh
 
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 STATE="${1:-}"
 
 # debug log rotation (iter56 + size: 5000줄 또는 150KB 초과 시 마지막 2500줄 유지)
