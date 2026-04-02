@@ -211,10 +211,39 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
     DELAY=0
     log "--- 그룹 처리: $SESSION_NAME ---"
 
-    # 기존 tmux 세션 종료 (claude 프로세스가 새 창 만드는 것 방지: kill-server 전 약간 대기)
-    if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-        log "기존 $SESSION_NAME tmux 세션 종료"
-        # 세션의 모든 pane에서 실행 중인 claude 프로세스 먼저 종료
+    # BUG-SOFTRESTORE fix: iTerm 클라이언트가 붙어있는 세션은 kill하지 않고
+    # claude 미실행 창만 골라서 재시작 (soft-restore)
+    # → 재부팅 후 세션이 살아있는데 claude만 죽어있는 상황 대응
+    SESSION_EXISTS=0
+    tmux has-session -t "$SESSION_NAME" 2>/dev/null && SESSION_EXISTS=1
+
+    if [ "$SESSION_EXISTS" = "1" ]; then
+        # 클라이언트 연결 여부 확인 (직접 + linked 세션)
+        _MAIN_CLI=$(tmux list-clients -t "$SESSION_NAME" 2>/dev/null | grep -vc "monitor" || echo 0)
+        _LINKED_EXISTS=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -c "^${SESSION_NAME}-v" || echo 0)
+        if [ $(( ${_MAIN_CLI:-0} + ${_LINKED_EXISTS:-0} )) -gt 0 ]; then
+            log "$SESSION_NAME — iTerm 클라이언트 연결됨. soft-restore 모드 (claude 미실행 창만 재시작)"
+            IFS='|' read -ra PROFILES <<< "$PROFILES_STR"
+            for PROFILE_NAME in "${PROFILES[@]}"; do
+                [ -z "$PROFILE_NAME" ] && continue
+                WIN_IDX=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_index}:#{window_name}' 2>/dev/null | awk -F: -v n="$PROFILE_NAME" '$2==n{print $1}')
+                [ -z "$WIN_IDX" ] && log "SOFT-SKIP $PROFILE_NAME — 창 없음" && continue
+                PANE_PID=$(tmux display -t "$SESSION_NAME:$WIN_IDX" -p '#{pane_pid}' 2>/dev/null)
+                PANE_TTY=$(ps -o tty= -p "$PANE_PID" 2>/dev/null | tr -d ' ')
+                CLAUDE_ALIVE=$(ps -A -o tty=,comm= 2>/dev/null | awk -v t="$PANE_TTY" '$1==t && $2=="claude"{print "YES"}' | head -1)
+                if [ "${CLAUDE_ALIVE:-NO}" = "YES" ]; then
+                    log "SOFT-SKIP $PROFILE_NAME — claude 이미 실행 중"
+                    continue
+                fi
+                log "SOFT-RESTART $PROFILE_NAME (win$WIN_IDX)"
+                tmux send-keys -t "$SESSION_NAME:$WIN_IDX" "unset CLAUDECODE && claude --dangerously-skip-permissions --continue" Enter
+                TOTAL_CREATED=$((TOTAL_CREATED + 1))
+                sleep 1
+            done
+            continue  # 이 세션 hard-restore 건너뜀
+        fi
+
+        log "기존 $SESSION_NAME tmux 세션 종료 (클라이언트 없음 — hard restore)"
         tmux list-panes -t "$SESSION_NAME" -a -F '#{pane_pid}' 2>/dev/null | while read -r ppid; do
             pkill -P "$ppid" -x "claude" 2>/dev/null || true
         done
