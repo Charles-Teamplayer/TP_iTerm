@@ -443,9 +443,7 @@ final class SessionMonitor: ObservableObject {
 
         let dir = session.directory.isEmpty ? "~/claude/\(session.windowName)" : session.directory
         let safeDir = dir.hasPrefix("~") ? NSHomeDirectory() + dir.dropFirst() : dir
-        let claudeCmd = hasClaudeProject(at: safeDir)
-            ? "claude --dangerously-skip-permissions --continue"
-            : "claude --dangerously-skip-permissions"
+        let claudeCmd = "claude --dangerously-skip-permissions --continue"
         let winNameForStatus = session.windowName
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "'", with: "'\\''")
@@ -540,9 +538,7 @@ final class SessionMonitor: ObservableObject {
             let dir = session.directory.isEmpty ? "~/claude/\(session.windowName)" : session.directory
             let safeDir = dir.hasPrefix("~") ? NSHomeDirectory() + dir.dropFirst() : dir
             let escapedDir = shellEscape(safeDir)
-            let claudeCmd = hasClaudeProject(at: safeDir)
-                ? "claude --dangerously-skip-permissions --continue"
-                : "claude --dangerously-skip-permissions"
+            let claudeCmd = "claude --dangerously-skip-permissions --continue"
             let escapedWindowName = shellEscape(session.windowName)
             let sleepPart = delay > 0 ? "sleep \(delay) && " : ""
             let claudeEntry = "\(sleepPart)(bash ~/.claude/scripts/tab-status.sh starting '\(escapedWindowName)' 2>/dev/null || true) && unset CLAUDECODE && \(claudeCmd)"
@@ -837,11 +833,7 @@ final class SessionMonitor: ObservableObject {
 
         let safeRoot = root.hasPrefix("~") ? NSHomeDirectory() + root.dropFirst() : root
 
-        // claude 프로젝트 데이터(.jsonl)가 있을 때만 --continue
-        let hasPrior = !createDir && hasClaudeProject(at: safeRoot)
-        let claudeCmd = hasPrior
-            ? "claude --dangerously-skip-permissions --continue"
-            : "claude --dangerously-skip-permissions"
+        let claudeCmd = "claude --dangerously-skip-permissions --continue"
 
         let escapedName = shellEscape(name)
         let escapedRoot = shellEscape(safeRoot)

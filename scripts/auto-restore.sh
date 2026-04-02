@@ -269,12 +269,7 @@ except:
             fi
         fi
 
-        # claude project 파일 있으면 --continue
-        if [ -d "$PROJ_PATH/.claude/projects" ] && ls "$PROJ_PATH/.claude/projects"/*.jsonl 2>/dev/null | head -1 | grep -q .; then
-            CLAUDE_CMD="claude --dangerously-skip-permissions --continue"
-        else
-            CLAUDE_CMD="claude --dangerously-skip-permissions"
-        fi
+        CLAUDE_CMD="claude --dangerously-skip-permissions --continue"
 
         # 이미 같은 이름의 창이 있으면 생성 skip (중복 방지)
         if tmux list-windows -t "$SESSION_NAME" -F '#{window_name}' 2>/dev/null | grep -qxF "$PROFILE_NAME"; then
