@@ -74,7 +74,9 @@ if [ "$UPTIME_SEC" -ge 300 ] && [ "$FORCE_MODE" != "--force" ]; then
     if [ -f "$LASTRUN_FILE" ]; then
         LAST_RUN_TS=$(cat "$LASTRUN_FILE" 2>/dev/null)
         SINCE_LAST=$(( NOW_TS - ${LAST_RUN_TS:-0} ))
-        if [ "$SINCE_LAST" -lt 1800 ]; then
+        # BUG-COOLDOWN-REBOOT fix: 마지막 실행이 현재 부팅 이전이면 쿨다운 무시
+        # (이전 부팅의 lastrun 타임스탬프가 남아있어 재부팅 후 쿨다운 오작동 방지)
+        if [ "$SINCE_LAST" -lt 1800 ] && [ "${LAST_RUN_TS:-0}" -gt "${BOOT_TS:-0}" ]; then
             log "마지막 실행 후 ${SINCE_LAST}초 경과 — 쿨다운 중 (30분 미만), 스킵 (강제: --force)"
             WELOG="$HOME/.claude/logs/window-events.log"
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] [auto-restore] COOLDOWN 스킵 (uptime=${UPTIME_SEC}s, last=${SINCE_LAST}s전)" >> "$WELOG"

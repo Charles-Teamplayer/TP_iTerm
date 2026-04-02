@@ -29,7 +29,13 @@ trap 'rm -f "$ATTACH_LOCK"' EXIT
 FLAG_FILE="$HOME/.claude/logs/.auto-restore-done"
 
 # BUG-FLAG-STALE fix: 현재 부팅 이후에 생성된 플래그만 유효 (이전 부팅 플래그 재사용 방지)
-BOOT_TS=$(sysctl -n kern.boottime 2>/dev/null | awk '{print $4}' | tr -d ',')
+# BUG-BOOT-TS-ZERO fix: LaunchAgent 초기 환경에서 sysctl 파싱 실패 시 retry 3회
+BOOT_TS=""
+for _bts_try in 1 2 3; do
+    BOOT_TS=$(sysctl -n kern.boottime 2>/dev/null | awk '{print $4}' | tr -d ',')
+    [[ "$BOOT_TS" =~ ^[0-9]{9,}$ ]] && break
+    sleep 2
+done
 BOOT_TS=${BOOT_TS:-0}
 
 # BUG-180SEC fix: 180초 → 30초로 단축했으나, 실측 auto-restore 61초로 타임아웃 발생
