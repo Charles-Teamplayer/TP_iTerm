@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # active-sessions orphan-sync
 # window-groups.json의 프로파일 중 active-sessions에 없는 것을 tmux 기반으로 등록
-import json, os, re, subprocess, tempfile
+import json, os, subprocess, tempfile, fcntl
 from datetime import datetime, timezone
 
 now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -14,8 +14,6 @@ try:
     with open(wg_path) as f: groups = json.load(f)
     with open(act_path) as f: act = json.load(f)
 except Exception as e:
-    import sys
-    print(f"[active-sessions-sync] load error: {e}", file=sys.stderr)
     exit(0)
 
 # BUG-SYNC-REGCHECK fix: DIR_TO_WINDOW 역매핑 — window_name → project_dir
@@ -68,19 +66,29 @@ for g in groups:
         pane_pid, pane_tty = pline.split('|', 1)
         tty_base = pane_tty.replace('/dev/', '')
 
-        # tty에서 claude PID 찾기
+        # tty에서 claude PID 찾기 (P0 FIX: 정규식 안정화 + 예외 처리)
         rps = subprocess.run(['ps', '-o', 'pid,command', '-t', tty_base], capture_output=True, text=True)
         claude_pid = None
         exclude = ['watchdog', 'auto-restore', 'tab-', 'session-registry']
+        import re
         for l in rps.stdout.split('\n'):
             l = l.strip()
-            if not l: continue
-            parts = l.split(None, 1)
-            if len(parts) < 2: continue
-            cmd = parts[1]
-            if 'claude' in cmd and not any(x in cmd for x in exclude):
-                if re.search(r'(?:^|/)claude(?:\s|$|--)', cmd):
-                    claude_pid = parts[0]; break
+            if not l or len(l) < 5: continue
+            try:
+                parts = l.split(None, 1)
+                if len(parts) < 2: continue
+                pid_str, cmd = parts[0], parts[1]
+                # PID 검증
+                if not pid_str.isdigit(): continue
+                # claude 프로세스 필터링
+                if 'claude' not in cmd or any(excl in cmd for excl in exclude):
+                    continue
+                # 정규식 검증: /claude 또는 claude 바이너리 시작
+                if re.search(r'(?:^|/)claude\b', cmd):
+                    claude_pid = pid_str
+                    break
+            except Exception:
+                continue
         if not claude_pid: continue
 
         # BUG-SYNC-REGCHECK fix: 실제 프로젝트 경로 사용 (매핑 이름 → 실제 dir)
@@ -95,8 +103,14 @@ for g in groups:
 
 if added:
     reg['last_updated'] = now
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(reg_path), suffix='.tmp')
-    with os.fdopen(fd, 'w') as f:
-        json.dump(reg, f, indent=2)
-    os.replace(tmp, reg_path)
-    print('synced: ' + ', '.join(added))
+    lock_path = reg_path + '.lock'
+    with open(lock_path, 'w') as lf:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+        try:
+            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(reg_path), suffix='.tmp')
+            with os.fdopen(fd, 'w') as f:
+                json.dump(reg, f, indent=2)
+            os.replace(tmp, reg_path)
+            print('synced: ' + ', '.join(added))
+        finally:
+            fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
