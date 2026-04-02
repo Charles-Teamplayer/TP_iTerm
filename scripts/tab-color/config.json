@@ -19,7 +19,8 @@
       "title_prefix": "",
       "flash": true,
       "flash_interval": 0.8,
-      "flash_alt_color": [255, 230, 0]
+      "flash_alt_color": [255, 230, 0],
+      "macos_notify": true
     },
     "idle_10m": {
       "color": [220, 220, 220],
