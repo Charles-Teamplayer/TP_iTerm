@@ -31,8 +31,8 @@ for _wi in $(seq 1 20); do
 done
 export CC_PROCESS_PID
 
-# 사용자가 탭에 있을 때 working/waiting은 무시
-if [ "$STATE" = "working" ] || [ "$STATE" = "waiting" ] || [ "$STATE" = "attention" ]; then
+# 사용자가 탭에 있을 때 waiting/attention은 무시 (working은 허용 — active→working은 정상 흐름)
+if [ "$STATE" = "waiting" ] || [ "$STATE" = "attention" ]; then
     STATE_DIR="$HOME/.claude/tab-color/states"
     # PPID 체인을 따라 올라가며 실제 TTY 찾기 (훅은 ?? TTY로 실행됨)
     _PID=$$

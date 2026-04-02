@@ -110,6 +110,37 @@ if ! tmux list-panes -a -F "#{pane_tty}" 2>/dev/null | grep -qxF "$TTY_PATH"; th
     exit 0
 fi
 
+# Race condition 방어: idle 상태 요청 시 현재 파일이 최근 working/active이면 스킵
+# (watchdog bg dispatch → hook working 설정 → bg process가 뒤늦게 idle로 덮어쓰는 문제 방지)
+if [[ "$STATE" == idle_* ]]; then
+    EXISTING_FILE="$STATE_DIR/${TTY_NAME}.json"
+    if [ -f "$EXISTING_FILE" ]; then
+        _GUARD_DATA=$(_GF="$EXISTING_FILE" python3 -c "
+import json, os, datetime
+try:
+    with open(os.environ['_GF']) as f:
+        d=json.load(f)
+    t=d.get('type','')
+    ts=d.get('timestamp','')
+    if t in ('working','active','starting') and ts:
+        dt=datetime.datetime.strptime(ts,'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)
+        age=(datetime.datetime.now(datetime.timezone.utc)-dt).total_seconds()
+        if age < 90:
+            print('SKIP')
+        else:
+            print('OK')
+    else:
+        print('OK')
+except:
+    print('OK')
+" 2>/dev/null)
+        if [ "$_GUARD_DATA" = "SKIP" ]; then
+            _log "GUARD: skip idle aging for $TTY_NAME (recent working/active state)"
+            exit 0
+        fi
+    fi
+fi
+
 # config에서 색상 읽기
 if command -v jq &>/dev/null; then
     READ_COLOR=$(jq -r --arg state "$STATE" '.states[$state] | "\(.color[0])|\(.color[1])|\(.color[2])"' "$CONFIG" 2>/dev/null)
