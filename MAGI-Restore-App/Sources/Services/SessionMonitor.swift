@@ -661,8 +661,8 @@ final class SessionMonitor: ObservableObject {
     // claude 실행 중 세션 중지 + tmux 창 닫기 (protected PID 제외)
     func stopGroup(_ group: WindowPane) async {
         let profileNames = Set(group.profileNames)
-        let protectedPids = loadProtectedPidSet()
-        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") && profileNames.contains($0.projectName) && !protectedPids.contains($0.pid) }
+        // 의도적 Stop은 protected-claude-pids 체크 불필요 (orphan cleanup 전용 목록)
+        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") && profileNames.contains($0.projectName) }
         for session in toStop { intentionallyStoppedIds.insert(session.id) }
         for session in toStop {
             let dir = session.directory.isEmpty ? session.projectName : session.directory
@@ -686,8 +686,8 @@ final class SessionMonitor: ObservableObject {
     }
 
     func stopAllRunning() async {
-        let protectedPids = loadProtectedPidSet()
-        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") && !protectedPids.contains($0.pid) }
+        // 의도적 Stop은 protected-claude-pids 체크 불필요 (orphan cleanup 전용 목록)
+        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") }
         for session in toStop { intentionallyStoppedIds.insert(session.id) }
         for session in toStop {
             let dir = session.directory.isEmpty ? session.projectName : session.directory
