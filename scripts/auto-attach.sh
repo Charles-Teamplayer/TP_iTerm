@@ -32,11 +32,11 @@ FLAG_FILE="$HOME/.claude/logs/.auto-restore-done"
 BOOT_TS=$(sysctl -n kern.boottime 2>/dev/null | awk '{print $4}' | tr -d ',')
 BOOT_TS=${BOOT_TS:-0}
 
-# BUG-180SEC fix: auto-restore 플래그 대기 시간을 180초 → 30초로 단축
-# (좀비 프로세스로 인한 스킵 사이클 제거, 빠른 탭 복구)
-log "auto-restore 플래그 대기 시작 (최대 30초, 부팅 이후=${BOOT_TS})"
+# BUG-180SEC fix: 180초 → 30초로 단축했으나, 실측 auto-restore 61초로 타임아웃 발생
+# BUG-ATTACH-TIMEOUT fix: 30초 → 120초로 증가 (부팅 16창 복원 시 최대 90초 소요 관측)
+log "auto-restore 플래그 대기 시작 (최대 120초, 부팅 이후=${BOOT_TS})"
 WAITED=0
-while [ $WAITED -lt 30 ]; do
+while [ $WAITED -lt 120 ]; do
     if [ -f "$FLAG_FILE" ]; then
         FLAG_TIME=$(cat "$FLAG_FILE" 2>/dev/null)
         NOW=$(date +%s)
@@ -58,8 +58,8 @@ while [ $WAITED -lt 30 ]; do
     WAITED=$((WAITED + 10))
 done
 
-if [ $WAITED -ge 30 ]; then
-    log "auto-restore 플래그 없음 (30초 대기 후) — 스킵"
+if [ $WAITED -ge 120 ]; then
+    log "auto-restore 플래그 없음 (120초 대기 후) — 스킵"
     exit 0
 fi
 
