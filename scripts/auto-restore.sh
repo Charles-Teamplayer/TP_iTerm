@@ -406,7 +406,7 @@ fi
 # 세션 상태 확인 + 중복 창 제거 (window ID 기반 — 인덱스 재배열 문제 방지)
 # linked view sessions(-vN)은 스킵 (dedup/monitor 불필요)
 sleep 3
-for SNAME in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Ev '.*-v[0-9]+$'); do
+for SNAME in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Ev '.*-v[0-9]+$' | grep -Ev '^[0-9]+$'); do
     log "DEDUP 전 $SNAME 창 목록: $(tmux list-windows -t "$SNAME" -F '#{window_id}:#{window_name}' 2>/dev/null | tr '\n' ' ')"
 
     # monitor 창 복구: 없으면 index 999에 재생성
