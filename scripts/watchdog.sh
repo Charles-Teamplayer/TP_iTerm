@@ -174,7 +174,14 @@ while true; do
 
         if [ -n "$CRASHED" ]; then
             log "CRASH DETECTED: $CRASHED"
-            notify "Claude Code 크래시 감지! 자동 재시작 중..." 1 "exclamationmark.triangle.fill"
+            # TP-Restore 앱 설정 확인: restore.autoRestore = false 이면 자동 재시작 스킵
+            _AR_VAL=$(defaults read com.teample.TP-iTerm-Restore restore.autoRestore 2>/dev/null || echo "1")
+            if [ "$_AR_VAL" = "0" ] || [ "$_AR_VAL" = "false" ]; then
+                log "autoRestore=false (TP-Restore 설정) — 자동 재시작 스킵"
+                notify "Claude Code 크래시 감지 (자동복구 꺼짐)" 1 "exclamationmark.triangle.fill"
+            else
+                notify "Claude Code 크래시 감지! 자동 재시작 중..." 1 "exclamationmark.triangle.fill"
+            fi
 
             # Notion에 크래시 기록
             if [ -n "$NOTION_API_KEY" ]; then
@@ -200,6 +207,10 @@ while true; do
                 fi
             done
 
+            # autoRestore=false 이면 자동 재시작 전체 블록 스킵
+            if [ "$_AR_VAL" = "0" ] || [ "$_AR_VAL" = "false" ]; then
+                log "AUTO-RESTART 스킵 (autoRestore=false)"
+            else
             # 크래시된 세션 자동 재시작 (P0 수정: watchdog이 직접 복구)
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] $CRASHED" >> "$RESTART_LOG"
             # iter59: restart-history.log 로테이션 (10000줄 초과 시 5000줄 유지)
@@ -531,6 +542,7 @@ print('')
                     tmux move-window -s "$_rsess:monitor" -t "$_rsess:999" 2>/dev/null || true
                 fi
             done
+            fi  # autoRestore 분기 끝
         fi
     fi
 
