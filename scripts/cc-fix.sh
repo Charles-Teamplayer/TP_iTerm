@@ -136,10 +136,10 @@ if not realPairs:
 safe_session = as_escape(session)
 firstIdx, firstName = realPairs[0]
 firstLinked = f"{safe_session}-v{firstIdx}"
-firstCmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux has-session -t {firstLinked} 2>/dev/null || tmux new-session -d -s {firstLinked} -t {as_escape(session)} 2>/dev/null; tmux select-window -t {firstLinked}:{firstIdx} 2>/dev/null; tmux -CC attach-session -t {firstLinked}; exec /bin/zsh -l'"
+firstCmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux has-session -t {firstLinked} 2>/dev/null || tmux new-session -d -s {firstLinked} -t {as_escape(session)} 2>/dev/null; tmux -CC attach-session -t {firstLinked}; exec /bin/zsh -l'"
 
-# BUG-ITERM-GROUPTABS fix: 단일 tell newWin 블록 + delay 1
-# BUG-010 fix (cc-fix): try-on-error 추가 — 첫 창 실패 시 전체 탭 생성 포기 방지
+# tmux -CC 모드는 1개 탭만으로 세션의 모든 창을 자동으로 보여줌
+# 탭을 N개 만들면 동일 창이 N번 중복 표시되므로 첫 탭 1개만 생성
 lines = [
     'tell application "iTerm2"',
     '    activate',
@@ -147,15 +147,6 @@ lines = [
     f'        set newWin to (create window with default profile command "{firstCmd}")',
     '        delay 1',
 ]
-
-if realPairs[1:]:
-    lines.append('        tell newWin')
-    for (winIdx, name) in realPairs[1:]:
-        linkedName = f"{safe_session}-v{winIdx}"
-        cmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux has-session -t {linkedName} 2>/dev/null || tmux new-session -d -s {linkedName} -t {as_escape(session)} 2>/dev/null; tmux select-window -t {linkedName}:{winIdx} 2>/dev/null; tmux -CC attach-session -t {linkedName}; exec /bin/zsh -l'"
-        lines.append('            delay 0.5')
-        lines.append(f'            create tab with default profile command "{cmd}"')
-    lines.append('        end tell')
 
 lines.append('    on error errMsg')
 lines.append('        -- 창 생성 실패 (iTerm2 미준비 또는 권한 오류)')
