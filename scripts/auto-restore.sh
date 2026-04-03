@@ -462,6 +462,11 @@ fi
 echo "$(date +%s)" > "$HOME/.claude/logs/.auto-restore-done"
 log "auto-attach 트리거 플래그 생성 완료"
 
+# auto-attach.sh 직접 실행 (LaunchAgent 종료 여부 무관)
+# auto-attach.sh 내부 lock이 중복 실행 방지
+log "auto-attach.sh 직접 실행"
+nohup bash "$HOME/.claude/scripts/auto-attach.sh" >> "$HOME/.claude/logs/auto-restore.log" 2>&1 &
+
 log "=== Auto-Restore 완료: ${TOTAL_CREATED}개 창 복원 ==="
 # 윈도우 이벤트 로그
 WELOG="$HOME/.claude/logs/window-events.log"
