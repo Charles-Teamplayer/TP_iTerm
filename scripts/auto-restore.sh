@@ -219,8 +219,8 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
 
     if [ "$SESSION_EXISTS" = "1" ]; then
         # 클라이언트 연결 여부 확인 (직접 + linked 세션)
-        _MAIN_CLI=$(tmux list-clients -t "$SESSION_NAME" 2>/dev/null | grep -vc "monitor" || echo 0)
-        _LINKED_EXISTS=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -c "^${SESSION_NAME}-v" || echo 0)
+        _MAIN_CLI=$(tmux list-clients -t "$SESSION_NAME" 2>/dev/null | grep -v "monitor" | wc -l | tr -d ' ')
+        _LINKED_EXISTS=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${SESSION_NAME}-v" | wc -l | tr -d ' ')
         if [ $(( ${_MAIN_CLI:-0} + ${_LINKED_EXISTS:-0} )) -gt 0 ]; then
             log "$SESSION_NAME — iTerm 클라이언트 연결됨. soft-restore 모드 (claude 미실행 창만 재시작)"
             IFS='|' read -ra PROFILES <<< "$PROFILES_STR"
