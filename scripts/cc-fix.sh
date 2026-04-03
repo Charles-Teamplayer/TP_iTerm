@@ -121,19 +121,14 @@ if not realPairs:
     sys.exit(0)
 
 safe_session = as_escape(session)
-# write text 방식: 빈 창 생성 후 attach 명령 입력 → pseudo-tab이 같은 창에 생성됨 (1창 = 1세션)
-# create window command 방식은 control창 + pseudo창 2개 생성하는 버그 있음
-cmd = f"tmux -CC attach-session -t {safe_session}"
+# ClosingTmuxWindowKillsTmuxWindows=0 설정 필수 (창 닫아도 세션 유지)
+firstCmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux -CC attach-session -t {safe_session}; exec /bin/zsh -l'"
 
 lines = [
     'tell application "iTerm2"',
     '    activate',
     '    try',
-    '        set newWin to (create window with default profile)',
-    '        delay 1',
-    '        tell current session of current tab of newWin',
-    f'            write text "{cmd}"',
-    '        end tell',
+    f'        set newWin to (create window with default profile command "{firstCmd}")',
     '        delay 1',
 ]
 
@@ -153,51 +148,18 @@ fi
 TAB_COUNT=$(echo "$RAW_WINS" | grep -v '^$' | grep -cv 'monitor'; true)
 log "iTerm 창 생성 시작 (${TAB_COUNT}개 창, direct attach)"
 
-# 스테일 컨트롤 창 정리: 실제 tty는 있지만 프로세스가 죽은 창만 닫기
-# ⚠️ pseudo-tab 창(tty: missing value)은 절대 닫지 않음 — 닫으면 iTerm이 tmux kill-session 전송
-_LIVE_TTYS=$(tmux list-clients -F '#{client_tty}' 2>/dev/null | tr '\n' ' ')
-_DEAD_TTYS=""
-# [tmux] 창 중 실제 tty가 있고 프로세스가 없는 창 수집
-for _CHECK_TTY in $(osascript 2>/dev/null << 'TTYCOLLECT'
+# 스테일 tmux 창 전체 정리
+# ClosingTmuxWindowKillsTmuxWindows=0 설정으로 닫아도 세션 유지됨
+# 컨트롤 창 닫으면 pseudo-tab 창도 자동 정리됨
+_CLOSED_COUNT=$(osascript 2>/dev/null << 'STALEEOF'
 tell application "iTerm2"
-    set _out to ""
-    repeat with w in windows
-        try
-            if name of w contains "[tmux" then
-                set _t to tty of (current session of (current tab of w))
-                if _t is not missing value and _t is not "" then
-                    set _out to _out & _t & "\n"
-                end if
-            end if
-        end try
-    end repeat
-    return _out
-end tell
-TTYCOLLECT
-); do
-    [ -z "$_CHECK_TTY" ] && continue
-    # 살아있는 tmux 클라이언트 tty면 보호
-    echo "$_LIVE_TTYS" | grep -qF "$_CHECK_TTY" && continue
-    # tty에 프로세스가 없으면 죽은 창
-    _PROC_COUNT=$(ps -t "$_CHECK_TTY" -o pid= 2>/dev/null | wc -l | tr -d ' ')
-    [ "${_PROC_COUNT:-0}" -eq 0 ] && _DEAD_TTYS="$_DEAD_TTYS $_CHECK_TTY"
-done
-
-if [ -n "$_DEAD_TTYS" ]; then
-    _DEAD_LIST=$(echo "$_DEAD_TTYS" | tr ' ' '\n' | grep -v '^$' | awk '{print "\"" $0 "\""}' | tr '\n' ',' | sed 's/,$//')
-    _CLOSED_COUNT=$(osascript 2>/dev/null << STALEEOF
-tell application "iTerm2"
-    set _deadTtys to {${_DEAD_LIST}}
     set _closed to 0
     set _wins to windows
     repeat with w in _wins
         try
-            if name of w contains "[tmux" then
-                set _tty to tty of (current session of (current tab of w))
-                if _deadTtys contains _tty then
-                    close w
-                    set _closed to _closed + 1
-                end if
+            if name of w contains "tmux" then
+                close w
+                set _closed to _closed + 1
             end if
         end try
     end repeat
@@ -205,9 +167,8 @@ tell application "iTerm2"
 end tell
 STALEEOF
 )
-    log "스테일 컨트롤 창 ${_CLOSED_COUNT:-0}개 정리 (죽은 tty: ${_DEAD_TTYS})"
-    sleep 1
-fi
+log "스테일 tmux 창 ${_CLOSED_COUNT:-0}개 정리"
+sleep 1
 
 # iter57: osascript 실패 시 최대 3회 retry (AppleEvent 시간 초과 -1712 대응)
 # iter90: #25 BUG-OSASCRIPT-EXIT-CODE + #29 BUG-OSASCRIPT-TRUNCATE 수정
