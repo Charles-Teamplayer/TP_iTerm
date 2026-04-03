@@ -149,6 +149,49 @@ fi
 TAB_COUNT=$(echo "$RAW_WINS" | grep -v '^$' | grep -cv 'monitor'; true)
 log "iTerm 창 생성 시작 (${TAB_COUNT}개 창, direct attach)"
 
+# 스테일 [tmux] 창 정리: 새 창 생성 전 기존 고아 창 닫기
+# cc-fix는 클라이언트 없을 때만 실행 → 기존 [tmux] 창은 모두 스테일
+# 단, 활성 tmux 클라이언트가 붙어있는 TTY를 가진 창은 보호
+_LIVE_TTYS=$(tmux list-clients -F '/dev/#{client_tty}' 2>/dev/null | tr '\n' ' ')
+_CLOSED_COUNT=$(osascript 2>/dev/null << STALEEOF
+tell application "iTerm2"
+    set _liveTtys to {$(echo "$_LIVE_TTYS" | tr ' ' '\n' | grep -v '^$' | awk '{print "\"" $0 "\""}' | tr '\n' ',' | sed 's/,$//')}
+    set _closed to 0
+    set _wins to windows
+    repeat with w in _wins
+        try
+            set _wName to name of w
+            if _wName does not contain "[tmux" then
+                -- [tmux] 아닌 창은 보호
+            else
+                try
+                    set _tty to tty of (current session of (current tab of w))
+                    if _tty is missing value or _tty is "" then
+                        -- pseudo-tab (tty 없음) → 스테일 창
+                        close w
+                        set _closed to _closed + 1
+                    else if _liveTtys contains _tty then
+                        -- 활성 클라이언트 → 보호
+                    else
+                        -- 죽은 TTY → 스테일 창
+                        close w
+                        set _closed to _closed + 1
+                    end if
+                on error
+                    -- tty 조회 실패 → 스테일 간주
+                    close w
+                    set _closed to _closed + 1
+                end try
+            end if
+        end try
+    end repeat
+    return _closed
+end tell
+STALEEOF
+)
+log "스테일 [tmux] 창 ${_CLOSED_COUNT:-0}개 정리 완료"
+sleep 1
+
 # iter57: osascript 실패 시 최대 3회 retry (AppleEvent 시간 초과 -1712 대응)
 # iter90: #25 BUG-OSASCRIPT-EXIT-CODE + #29 BUG-OSASCRIPT-TRUNCATE 수정
 OSASCRIPT_EXIT=1
