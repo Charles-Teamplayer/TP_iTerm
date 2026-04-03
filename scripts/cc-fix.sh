@@ -157,7 +157,7 @@ tell application "iTerm2"
     set _wins to windows
     repeat with w in _wins
         try
-            if name of w contains "tmux" then
+            if name of w contains "↣" then
                 close w
                 set _closed to _closed + 1
             end if
