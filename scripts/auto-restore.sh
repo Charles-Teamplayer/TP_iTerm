@@ -252,11 +252,14 @@ while IFS=$'\t' read -r SESSION_NAME PROFILES_STR; do
         sleep 1
     fi
 
-    # _init_ 임시 창으로 세션 생성 (profile 창들을 먼저 만들고 monitor를 맨 뒤에 배치)
-    tmux new-session -d -s "$SESSION_NAME" -n _init_ -c "$HOME/claude" 2>/dev/null
-    # BUG-INIT-RENAME fix: auto-rename 방지 → kill 시 이름 불일치 예방
-    tmux set-window-option -t "$SESSION_NAME:_init_" automatic-rename off 2>/dev/null || true
-    log "$SESSION_NAME 세션 생성"
+    # _init_ 임시 창으로 세션 생성 — -P -F로 window_id 즉시 캡처 (auto-rename race 방지)
+    INIT_WIN_ID_CREATE=$(tmux new-session -d -s "$SESSION_NAME" -n _init_ -c "$HOME/claude" -P -F '#{window_id}' 2>/dev/null || true)
+    if [ -n "$INIT_WIN_ID_CREATE" ]; then
+        tmux set-window-option -t "$INIT_WIN_ID_CREATE" automatic-rename off 2>/dev/null || true
+    else
+        tmux set-window-option -t "$SESSION_NAME:_init_" automatic-rename off 2>/dev/null || true
+    fi
+    log "$SESSION_NAME 세션 생성 (init win=${INIT_WIN_ID_CREATE:-unknown})"
 
     # 각 profileName으로 창 생성
     IFS='|' read -ra PROFILES <<< "$PROFILES_STR"
@@ -347,15 +350,17 @@ except:
         tmux set-window-option -t "$SESSION_NAME:monitor" automatic-rename off 2>/dev/null || true
         tmux move-window -s "$SESSION_NAME:monitor" -t "$SESSION_NAME:999" 2>/dev/null || true
     fi
-    # BUG-INIT-RENAME fix: 이름 기반 kill 실패 대비 → window_id 기반 fallback
-    INIT_WIN_ID=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' '$2=="_init_"{print $1; exit}')
-    if [ -n "$INIT_WIN_ID" ]; then
-        tmux kill-window -t "$INIT_WIN_ID" 2>/dev/null || true
+    # _init_ 창 제거: 생성 시 캡처한 ID 우선 사용 (auto-rename으로 이름 바뀌어도 안전)
+    _INIT_KILL_ID="${INIT_WIN_ID_CREATE:-}"
+    if [ -z "$_INIT_KILL_ID" ]; then
+        # fallback: 이름으로 재탐색
+        _INIT_KILL_ID=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}' 2>/dev/null | awk -F'|' '$2=="_init_"{print $1; exit}')
+    fi
+    if [ -n "$_INIT_KILL_ID" ]; then
+        tmux kill-window -t "$_INIT_KILL_ID" 2>/dev/null || true
     else
-        # 이름 기반 fallback (renamed to zsh 등)
-        tmux kill-window -t "$SESSION_NAME:_init_" 2>/dev/null || true
-        # index 0 창이 "zsh"면 profile/monitor 창만 남기고 제거
-        STALE_ID=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}|#{window_index}' 2>/dev/null | awk -F'|' '$3=="0" && $2!="monitor" && $2!="_init_"{print $1; exit}')
+        # 최후 fallback: index 0에 남아있는 비-프로필 창 제거 (zsh 등)
+        STALE_ID=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_id}|#{window_name}|#{window_index}' 2>/dev/null | awk -F'|' '$3=="0" && $2!="monitor"{print $1; exit}')
         [ -n "$STALE_ID" ] && tmux kill-window -t "$STALE_ID" 2>/dev/null || true
     fi
     log "$SESSION_NAME monitor 창 index 999에 배치 완료"
