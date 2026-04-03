@@ -244,15 +244,19 @@ firstIdx, firstName = realPairs[0]
 def as_escape(s):
     return s.replace('\\', '\\\\').replace('"', '\\"')
 safe_session = as_escape(session)
-# linked session 없이 메인 세션 직접 attach — 대시보드에 vN 세션 노출 없음
-firstCmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux -CC attach-session -t {safe_session}; exec /bin/zsh -l'"
+# write text 방식: 빈 창 생성 후 attach 명령 입력 → pseudo-tab이 같은 창에 생성됨 (1창 = 1세션)
+# create window command 방식은 control창 + pseudo창 2개 생성하는 버그 있음
+cmd = f"tmux -CC attach-session -t {safe_session}"
 
-# tmux -CC 1회 attach로 모든 창 자동 표시
 lines = [
     'tell application "iTerm2"',
     '    activate',
     '    try',
-    f'        set newWin to (create window with default profile command "{firstCmd}")',
+    '        set newWin to (create window with default profile)',
+    '        delay 1',
+    '        tell current session of current tab of newWin',
+    f'            write text "{cmd}"',
+    '        end tell',
     '        delay 1',
 ]
 
