@@ -67,23 +67,10 @@ fi
 
 log "=== cc-fix 시작 ==="
 
-# 이중 체크: 실제로 클라이언트 없는지 재확인 (main + linked sessions)
+# 메인 세션에 클라이언트 이미 있으면 스킵 (direct attach 방식)
 CLIENT_COUNT=$(tmux list-clients -t "$SESSION" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
 if [ "${CLIENT_COUNT:-0}" -gt 0 ]; then
     log "클라이언트 이미 있음 (${CLIENT_COUNT}개) — 스킵"
-    exit 0
-fi
-# linked session(-vN) 확인: 클라이언트 있으면 스킵, 세션만 있어도 스킵
-# BUG-CCFIX-LOOP fix: 링크드 세션이 존재하면 (클라이언트 없어도) 창 생성 안 함
-# 이전 cc-fix 실행이 이미 iTerm 창을 만들었거나 연결 중인 상태이므로 중복 생성 방지
-LINKED_CLI=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E "^${SESSION}-v[0-9]+$" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' ')
-if [ "${LINKED_CLI:-0}" -gt 0 ]; then
-    log "linked session 클라이언트 있음 (${LINKED_CLI}개) — 스킵"
-    exit 0
-fi
-LINKED_SESS=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E "^${SESSION}-v[0-9]+$" | wc -l | tr -d ' ')
-if [ "${LINKED_SESS:-0}" -gt 0 ]; then
-    log "linked session 이미 존재 (${LINKED_SESS}개, 클라이언트 없음) — 중복 창 생성 스킵"
     exit 0
 fi
 
@@ -134,12 +121,10 @@ if not realPairs:
     sys.exit(0)
 
 safe_session = as_escape(session)
-firstIdx, firstName = realPairs[0]
-firstLinked = f"{safe_session}-v{firstIdx}"
-firstCmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux has-session -t {firstLinked} 2>/dev/null || tmux new-session -d -s {firstLinked} -t {as_escape(session)} 2>/dev/null; tmux -CC attach-session -t {firstLinked}; exec /bin/zsh -l'"
+# linked session 없이 메인 세션에 직접 attach — 대시보드에 v1, v2 등 잡세션 제거
+firstCmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux -CC attach-session -t {safe_session}; exec /bin/zsh -l'"
 
-# tmux -CC 모드는 1개 탭만으로 세션의 모든 창을 자동으로 보여줌
-# 탭을 N개 만들면 동일 창이 N번 중복 표시되므로 첫 탭 1개만 생성
+# tmux -CC 1회 attach로 모든 창 자동 표시
 lines = [
     'tell application "iTerm2"',
     '    activate',
@@ -162,7 +147,7 @@ if [ -z "$APPLE_SCRIPT" ]; then
 fi
 
 TAB_COUNT=$(echo "$RAW_WINS" | grep -v '^$' | grep -cv 'monitor'; true)
-log "linked session 기반 iTerm 창+탭 생성 시작 (${TAB_COUNT}개 탭)"
+log "iTerm 창 생성 시작 (${TAB_COUNT}개 창, direct attach)"
 
 # iter57: osascript 실패 시 최대 3회 retry (AppleEvent 시간 초과 -1712 대응)
 # iter90: #25 BUG-OSASCRIPT-EXIT-CODE + #29 BUG-OSASCRIPT-TRUNCATE 수정

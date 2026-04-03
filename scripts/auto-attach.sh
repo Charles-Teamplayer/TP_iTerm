@@ -197,16 +197,10 @@ while IFS= read -r SESSION_NAME; do
         continue
     fi
 
-    # BUG-ATTACH-DUP fix v3: linked 세션 존재만으로도 중복 판단
-    # (클라이언트 연결 여부만 보면 iTerm2 탭 로딩 중 타이밍 race로 dedup 실패 → 창 중복 생성)
-    _LINKED_EXISTS=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -c "^${SESSION_NAME}-v" || echo 0)
-    _LINKED_EXISTS=${_LINKED_EXISTS:-0}
-    _MAIN_CLI=$(tmux list-clients -t "$SESSION_NAME" -F "#{window_name}" 2>/dev/null | grep -vcxF "monitor" | tr -d ' ')
-    _MAIN_CLI=${_MAIN_CLI:-0}
-    _LINKED_CLI=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${SESSION_NAME}-v" | while read -r ls; do tmux list-clients -t "$ls" -F "#{window_name}" 2>/dev/null; done | grep -vcxF "monitor" | tr -d ' ')
-    _LINKED_CLI=${_LINKED_CLI:-0}
-    if [ $(( _MAIN_CLI + _LINKED_CLI + _LINKED_EXISTS )) -gt 0 ]; then
-        log "$SESSION_NAME 이미 존재/연결됨 (linked_sessions=${_LINKED_EXISTS}, main_cli=${_MAIN_CLI}, linked_cli=${_LINKED_CLI}) — 중복 창 생성 스킵"
+    # dedup: 메인 세션에 클라이언트 이미 있으면 스킵 (direct attach 방식)
+    _MAIN_CLI=$(tmux list-clients -t "$SESSION_NAME" -F "#{client_name}" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${_MAIN_CLI:-0}" -gt 0 ]; then
+        log "$SESSION_NAME 이미 연결됨 (clients=${_MAIN_CLI}) — 중복 창 생성 스킵"
         continue
     fi
 
@@ -250,12 +244,10 @@ firstIdx, firstName = realPairs[0]
 def as_escape(s):
     return s.replace('\\', '\\\\').replace('"', '\\"')
 safe_session = as_escape(session)
-firstLinked = f"{session}-v{firstIdx}"
-safe_firstLinked = as_escape(firstLinked)
-firstCmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux has-session -t {safe_firstLinked} 2>/dev/null || tmux new-session -d -s {safe_firstLinked} -t {safe_session} 2>/dev/null; tmux -CC attach-session -t {safe_firstLinked}; exec /bin/zsh -l'"
+# linked session 없이 메인 세션 직접 attach — 대시보드에 vN 세션 노출 없음
+firstCmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux -CC attach-session -t {safe_session}; exec /bin/zsh -l'"
 
-# tmux -CC 모드는 1개 탭만으로 세션의 모든 창을 자동으로 보여줌
-# 탭을 N개 만들면 동일 창이 N번 중복 표시되므로 첫 탭 1개만 생성
+# tmux -CC 1회 attach로 모든 창 자동 표시
 lines = [
     'tell application "iTerm2"',
     '    activate',
