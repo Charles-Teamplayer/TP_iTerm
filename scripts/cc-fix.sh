@@ -73,10 +73,17 @@ if [ "${CLIENT_COUNT:-0}" -gt 0 ]; then
     log "클라이언트 이미 있음 (${CLIENT_COUNT}개) — 스킵"
     exit 0
 fi
-# linked session(-vN)에도 클라이언트 있으면 스킵 (BUG-CCFIX-LINKEDCHECK 보완)
+# linked session(-vN) 확인: 클라이언트 있으면 스킵, 세션만 있어도 스킵
+# BUG-CCFIX-LOOP fix: 링크드 세션이 존재하면 (클라이언트 없어도) 창 생성 안 함
+# 이전 cc-fix 실행이 이미 iTerm 창을 만들었거나 연결 중인 상태이므로 중복 생성 방지
 LINKED_CLI=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E "^${SESSION}-v[0-9]+$" | while read -r ls; do tmux list-clients -t "$ls" -F "#{client_name}" 2>/dev/null; done | wc -l | tr -d ' ')
 if [ "${LINKED_CLI:-0}" -gt 0 ]; then
     log "linked session 클라이언트 있음 (${LINKED_CLI}개) — 스킵"
+    exit 0
+fi
+LINKED_SESS=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E "^${SESSION}-v[0-9]+$" | wc -l | tr -d ' ')
+if [ "${LINKED_SESS:-0}" -gt 0 ]; then
+    log "linked session 이미 존재 (${LINKED_SESS}개, 클라이언트 없음) — 중복 창 생성 스킵"
     exit 0
 fi
 
