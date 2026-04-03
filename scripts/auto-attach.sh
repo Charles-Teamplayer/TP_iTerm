@@ -252,7 +252,7 @@ def as_escape(s):
 safe_session = as_escape(session)
 firstLinked = f"{session}-v{firstIdx}"
 safe_firstLinked = as_escape(firstLinked)
-firstCmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux has-session -t {safe_firstLinked} 2>/dev/null || tmux new-session -d -s {safe_firstLinked} -t {safe_session} 2>/dev/null; tmux select-window -t {safe_firstLinked}:{firstIdx} 2>/dev/null; tmux attach-session -t {safe_firstLinked}; exec /bin/zsh -l'"
+firstCmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux has-session -t {safe_firstLinked} 2>/dev/null || tmux new-session -d -s {safe_firstLinked} -t {safe_session} 2>/dev/null; tmux select-window -t {safe_firstLinked}:{firstIdx} 2>/dev/null; tmux -CC attach-session -t {safe_firstLinked}; exec /bin/zsh -l'"
 
 # BUG-ITERM-GROUPTABS fix: 단일 tell newWin 블록 + delay 1 (레퍼런스 불안정 방지)
 # BUG-010 fix (auto-attach): try-on-error 추가 — 첫 창 실패 시 silent fail 방지
@@ -269,7 +269,7 @@ if realPairs[1:]:
     for (winIdx, name) in realPairs[1:]:
         linkedName = f"{session}-v{winIdx}"
         safe_linkedName = as_escape(linkedName)
-        cmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux has-session -t {safe_linkedName} 2>/dev/null || tmux new-session -d -s {safe_linkedName} -t {safe_session} 2>/dev/null; tmux select-window -t {safe_linkedName}:{winIdx} 2>/dev/null; tmux attach-session -t {safe_linkedName}; exec /bin/zsh -l'"
+        cmd = f"/bin/bash -lc 'export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH; tmux has-session -t {safe_linkedName} 2>/dev/null || tmux new-session -d -s {safe_linkedName} -t {safe_session} 2>/dev/null; tmux select-window -t {safe_linkedName}:{winIdx} 2>/dev/null; tmux -CC attach-session -t {safe_linkedName}; exec /bin/zsh -l'"
         lines.append('            delay 0.5')
         lines.append(f'            create tab with default profile command "{cmd}"')
     lines.append('        end tell')
