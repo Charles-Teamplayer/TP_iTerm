@@ -462,10 +462,13 @@ fi
 echo "$(date +%s)" > "$HOME/.claude/logs/.auto-restore-done"
 log "auto-attach 트리거 플래그 생성 완료"
 
-# auto-attach.sh 직접 실행 (LaunchAgent 종료 여부 무관)
-# auto-attach.sh 내부 lock이 중복 실행 방지
-log "auto-attach.sh 직접 실행"
-nohup bash "$HOME/.claude/scripts/auto-attach.sh" >> "$HOME/.claude/logs/auto-restore.log" 2>&1 &
+# iTerm2 미실행 시에만 auto-attach.sh 실행 — 이미 실행 중이면 osascript 불필요 (TCC 팝업 방지)
+if ! pgrep -q -x "iTerm2"; then
+    log "auto-attach.sh 직접 실행 (iTerm2 미실행)"
+    nohup bash "$HOME/.claude/scripts/auto-attach.sh" >> "$HOME/.claude/logs/auto-restore.log" 2>&1 &
+else
+    log "auto-attach.sh 스킵 (iTerm2 이미 실행 중)"
+fi
 
 log "=== Auto-Restore 완료: ${TOTAL_CREATED}개 창 복원 ==="
 # 윈도우 이벤트 로그
