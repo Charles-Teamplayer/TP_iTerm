@@ -1,3 +1,5 @@
+> **[Harness Local Layer]** Global(`~/.claude`) → Domain(`~/claude`) → **Local(여기)**
+
 # TP_iTerm 개발 가이드
 
 ## TP_skills 연동 (필수)
