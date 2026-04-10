@@ -476,6 +476,18 @@ final class SessionMonitor: ObservableObject {
         }
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh(showBanner: true)
+        // BUG-P0 fix: restartSession 후 iTerm2 탭 재연결 (기존 openITermTabs 미호출 버그)
+        if let group = windowGroupService.groups.first(where: { $0.sessionName == session.tmuxSession && !$0.isWaitingList }) {
+            let properAttach = await ShellService.runAsync("""
+                SNAME=\(ShellService.shellq(session.tmuxSession)) tmux list-sessions -F '#{session_name}' 2>/dev/null \
+                  | python3 -c "import sys,os,re; sn=os.environ['SNAME']; [print(l.strip()) for l in sys.stdin if re.fullmatch(re.escape(sn)+r'-v[0-9]+', l.strip())]" \
+                  | while read s; do tmux list-clients -t "$s" -F '#{window_name}' 2>/dev/null; done \
+                  | grep -v '^$' | grep -v '^monitor$'
+            """)
+            if properAttach.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                await openITermTabs(for: group)
+            }
+        }
     }
 
     // 강제 복구: 기존 창 완전 kill → 새 창 생성 → claude 실행 (어떤 상태에서도 무조건 새 창)
@@ -1251,13 +1263,18 @@ final class SessionMonitor: ObservableObject {
             lines.append("        end tell")
         }
         lines.append("    on error errMsg")
-        lines.append("        -- openITermTabs 실패: errMsg 무시 (iTerm2 권한 또는 초기화 미완료)")
+        lines.append("        return \"error:\" & errMsg")
         lines.append("    end try")
         lines.append("end tell")
 
         let appleScript = lines.joined(separator: "\n")
         let script = "osascript << '__APPLES__'\n\(appleScript)\n__APPLES__"
-        await ShellService.runAsync(script)
+        let result = await ShellService.runAsync(script)
+        // BUG-P1A fix: AppleScript 실패 시 1.5초 후 1회 재시도
+        if result.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("error:") || result.contains("error:") {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            await ShellService.runAsync(script)
+        }
     }
 
     // profileNames 순서대로 tmux 탭 재배치 (1부터 시작, monitor는 0 유지)
