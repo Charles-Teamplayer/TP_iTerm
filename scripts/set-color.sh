@@ -203,11 +203,22 @@ elif [ "$STATE" != "attention" ] && [ "$STATE" != "crashed" ]; then
     fi
 fi
 
-# macOS 알림 (attention만)
+# macOS 알림 (attention만) — 클릭 시 해당 iTerm 탭으로 포커스 이동
 NOTIFY=$(jq -r --arg state "$STATE" '.states[$state].macos_notify // false' "$CONFIG" 2>/dev/null || echo "false")
 if [ "$NOTIFY" = "true" ]; then
     _SAFE_PROJECT=$(printf '%s' "$PROJECT" | sed 's/\\/\\\\/g; s/"/\\"/g')
-    osascript -e "display notification \"${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다\" with title \"Claude Code\" subtitle \"⚠️ Attention Required\"" 2>/dev/null &
+    _FOCUS_SCRIPT="$HOME/.claude/scripts/focus-iterm-tab.sh"
+    if command -v terminal-notifier &>/dev/null && [ -x "$_FOCUS_SCRIPT" ]; then
+        terminal-notifier \
+            -title "Claude Code" \
+            -subtitle "⚠️ Attention Required" \
+            -message "${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다" \
+            -sender com.googlecode.iterm2 \
+            -group "claude-attn-${TTY_NAME}" \
+            -execute "$_FOCUS_SCRIPT '$TTY_PATH' '$_SAFE_PROJECT'" >/dev/null 2>&1 &
+    else
+        osascript -e "display notification \"${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다\" with title \"Claude Code\" subtitle \"⚠️ Attention Required\"" 2>/dev/null &
+    fi
 fi
 
 _log "state=$STATE project=$PROJECT tty=$TTY_NAME color=[$R,$G,$B]"
