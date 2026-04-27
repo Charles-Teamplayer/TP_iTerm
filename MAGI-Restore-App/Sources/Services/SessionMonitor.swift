@@ -22,9 +22,23 @@ final class SessionMonitor: ObservableObject {
     let profileService = ProfileService()
     let windowGroupService = WindowGroupService()
 
+    // FIX-L (2026-04-27): windowGroupService/profileService 변경을 SwiftUI에 forward
+    // — 첫 시작 시 빈 화면 race condition 해결
+    private var serviceCancellables: Set<AnyCancellable> = []
+
     // FSEvent 감시: tab-color/states 디렉토리 변경 → 즉시 refresh
     private var statesDirSource: DispatchSourceFileSystemObject?
     private var debounceTask: Task<Void, Never>?
+
+    init() {
+        // FIX-L: 자식 service 변경을 부모 objectWillChange로 forward
+        windowGroupService.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &serviceCancellables)
+        profileService.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &serviceCancellables)
+    }
 
     // 자동 재시작 설정 + 상태 추적
     @Published var restoreSettings = RestoreSettings.load()
