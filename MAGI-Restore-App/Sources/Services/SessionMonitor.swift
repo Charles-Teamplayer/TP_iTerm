@@ -37,6 +37,8 @@ final class SessionMonitor: ObservableObject {
         // BUG-003 fix: app 재시작 시 intentional-stops.json 로드 → checkAutoSync 오재시작 방지
         loadIntentionalStops()
         Task {
+            // FIX-K (2026-04-27): tmux 세션이 빈 윈도우 상태에서도 자동 삭제되지 않도록 (monitor 대체 keep-alive)
+            await ShellService.runAsync("tmux set-option -gs exit-empty off 2>/dev/null; true")
             await cleanupStaleLinkedSessions()
             await refresh()
         }
@@ -598,10 +600,8 @@ final class SessionMonitor: ObservableObject {
             : toRestore.count
         NotificationService.shared.notifyRestoreComplete(count: restoredCount)
         selectedForRestore.removeAll()
-        // 복원 완료 후 모든 활성 세션의 monitor 창 보장
-        for group in windowGroupService.groups where !group.isWaitingList {
-            await ensureMonitorWindow(sessionName: group.sessionName)
-        }
+        // FIX-K (2026-04-27): tmux 세션이 빈 윈도우 상태에서도 자동 삭제되지 않도록 (monitor 대체 keep-alive)
+        await ShellService.runAsync("tmux set-option -gs exit-empty off 2>/dev/null; true")
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh(showBanner: true)
     }
@@ -716,28 +716,13 @@ final class SessionMonitor: ObservableObject {
     }
 
     func stopAllRunning() async {
-        // 의도적 Stop은 protected-claude-pids 체크 불필요 (orphan cleanup 전용 목록)
-        let toStop = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") }
-        for session in toStop { intentionallyStoppedIds.insert(session.id) }
-        for session in toStop {
-            let dir = session.directory.isEmpty ? session.projectName : session.directory
-            await ShellService.intentionalStopAsync(projectDir: dir)
-            if session.pid > 0 {
-                await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
-            }
-            // windowIndex 기반 tmux kill-window (이름 특수문자 무관, json-* 세션 -1 방어)
-            if session.windowIndex >= 0 {
-                // BUG#30 fix: shellEscape tmuxSession in kill-window target
-                await ShellService.runAsync(
-                    "tmux kill-window -t '\(shellEscape(session.tmuxSession)):\(session.windowIndex)' 2>/dev/null; true"
-                )
-            }
-            // checkAutoSync 재시작 방지: 인메모리 셋 + deactivate (watchdog 보호 포함)
-            intentionallyStoppedProfiles.insert(session.projectName)
-            let root = session.profileRoot ?? session.directory
-            ActivationService.shared.deactivate(root: root)
+        // FIX-J (2026-04-27): 그룹별 stopGroup()로 일괄 정지 — 깨끗한 종료
+        let activeGroups = windowGroupService.groups.filter { !$0.isWaitingList }
+        for group in activeGroups {
+            await stopGroup(group)
+            try? await Task.sleep(nanoseconds: 500_000_000)
         }
-        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
         await refresh(showBanner: true)
     }
 
@@ -1023,60 +1008,31 @@ final class SessionMonitor: ObservableObject {
         }
     }
 
-    // monitor 창이 해당 세션에 존재하지 않거나 999번이 아니면 생성/이동
+    // FIX-K (2026-04-27): monitor 창 생성 비활성화 — keep-alive는 tmux exit-empty off로 대체
     private func ensureMonitorWindow(sessionName: String) async {
-        let escaped = shellEscape(sessionName)
-        let monInfo = await ShellService.runAsync(
-            "tmux list-windows -t '\(escaped)' -F '#{window_index}|#{window_name}' 2>/dev/null | awk -F'|' '$2==\"monitor\"{print $1}'"
-        ).trimmingCharacters(in: .whitespacesAndNewlines)
-        if monInfo.isEmpty {
-            // monitor 창 없음 → 새로 생성
-            await ShellService.runAsync("""
-                _MON_ID=$(tmux new-window -t '\(escaped)' -n monitor -c '\(NSHomeDirectory())/claude' -P -F '#{window_id}' '/bin/bash -c "while true; do sleep 86400; done"' 2>/dev/null || true); \
-                [ -n \"$_MON_ID\" ] && tmux set-window-option -t \"$_MON_ID\" automatic-rename off 2>/dev/null || true; \
-                [ -n \"$_MON_ID\" ] && tmux rename-window -t \"$_MON_ID\" monitor 2>/dev/null || true; \
-                [ -n \"$_MON_ID\" ] && tmux move-window -s \"$_MON_ID\" -t '\(escaped):999' 2>/dev/null || true
-                """)
-        } else if monInfo != "999" {
-            // monitor 창 있지만 999가 아님 → 이동
-            await ShellService.runAsync(
-                "tmux move-window -s '\(escaped):\(monInfo)' -t '\(escaped):999' 2>/dev/null; true"
-            )
-        }
+        // intentionally empty — monitor 창 더 이상 만들지 않음
+        return
     }
 
     // 즉시 적용: 배정된 pane의 중단된 세션 모두 시작 + 모든 그룹 탭 순서 재배치 + iTerm 탭 재연결
     func applyNow() async {
-        // FIX-C (2026-04-27): 명시적 재시작 → intentional-stops 정리
-        // 대상: 모든 launchable 세션의 projectName (selectAllLaunchable과 동일 기준)
-        let launchableProfiles = sessions
-            .filter { !$0.isRunning && $0.isAssigned }
-            .map { $0.projectName }
-        await clearIntentionalStops(profiles: launchableProfiles)
+        // FIX-H (2026-04-27): 모든 활성 그룹에 startGroup() 적용
+        // — 비파괴적 launch가 아닌, 그룹별 깨끗한 재구성으로 변경
+        isBatchRestoring = true
+        defer { isBatchRestoring = false }
 
-        selectAllLaunchable()
-        await restoreSelected()
-        // 모든 활성 그룹 탭 순서 재배치 + monitor 보장 + iTerm 탭 연결 확인
-        for group in windowGroupService.groups where !group.isWaitingList {
-            await reorderTabs(for: group)
-            await ensureMonitorWindow(sessionName: group.sessionName)
-            // linked session이 monitor에만 붙어있으면 iTerm 탭 재연결
-            // BUG-APPLYNOW-REGEX fix: grep -E에 raw session name 삽입 시 regex 메타문자(`.+*` 등) 오매칭
-            // → python3 re.escape 방식으로 통일 (closeExistingITermWindows/startGroup과 동일)
-            let rawSn = group.sessionName
-            // BUG-APPLYNOW-CTRL fix: CC 모드 폐지 후 plain attach로 전환됨 →
-            // control-mode 필터 제거, 모든 클라이언트 감지 (monitor 창 제외)
-            let properAttach = await ShellService.runAsync("""
-                SNAME=\(ShellService.shellq(rawSn)) tmux list-sessions -F '#{session_name}' 2>/dev/null \
-                  | python3 -c "import sys,os,re; sn=os.environ['SNAME']; [print(l.strip()) for l in sys.stdin if re.fullmatch(re.escape(sn)+r'-v[0-9]+', l.strip())]" \
-                  | while read s; do
-                    tmux list-clients -t "$s" -F '#{window_name}' 2>/dev/null
-                done | grep -v '^$' | grep -v '^monitor$'
-            """)
-            if properAttach.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                await openITermTabs(for: group)
-            }
+        let activeGroups = windowGroupService.groups.filter { !$0.isWaitingList }
+        restoreProgress = (current: 0, total: activeGroups.count)
+
+        for (idx, group) in activeGroups.enumerated() {
+            restoreProgress = (current: idx, total: activeGroups.count)
+            await startGroup(group)
+            // 그룹 간 약간의 간격 — iTerm 탭 attach 안정화
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
         }
+
+        restoreProgress = (current: activeGroups.count, total: activeGroups.count)
+        await refresh(showBanner: true)
     }
 
     // 그룹(창) 전체 시작: tmux 세션 생성 + iTerm 새 창 attach + 프로필 순서대로 열기 + 탭 재배치
@@ -1125,17 +1081,13 @@ final class SessionMonitor: ObservableObject {
         // linked sessions가 살아있는 동안 closeExistingITermWindows를 먼저 호출
         await closeExistingITermWindows(for: sessionName)
 
-        // 기존 monitor 창 모두 제거 후 맨 마지막에 하나만 재생성 + _init_ 제거
+        // FIX-K: monitor 창 생성 안 함 — 기존 monitor 있으면 정리만
         // 이전 linked view sessions 정리 (중복 방지)
         await ShellService.runAsync("""
             tmux list-windows -t '\(escapedSession)' -F '#{window_id}|#{window_name}' 2>/dev/null \
               | awk -F'|' '$2=="monitor"{print $1}' \
               | xargs -I{} tmux kill-window -t {} 2>/dev/null; \
             tmux kill-window -t '\(escapedSession):_init_' 2>/dev/null; \
-            _MON_ID=$(tmux new-window -t '\(escapedSession)' -n monitor -c '\(NSHomeDirectory())/claude' -P -F '#{window_id}' '/bin/bash -c \"while true; do sleep 86400; done\"' 2>/dev/null || true); \
-            [ -n \"$_MON_ID\" ] && tmux set-window-option -t \"$_MON_ID\" automatic-rename off 2>/dev/null || true; \
-            [ -n \"$_MON_ID\" ] && tmux rename-window -t \"$_MON_ID\" monitor 2>/dev/null || true; \
-            [ -n \"$_MON_ID\" ] && tmux move-window -s \"$_MON_ID\" -t '\(escapedSession):999' 2>/dev/null || true; \
             SNAME=\(ShellService.shellq(sessionName)) tmux list-sessions -F '#{session_name}' 2>/dev/null \
               | python3 -c "import sys,os,re; sn=os.environ['SNAME']; [print(l.strip()) for l in sys.stdin if re.fullmatch(re.escape(sn)+r'-v[0-9]+', l.strip())]" \
               | xargs -I{} tmux kill-session -t {} 2>/dev/null; \

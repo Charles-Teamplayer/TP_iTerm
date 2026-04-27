@@ -131,20 +131,18 @@ except: pass
         )
         restoreLog += mainKill.isEmpty ? "\n  main sessions: 없음" : "\n" + mainKill.prefix(200)
 
-        // 3. orphan claude 프로세스 정리 (현재 앱 PID + protected-claude-pids 제외)
+        // 3. orphan claude 프로세스 정리
         let myPid = ProcessInfo.processInfo.processIdentifier
+        // FIX-I (2026-04-27): Force Restore — protected 무시하고 SIGKILL (자기 앱만 보호)
         let claudeKill = await ShellService.runAsync("""
-            PROTECTED=$(cat "$HOME/.claude/protected-claude-pids" 2>/dev/null | tr '\\n' ' ')
             ps -A -o pid=,comm= 2>/dev/null | awk '/[c]laude$/{print $1}' | while read pid; do
                 if [ "$pid" = "\(myPid)" ]; then continue; fi
-                if echo " $PROTECTED " | grep -qF " $pid "; then
-                    echo "protected: $pid (skip)"
-                    continue
-                fi
-                kill -TERM "$pid" 2>/dev/null && echo "term: $pid" || true
+                kill -KILL "$pid" 2>/dev/null && echo "killed: $pid" || true
             done
+            # protected-claude-pids 파일 자체도 비움 (다음 cycle에서 깨끗하게 재구성)
+            : > "$HOME/.claude/protected-claude-pids" 2>/dev/null || true
         """)
-        restoreLog += "\n🔪 Claude 프로세스 종료: " + (claudeKill.isEmpty ? "없음" : claudeKill.prefix(200))
+        restoreLog += "\n🔪 Claude 프로세스 강제 종료: " + (claudeKill.isEmpty ? "없음" : claudeKill.prefix(200))
 
         // 4. cooldown 파일 삭제 (30분 제한 우회) — FIX-F (2026-04-27): single quote 안 $HOME 미확장 수정
         let cooldownPath = NSHomeDirectory() + "/.claude/logs/.auto-restore-lastrun"

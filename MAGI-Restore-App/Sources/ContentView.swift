@@ -406,6 +406,7 @@ struct ContentView: View {
                                     .font(.caption).frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered).tint(.orange)
+                            .help("Stop all sessions in every group (clean shutdown)")
                         }
                         if allRestorable > 0 {
                             Button { Task { await monitor.purgeIdleZshWindows() } } label: {
