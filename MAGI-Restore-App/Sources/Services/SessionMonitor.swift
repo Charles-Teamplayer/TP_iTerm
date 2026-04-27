@@ -716,13 +716,31 @@ final class SessionMonitor: ObservableObject {
     }
 
     func stopAllRunning() async {
-        // FIX-J (2026-04-27): 그룹별 stopGroup()로 일괄 정지 — 깨끗한 종료
+        // FIX-J v2 (2026-04-27): 그룹별 stopGroup() + 매칭 안 되는 잔여 세션도 종료 (CEO: "다 종료")
         let activeGroups = windowGroupService.groups.filter { !$0.isWaitingList }
         for group in activeGroups {
             await stopGroup(group)
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            try? await Task.sleep(nanoseconds: 300_000_000)
         }
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        // 그룹 매칭 안 되는 잔여 running 세션도 강제 종료
+        let remaining = sessions.filter { $0.isRunning && !$0.id.hasPrefix("profile-") }
+        for session in remaining {
+            intentionallyStoppedIds.insert(session.id)
+            let dir = session.directory.isEmpty ? session.projectName : session.directory
+            await ShellService.intentionalStopAsync(projectDir: dir)
+            if session.pid > 0 {
+                await ShellService.runAsync("kill -TERM \(session.pid) 2>/dev/null")
+            }
+            if session.windowIndex >= 0 {
+                await ShellService.runAsync(
+                    "tmux kill-window -t '\(shellEscape(session.tmuxSession)):\(session.windowIndex)' 2>/dev/null; true"
+                )
+            }
+            intentionallyStoppedProfiles.insert(session.projectName)
+            let root = session.profileRoot ?? session.directory
+            ActivationService.shared.deactivate(root: root)
+        }
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
         await refresh(showBanner: true)
     }
 
