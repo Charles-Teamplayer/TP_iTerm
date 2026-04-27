@@ -62,6 +62,17 @@ final class WindowGroupService: ObservableObject {
         save()
     }
 
+    // FIX-E (2026-04-27): 그룹(pane) 표시 이름 변경. sessionName은 그대로 유지 (tmux session id 보존).
+    // waitingList 그룹은 변경 금지 (이름 고정 정책).
+    func renamePane(_ pane: WindowPane, newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        guard let idx = groups.firstIndex(where: { $0.id == pane.id }) else { return }
+        guard !groups[idx].isWaitingList else { return }
+        groups[idx].name = trimmed
+        save()
+    }
+
     // 프로필을 다른 그룹으로 이동
     func moveProfile(_ profileName: String, to target: WindowPane) {
         for i in groups.indices {

@@ -108,6 +108,15 @@ except: pass
         isRestoring = true
         restoreLog = "🔴 모든 세션 종료 중..."
 
+        // FIX-D (2026-04-27): watchdog/tab-focus-monitor 사전 bootout
+        // 정리 도중 crash recovery race 방지 — 마지막 단계에서 bootstrap 재시작
+        let uid = getuid()
+        let daemonsToBootout = ["com.claude.watchdog", "com.claude.tab-focus-monitor"]
+        for label in daemonsToBootout {
+            await ShellService.runAsync("launchctl bootout gui/\(uid)/\(label) 2>/dev/null; true")
+        }
+        restoreLog += "\n🛑 데몬 일시 정지: \(daemonsToBootout.joined(separator: ", "))"
+
         // 1. 모든 tmux linked sessions (-vN) 제거
         let linkedKill = await ShellService.runAsync("""
             tmux list-sessions -F '#{session_name}' 2>/dev/null \
@@ -137,8 +146,10 @@ except: pass
         """)
         restoreLog += "\n🔪 Claude 프로세스 종료: " + (claudeKill.isEmpty ? "없음" : claudeKill.prefix(200))
 
-        // 4. cooldown 파일 삭제 (30분 제한 우회)
-        await ShellService.runAsync("rm -f '$HOME/.claude/logs/.auto-restore-lastrun' 2>/dev/null; true")
+        // 4. cooldown 파일 삭제 (30분 제한 우회) — FIX-F (2026-04-27): single quote 안 $HOME 미확장 수정
+        let cooldownPath = NSHomeDirectory() + "/.claude/logs/.auto-restore-lastrun"
+        let escapedCooldown = cooldownPath.replacingOccurrences(of: "'", with: "'\\''")
+        await ShellService.runAsync("rm -f '\(escapedCooldown)' 2>/dev/null; true")
         restoreLog += "\n🗑️ 쿨다운 초기화"
 
         // 5. 2초 대기 후 --force 복원
@@ -165,6 +176,13 @@ except: pass
         } else {
             restoreLog += "\n✅ 복원 완료"
         }
+
+        // FIX-D (2026-04-27): 정리 끝났으면 데몬 재기동
+        for label in daemonsToBootout {
+            let plistPath = NSHomeDirectory() + "/Library/LaunchAgents/\(label).plist"
+            await ShellService.runAsync("launchctl bootstrap gui/\(uid) '\(plistPath)' 2>/dev/null; true")
+        }
+        restoreLog += "\n▶️ 데몬 재기동: \(daemonsToBootout.joined(separator: ", "))"
 
         isRestoring = false
         await refresh()

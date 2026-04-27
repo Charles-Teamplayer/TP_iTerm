@@ -24,6 +24,10 @@ struct ContentView: View {
     @State private var editingTabKey: String? = nil   // "paneId|profileName"
     @State private var tabNumberInput: String = ""
 
+    // FIX-E (2026-04-27): 그룹명 인라인 편집 상태
+    @State private var editingPaneNameId: UUID? = nil
+    @State private var paneNameInput: String = ""
+
     // 드래그 앤 드롭
     @State private var dragHighlightPane: UUID? = nil
 
@@ -389,7 +393,8 @@ struct ContentView: View {
                             Button {
                                 Task { await monitor.applyNow() }
                             } label: {
-                                Label("Apply Now (\(allLaunchable))", systemImage: "bolt.circle.fill")
+                                // FIX-G (2026-04-27): "Apply Now" → "Start All Idle" — Start Group과 의미 차이 명확화
+                                Label("Start All Idle (\(allLaunchable))", systemImage: "bolt.circle.fill")
                                     .font(.caption).frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent).tint(.green)
@@ -486,8 +491,9 @@ struct ContentView: View {
     private func paneHeader(_ pane: WindowPane, sessions: [ClaudeSession], color: Color,
                             isCollapsed: Bool, onToggleCollapse: @escaping () -> Void) -> some View {
         let runCount = sessions.filter(\.isRunning).count
+        let nonWaitingCount = monitor.windowGroupService.groups.filter { !$0.isWaitingList }.count
         HStack(spacing: 8) {
-            // 좌측: 접이식 영역 (chevron + 아이콘 + 텍스트) — 탭 시 collapse
+            // 좌측: 접이식 영역 (chevron + 아이콘 + 텍스트) — 탭 시 collapse, 더블탭 시 인라인 rename
             HStack(spacing: 6) {
                 Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                     .font(.system(size: 9, weight: .semibold))
@@ -497,9 +503,25 @@ struct ContentView: View {
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(color)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(pane.name)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.primary)
+                    // FIX-E: 인라인 편집 — 일반 그룹만 (waiting list 제외)
+                    if !pane.isWaitingList && editingPaneNameId == pane.id {
+                        TextField("", text: $paneNameInput)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(maxWidth: 180)
+                            .onSubmit {
+                                let trimmed = paneNameInput.trimmingCharacters(in: .whitespaces)
+                                if !trimmed.isEmpty && trimmed != pane.name {
+                                    monitor.windowGroupService.renamePane(pane, newName: trimmed)
+                                }
+                                editingPaneNameId = nil
+                            }
+                            .onExitCommand { editingPaneNameId = nil }
+                    } else {
+                        Text(pane.name)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.primary)
+                    }
                     HStack(spacing: 4) {
                         if pane.isWaitingList {
                             Text("Drag here to assign")
@@ -523,13 +545,19 @@ struct ContentView: View {
             .onTapGesture {
                 withAnimation(.easeInOut(duration: 0.2)) { onToggleCollapse() }
             }
+            // FIX-E: 그룹명 더블클릭 → 인라인 편집 (waiting list 제외)
+            .onTapGesture(count: 2) {
+                guard !pane.isWaitingList else { return }
+                paneNameInput = pane.name
+                editingPaneNameId = pane.id
+            }
 
             Spacer()
 
-            // 우측: 버튼 그룹 (각 버튼이 독립 탭 처리)
+            // 우측: 버튼 그룹 — FIX-E로 일반 그룹은 Start/Stop만
             HStack(spacing: 4) {
                 if pane.isWaitingList {
-                    // 대기 목록: zsh 창 전체 닫기 + 이름 변경
+                    // 대기 목록: zsh 창 전체 닫기 + 이름 변경 (기존 그대로)
                     let hasWindows = paneSessions(pane, all: monitor.sessions.filter { $0.profileRoot != nil })
                         .contains { !$0.id.hasPrefix("profile-") && $0.windowIndex >= 0 && $0.windowIndex != Int.max }
                     Button { Task { await monitor.killWaitingListWindows() } } label: {
@@ -548,7 +576,7 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain).help("Rename waiting list")
                 } else {
-                    // BUG#31 fix: startingGroups 체크로 중복 클릭 방지
+                    // FIX-E (2026-04-27): Start/Stop만 노출
                     let isStarting = monitor.startingGroups.contains(pane.sessionName)
                     Button { Task { await monitor.startGroup(pane) } } label: {
                         Image(systemName: isStarting ? "hourglass.circle.fill" : "play.circle.fill")
@@ -565,38 +593,34 @@ struct ContentView: View {
                             .foregroundStyle(runCount == 0 ? Color.secondary : Color.orange)
                     }
                     .buttonStyle(.plain).help("Stop running sessions in group").disabled(runCount == 0)
-
-                    // BUG#37 fix: Import 버튼 — importingToPane 설정 경로 없던 dead code 해소
-                    Button { importingToPane = pane } label: {
-                        Image(systemName: "tray.and.arrow.down.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Color.secondary)
-                    }
-                    .buttonStyle(.plain).help("Import profiles into this group")
-
-                    Button { renamingPane = pane } label: {
-                        Image(systemName: "pencil.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Color.secondary)
-                    }
-                    .buttonStyle(.plain).help("Rename group")
-
-                    let nonWaitingCount = monitor.windowGroupService.groups.filter { !$0.isWaitingList }.count
-                    Button {
-                        paneToDelete = pane
-                        showDeletePaneConfirm = true
-                    } label: {
-                        Image(systemName: "minus.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(nonWaitingCount <= 1 ? Color.secondary : Color.red.opacity(0.8))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(nonWaitingCount <= 1)
-                    .help("Delete group (sessions move to waiting list)")
                 }
             }
         }
         .padding(.vertical, 6)
+        // FIX-E (2026-04-27): Import / Rename / Delete는 헤더 전체 우클릭 메뉴로 이동 (일반 그룹만)
+        .contextMenu {
+            if !pane.isWaitingList {
+                Button {
+                    importingToPane = pane
+                } label: {
+                    Label("Import profiles…", systemImage: "tray.and.arrow.down.fill")
+                }
+                Button {
+                    paneNameInput = pane.name
+                    editingPaneNameId = pane.id
+                } label: {
+                    Label("Rename group…", systemImage: "pencil.circle.fill")
+                }
+                Divider()
+                Button(role: .destructive) {
+                    paneToDelete = pane
+                    showDeletePaneConfirm = true
+                } label: {
+                    Label("Delete group", systemImage: "minus.circle.fill")
+                }
+                .disabled(nonWaitingCount <= 1)
+            }
+        }
     }
 
     @ViewBuilder

@@ -354,32 +354,36 @@ final class SessionMonitor: ObservableObject {
         }
     }
 
-    // Problem-10 fix: 실행 중인 세션 PID + 앱 자신의 parent chain을 protected-claude-pids에 등록
+    // FIX-B (2026-04-27): 무차별 claude PID 보호 제거.
+    // active sessions(isRunning + isAssigned) PID + 자기 앱 parent chain만 보호.
+    // Problem-10 fix 의도(앱 자체 보호)는 유지하되, 시스템 전역 claude 프로세스 등록은 중단.
     private func updateProtectedPids(from sessions: [ClaudeSession]) async {
-        var pidSet = Set(sessions.filter { $0.isRunning && $0.pid > 0 }.map { "\($0.pid)" })
+        // 1) 정당한 active session PID만 (isRunning + isAssigned + pid>0)
+        var pidSet = Set(
+            sessions
+                .filter { $0.isRunning && $0.isAssigned && $0.pid > 0 }
+                .map { "\($0.pid)" }
+        )
+        // 2) 앱 자신
         let myPid = ProcessInfo.processInfo.processIdentifier
         pidSet.insert("\(myPid)")
-        // parent PID chain + 전체 claude 프로세스 — 백그라운드에서 수집
+
+        // 3) 앱 parent chain만 (shell → launcher → ... — 자기 앱 죽이지 않게)
         let collected = await Task.detached(priority: .utility) { () -> Set<String> in
             var pids = Set<String>()
-            // parent PID chain 추적 — shell → tmux pane → ... 전부 보호
             var currentPid = Int(myPid)
             for _ in 0..<10 {
                 guard currentPid > 1 else { break }
-                let ppidRaw = ShellService.run("ps -o ppid= -p \(currentPid) 2>/dev/null").trimmingCharacters(in: .whitespaces)
+                let ppidRaw = ShellService.run("ps -o ppid= -p \(currentPid) 2>/dev/null")
+                    .trimmingCharacters(in: .whitespaces)
                 guard let ppid = Int(ppidRaw), ppid > 1 else { break }
                 pids.insert("\(ppid)")
                 currentPid = ppid
             }
-            // 모든 tmux pane의 claude 프로세스도 보호 (active-sessions에 없는 것 포함)
-            let allClaude = ShellService.run("ps -A -o pid=,comm= 2>/dev/null | awk '/[c]laude$/{print $1}'")
-            for line in allClaude.components(separatedBy: "\n") {
-                let pid = line.trimmingCharacters(in: .whitespaces)
-                if !pid.isEmpty { pids.insert(pid) }
-            }
             return pids
         }.value
         pidSet.formUnion(collected)
+
         let content = pidSet.sorted().joined(separator: "\n") + "\n"
         let path = NSHomeDirectory() + "/.claude/protected-claude-pids"
         try? content.write(toFile: path, atomically: true, encoding: .utf8)
@@ -520,6 +524,9 @@ final class SessionMonitor: ObservableObject {
             selectedForRestore.contains($0.id) && !$0.isRunning && $0.isAssigned
         }
         guard !toRestore.isEmpty else { return }
+
+        // FIX-C (2026-04-27): 명시적 재시작 → intentional-stops 정리
+        await clearIntentionalStops(profiles: toRestore.map { $0.projectName })
 
         isRefreshing = true
         isBatchRestoring = true
@@ -691,6 +698,21 @@ final class SessionMonitor: ObservableObject {
         }
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         await refresh(showBanner: true)
+    }
+
+    // FIX-C helper (2026-04-27): startGroup line 1082-1089 동일 로직 추출.
+    // in-memory 셋 + JSON 양쪽에서 대상 프로필을 intentional-stops에서 제거.
+    private func clearIntentionalStops(profiles: [String]) async {
+        guard !profiles.isEmpty else { return }
+        for name in profiles {
+            intentionallyStoppedProfiles.remove(name)
+        }
+        let pipeDelim = profiles
+            .map { $0.replacingOccurrences(of: "'", with: "'\\''") }
+            .joined(separator: "|")
+        await ShellService.runAsync(
+            "STOPS_PROFILES='\(pipeDelim)' python3 -c 'import json,os; p=os.path.expanduser(\"~/.claude/intentional-stops.json\"); c=set(os.environ[\"STOPS_PROFILES\"].split(\"|\") if os.environ.get(\"STOPS_PROFILES\") else []); d=json.load(open(p)) if os.path.exists(p) else {\"stops\":[]}; d[\"stops\"]=[s for s in d.get(\"stops\",[]) if s.get(\"project\",\"\") not in c]; json.dump(d,open(p,\"w\"))' 2>/dev/null; true"
+        )
     }
 
     func stopAllRunning() async {
@@ -1025,6 +1047,13 @@ final class SessionMonitor: ObservableObject {
 
     // 즉시 적용: 배정된 pane의 중단된 세션 모두 시작 + 모든 그룹 탭 순서 재배치 + iTerm 탭 재연결
     func applyNow() async {
+        // FIX-C (2026-04-27): 명시적 재시작 → intentional-stops 정리
+        // 대상: 모든 launchable 세션의 projectName (selectAllLaunchable과 동일 기준)
+        let launchableProfiles = sessions
+            .filter { !$0.isRunning && $0.isAssigned }
+            .map { $0.projectName }
+        await clearIntentionalStops(profiles: launchableProfiles)
+
         selectAllLaunchable()
         await restoreSelected()
         // 모든 활성 그룹 탭 순서 재배치 + monitor 보장 + iTerm 탭 연결 확인
@@ -1079,14 +1108,9 @@ final class SessionMonitor: ObservableObject {
             )
         }
 
+        // FIX-C (2026-04-27): startGroup도 clearIntentionalStops 헬퍼로 통일
         // startGroup() = 사용자 명시 재시작 → intentional-stops 해제 (watchdog crash recovery 복원)
-        for profileName in group.profileNames {
-            intentionallyStoppedProfiles.remove(profileName)
-        }
-        let profilesPipeDelim = group.profileNames.map { $0.replacingOccurrences(of: "'", with: "'\\''") }.joined(separator: "|")
-        await ShellService.runAsync(
-            "STOPS_PROFILES='\(profilesPipeDelim)' python3 -c 'import json,os; p=os.path.expanduser(\"~/.claude/intentional-stops.json\"); c=set(os.environ[\"STOPS_PROFILES\"].split(\"|\") if os.environ.get(\"STOPS_PROFILES\") else []); d=json.load(open(p)) if os.path.exists(p) else {\"stops\":[]}; d[\"stops\"]=[s for s in d.get(\"stops\",[]) if s.get(\"project\",\"\") not in c]; json.dump(d,open(p,\"w\"))' 2>/dev/null; true"
-        )
+        await clearIntentionalStops(profiles: group.profileNames)
 
         // 꺼진 세션만 기동 (실행 중이면 유지)
         let allProfiles = profileService.profiles
