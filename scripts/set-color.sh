@@ -3,7 +3,6 @@
 # 사용법: set-color.sh <state> [project]
 # config.json 읽어서 escape code 적용 + 상태 저장
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 set -euo pipefail
 
 STATE="${1:-idle}"
@@ -84,10 +83,6 @@ _save_state() {
     # BUG-PID-NULL fix: "null" 문자열 방어 — 정수 아닌 값은 0으로 강제
     local _STATE_PID=${CC_PROCESS_PID:-0}
     [[ ! "$_STATE_PID" =~ ^[0-9]+$ ]] && _STATE_PID=0
-    # BUG-SETCOLOR-NULL fix: R/G/B 빈값 방어 — 정수 아닌 값은 0으로 강제
-    [[ ! "${R:-}" =~ ^[0-9]+$ ]] && R=0
-    [[ ! "${G:-}" =~ ^[0-9]+$ ]] && G=0
-    [[ ! "${B:-}" =~ ^[0-9]+$ ]] && B=0
     printf '{"session_id":"%s","type":"%s","project":"%s","tty":"/dev/%s","pid":%d,"timestamp":"%s","color":{"r":%d,"g":%d,"b":%d}}\n' \
         "$TTY_NAME" "$STATE" "$ESCAPED_PROJECT" "$TTY_NAME" $_STATE_PID \
         "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$R" "$G" "$B" > "$JSON_FILE"
@@ -145,12 +140,10 @@ print(d['states'].get(os.environ['_SC_ST'], {}).get('title_prefix', ''))
 fi
 TITLE="${PREFIX:+$PREFIX }${PROJECT}"
 
-# escape code 적용 — tmux pane이므로 DCS passthrough 포맷으로 전송
-# \033Ptmux;\033<escape_seq>\033\\ → tmux allow-passthrough on 에서 iTerm2로 전달
-printf '\033Ptmux;\033\033]1;%s\a\033\\' "$TITLE" > "$TTY_PATH" 2>/dev/null
-printf '\033Ptmux;\033\033]6;1;bg;red;brightness;%s\a\033\\' "$R" > "$TTY_PATH" 2>/dev/null
-printf '\033Ptmux;\033\033]6;1;bg;green;brightness;%s\a\033\\' "$G" > "$TTY_PATH" 2>/dev/null
-printf '\033Ptmux;\033\033]6;1;bg;blue;brightness;%s\a\033\\' "$B" > "$TTY_PATH" 2>/dev/null
+# escape code 적용
+printf '\e]1;%s\a' "$TITLE" > "$TTY_PATH" 2>/dev/null
+printf '\e]6;1;bg;red;brightness;%s\a\e]6;1;bg;green;brightness;%s\a\e]6;1;bg;blue;brightness;%s\a' \
+    "$R" "$G" "$B" > "$TTY_PATH" 2>/dev/null
 
 # tmux rename-window 비활성화 — 창 이름이 원본 프로파일명으로 유지되어야 함
 # (탭 색상/배지는 escape sequence로만 처리)
@@ -208,16 +201,22 @@ NOTIFY=$(jq -r --arg state "$STATE" '.states[$state].macos_notify // false' "$CO
 if [ "$NOTIFY" = "true" ]; then
     _SAFE_PROJECT=$(printf '%s' "$PROJECT" | sed 's/\\/\\\\/g; s/"/\\"/g')
     _FOCUS_SCRIPT="$HOME/.claude/scripts/focus-iterm-tab.sh"
+    _NOTIFY_LOG="$HOME/.claude/logs/notify-fire.log"
+    mkdir -p "$(dirname "$_NOTIFY_LOG")"
+    printf '[%s] fire project=%s tty=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$PROJECT" "$TTY_NAME" >> "$_NOTIFY_LOG"
     if command -v terminal-notifier &>/dev/null && [ -x "$_FOCUS_SCRIPT" ]; then
-        terminal-notifier \
+        # nohup으로 SIGHUP 격리 — 부모(set-color.sh) 종료 시 자식 죽지 않도록
+        nohup terminal-notifier \
             -title "Claude Code" \
             -subtitle "⚠️ Attention Required" \
             -message "${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다" \
             -sender com.googlecode.iterm2 \
             -group "claude-attn-${TTY_NAME}" \
-            -execute "$_FOCUS_SCRIPT '$TTY_PATH' '$_SAFE_PROJECT'" >/dev/null 2>&1 &
+            -execute "$_FOCUS_SCRIPT '$TTY_PATH' '$_SAFE_PROJECT'" </dev/null >/dev/null 2>&1 &
+        disown 2>/dev/null || true
     else
-        osascript -e "display notification \"${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다\" with title \"Claude Code\" subtitle \"⚠️ Attention Required\"" 2>/dev/null &
+        nohup osascript -e "display notification \"${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다\" with title \"Claude Code\" subtitle \"⚠️ Attention Required\"" </dev/null >/dev/null 2>&1 &
+        disown 2>/dev/null || true
     fi
 fi
 

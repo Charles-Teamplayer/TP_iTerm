@@ -3,7 +3,6 @@
 # 사용법: set-color.sh <state> [project]
 # config.json 읽어서 escape code 적용 + 상태 저장
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 set -euo pipefail
 
 STATE="${1:-idle}"
@@ -84,10 +83,6 @@ _save_state() {
     # BUG-PID-NULL fix: "null" 문자열 방어 — 정수 아닌 값은 0으로 강제
     local _STATE_PID=${CC_PROCESS_PID:-0}
     [[ ! "$_STATE_PID" =~ ^[0-9]+$ ]] && _STATE_PID=0
-    # BUG-SETCOLOR-NULL fix: R/G/B 빈값 방어 — 정수 아닌 값은 0으로 강제
-    [[ ! "${R:-}" =~ ^[0-9]+$ ]] && R=0
-    [[ ! "${G:-}" =~ ^[0-9]+$ ]] && G=0
-    [[ ! "${B:-}" =~ ^[0-9]+$ ]] && B=0
     printf '{"session_id":"%s","type":"%s","project":"%s","tty":"/dev/%s","pid":%d,"timestamp":"%s","color":{"r":%d,"g":%d,"b":%d}}\n' \
         "$TTY_NAME" "$STATE" "$ESCAPED_PROJECT" "$TTY_NAME" $_STATE_PID \
         "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$R" "$G" "$B" > "$JSON_FILE"
@@ -108,37 +103,6 @@ fi
 if ! tmux list-panes -a -F "#{pane_tty}" 2>/dev/null | grep -qxF "$TTY_PATH"; then
     _log "SKIP: $TTY_NAME is not a tmux pane (self-protection)"
     exit 0
-fi
-
-# Race condition 방어: idle 상태 요청 시 현재 파일이 최근 working/active이면 스킵
-# (watchdog bg dispatch → hook working 설정 → bg process가 뒤늦게 idle로 덮어쓰는 문제 방지)
-if [[ "$STATE" == idle_* ]]; then
-    EXISTING_FILE="$STATE_DIR/${TTY_NAME}.json"
-    if [ -f "$EXISTING_FILE" ]; then
-        _GUARD_DATA=$(_GF="$EXISTING_FILE" python3 -c "
-import json, os, datetime
-try:
-    with open(os.environ['_GF']) as f:
-        d=json.load(f)
-    t=d.get('type','')
-    ts=d.get('timestamp','')
-    if t in ('working','active','starting') and ts:
-        dt=datetime.datetime.strptime(ts,'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)
-        age=(datetime.datetime.now(datetime.timezone.utc)-dt).total_seconds()
-        if age < 90:
-            print('SKIP')
-        else:
-            print('OK')
-    else:
-        print('OK')
-except:
-    print('OK')
-" 2>/dev/null)
-        if [ "$_GUARD_DATA" = "SKIP" ]; then
-            _log "GUARD: skip idle aging for $TTY_NAME (recent working/active state)"
-            exit 0
-        fi
-    fi
 fi
 
 # config에서 색상 읽기
@@ -176,21 +140,10 @@ print(d['states'].get(os.environ['_SC_ST'], {}).get('title_prefix', ''))
 fi
 TITLE="${PREFIX:+$PREFIX }${PROJECT}"
 
-# 상태 저장 먼저 — race condition 방지 (tab-status.sh BLOCK이 파일 읽기 전 저장 완료)
-mkdir -p "$STATE_DIR"
-_save_state "$TTY_NAME" "$PROJECT" "$R" "$G" "$B"
-
-# 하위호환: pipe-delimited 상태 저장 (watchdog/tab-focus-monitor용)
-COMPAT_STATE_DIR="$HOME/.claude/tab-states"
-mkdir -p "$COMPAT_STATE_DIR"
-echo "${STATE}|${PROJECT}|$(date +%s)" > "$COMPAT_STATE_DIR/$TTY_NAME"
-
-# escape code 적용 — tmux pane이므로 DCS passthrough 포맷으로 전송
-# \033Ptmux;\033<escape_seq>\033\\ → tmux allow-passthrough on 에서 iTerm2로 전달
-printf '\033Ptmux;\033\033]1;%s\a\033\\' "$TITLE" > "$TTY_PATH" 2>/dev/null
-printf '\033Ptmux;\033\033]6;1;bg;red;brightness;%s\a\033\\' "$R" > "$TTY_PATH" 2>/dev/null
-printf '\033Ptmux;\033\033]6;1;bg;green;brightness;%s\a\033\\' "$G" > "$TTY_PATH" 2>/dev/null
-printf '\033Ptmux;\033\033]6;1;bg;blue;brightness;%s\a\033\\' "$B" > "$TTY_PATH" 2>/dev/null
+# escape code 적용
+printf '\e]1;%s\a' "$TITLE" > "$TTY_PATH" 2>/dev/null
+printf '\e]6;1;bg;red;brightness;%s\a\e]6;1;bg;green;brightness;%s\a\e]6;1;bg;blue;brightness;%s\a' \
+    "$R" "$G" "$B" > "$TTY_PATH" 2>/dev/null
 
 # tmux rename-window 비활성화 — 창 이름이 원본 프로파일명으로 유지되어야 함
 # (탭 색상/배지는 escape sequence로만 처리)
@@ -209,6 +162,15 @@ print(d['states'].get(os.environ['_SC_ST'],{}).get('badge',''))
     fi
     [ -n "$BADGE" ] && printf '\e]1337;SetBadgeFormat=%s\a' "$(printf '%s' "$BADGE" | base64)" > "$TTY_PATH" 2>/dev/null
 fi
+
+# 상태 저장 (JSON — tab-color/states/)
+mkdir -p "$STATE_DIR"
+_save_state "$TTY_NAME" "$PROJECT" "$R" "$G" "$B"
+
+# 하위호환: pipe-delimited 상태 저장 (watchdog/tab-focus-monitor용)
+COMPAT_STATE_DIR="$HOME/.claude/tab-states"
+mkdir -p "$COMPAT_STATE_DIR"
+echo "${STATE}|${PROJECT}|$(date +%s)" > "$COMPAT_STATE_DIR/$TTY_NAME"
 
 # flash 처리
 FLASH=$(jq -r --arg state "$STATE" '.states[$state].flash // false' "$CONFIG" 2>/dev/null || echo "false")
@@ -239,16 +201,22 @@ NOTIFY=$(jq -r --arg state "$STATE" '.states[$state].macos_notify // false' "$CO
 if [ "$NOTIFY" = "true" ]; then
     _SAFE_PROJECT=$(printf '%s' "$PROJECT" | sed 's/\\/\\\\/g; s/"/\\"/g')
     _FOCUS_SCRIPT="$HOME/.claude/scripts/focus-iterm-tab.sh"
+    _NOTIFY_LOG="$HOME/.claude/logs/notify-fire.log"
+    mkdir -p "$(dirname "$_NOTIFY_LOG")"
+    printf '[%s] fire project=%s tty=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$PROJECT" "$TTY_NAME" >> "$_NOTIFY_LOG"
     if command -v terminal-notifier &>/dev/null && [ -x "$_FOCUS_SCRIPT" ]; then
-        terminal-notifier \
+        # nohup으로 SIGHUP 격리 — 부모(set-color.sh) 종료 시 자식 죽지 않도록
+        nohup terminal-notifier \
             -title "Claude Code" \
             -subtitle "⚠️ Attention Required" \
             -message "${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다" \
             -sender com.googlecode.iterm2 \
             -group "claude-attn-${TTY_NAME}" \
-            -execute "$_FOCUS_SCRIPT '$TTY_PATH' '$_SAFE_PROJECT'" >/dev/null 2>&1 &
+            -execute "$_FOCUS_SCRIPT '$TTY_PATH' '$_SAFE_PROJECT'" </dev/null >/dev/null 2>&1 &
+        disown 2>/dev/null || true
     else
-        osascript -e "display notification \"${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다\" with title \"Claude Code\" subtitle \"⚠️ Attention Required\"" 2>/dev/null &
+        nohup osascript -e "display notification \"${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다\" with title \"Claude Code\" subtitle \"⚠️ Attention Required\"" </dev/null >/dev/null 2>&1 &
+        disown 2>/dev/null || true
     fi
 fi
 
