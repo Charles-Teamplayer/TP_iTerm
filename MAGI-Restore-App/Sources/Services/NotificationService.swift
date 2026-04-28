@@ -6,8 +6,11 @@ final class NotificationService {
     static let shared = NotificationService()
     private init() {}
 
-    // FIX-M (2026-04-27): TP_Sync와 동일한 macOS native banner — UNUserNotificationCenter
-    // ToastService(in-app) + 시스템 알림 둘 다 발송 (앱 비활성 시도 보임)
+    // FIX-M (2026-04-27): TP_Sync 스타일 macOS native banner — UNUserNotificationCenter
+    // FIX-N (2026-04-28): Toast(in-app) ↔ Native banner 정책 분리
+    //   - in-app Toast (ToastService): 사용자 액션 필요 알림 (Open 버튼) — git-sync 로그 열기, attention 탭 포커스
+    //   - Native banner (UNUserNotificationCenter): 앱 비활성 시도 보이는 단순 통지 — 복원 완료, 세션 중단
+    //   현재 모든 notify*는 둘 다 동시 발송 — 사용자 피로 시 별도 채널화 검토
 
     func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
