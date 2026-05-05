@@ -262,7 +262,9 @@ struct ContentView: View {
 
             Divider()
 
-            if profileSessions.isEmpty {
+            // FIX-P (2026-05-05): 빈 화면 분기 조건 변경 — sessions(비동기 채움) 기반 X → 그룹 정의 기반
+            // 시작 시 sessions가 아직 비어있어도 그룹은 즉시 표시되어야 함
+            if wgs.groups.filter({ !$0.isWaitingList }).isEmpty {
                 Spacer()
                 Image(systemName: "rectangle.3.group").font(.system(size: 32)).foregroundStyle(.secondary)
                 Text("No profiles configured").foregroundStyle(.secondary).font(.callout)
