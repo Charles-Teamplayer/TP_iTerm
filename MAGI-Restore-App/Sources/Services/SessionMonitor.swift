@@ -1227,58 +1227,35 @@ final class SessionMonitor: ObservableObject {
     func openITermTabs(for group: WindowPane) async {
         guard !group.isWaitingList else { return }
         let sname = group.sessionName
-
-        // 현재 tmux windows 목록 조회 (index|name 형식)
-        let rawWins = await ShellService.runAsync(
-            "tmux list-windows -t '\(shellEscape(sname))' -F '#{window_index}|#{window_name}' 2>/dev/null"
-        )
-        var winPairs: [(Int, String)] = []
-        for line in rawWins.components(separatedBy: "\n") where !line.isEmpty {
-            let parts = line.components(separatedBy: "|")
-            if parts.count == 2, let idx = Int(parts[0]) {
-                winPairs.append((idx, parts[1]))
-            }
-        }
-        // monitor 제외한 실제 탭만 생성 (monitor 탭은 사용자에게 불필요)
-        let realPairs = winPairs.filter { $0.1 != "monitor" }
-        guard !realPairs.isEmpty else { return }
-
-        // AppleScript: linked session 방식 (각 탭이 독립적인 창 추적)
-        // tmux attach-session -t session:N 방식은 마지막 N이 session 전체 current window를 덮어씀
-        // → {sname}-v{winIdx} linked session 생성으로 각 탭 독립 창 보장
-        // BUG-ITERM-ESCAPE fix: sname을 tmux 타겟에 사용 시 shellEscape 적용 (single-quote injection 방지)
         let escapedSn = shellEscape(sname)
-        let firstWinIdx = realPairs[0].0
-        let firstLinked = "\(escapedSn)-v\(firstWinIdx)"
-        let firstCmd = "/bin/bash -lc 'tmux has-session -t \(firstLinked) 2>/dev/null || tmux new-session -d -s \(firstLinked) -t \(escapedSn) 2>/dev/null; tmux select-window -t \(firstLinked):\(firstWinIdx) 2>/dev/null; tmux attach-session -t \(firstLinked); exec /bin/zsh -l'"
-        // BUG-ITERM-GROUPTABS fix: 단일 tell newWin 블록으로 모든 탭 생성, create window 후 delay 1 추가
-        // BUG-010 fix: try-on error 추가 — 첫 창 생성 실패 시 전체 블록 silently fail 방지
-        var lines: [String] = [
-            "tell application \"iTerm2\"",
-            "    activate",
-            "    try",
-            "        set newWin to (create window with default profile command \"\(firstCmd)\")",
-            "        delay 1",
-        ]
-        if !realPairs.dropFirst().isEmpty {
-            lines.append("        tell newWin")
-            for (winIdx, _) in realPairs.dropFirst() {
-                let linkedName = "\(escapedSn)-v\(winIdx)"
-                let cmd = "/bin/bash -lc 'tmux has-session -t \(linkedName) 2>/dev/null || tmux new-session -d -s \(linkedName) -t \(escapedSn) 2>/dev/null; tmux select-window -t \(linkedName):\(winIdx) 2>/dev/null; tmux attach-session -t \(linkedName); exec /bin/zsh -l'"
-                lines.append("            delay 0.5")
-                lines.append("            create tab with default profile command \"\(cmd)\"")
-            }
-            lines.append("        end tell")
-        }
-        lines.append("    on error errMsg")
-        lines.append("        return \"error:\" & errMsg")
-        lines.append("    end try")
-        lines.append("end tell")
 
-        let appleScript = lines.joined(separator: "\n")
+        // FIX-O (2026-05-05): tmux -CC (control mode) 단일 attach로 단순화
+        // — iTerm2가 자동으로 모든 tmux window를 native window/tab으로 변환
+        //   (Settings → tmux → "When attaching: Native windows" 옵션 따름)
+        // — sub-agent split-window도 native iTerm2 pane으로 자동 표시 (close 버튼 활성)
+        // — linked-vN session 누적 문제 제거 (이전 9개씩 만들던 로직 폐기)
+
+        // 메인 세션 존재 확인
+        let exists = await ShellService.runAsync(
+            "tmux has-session -t '\(escapedSn)' 2>/dev/null && echo yes || echo no"
+        )
+        guard exists.trimmingCharacters(in: .whitespacesAndNewlines) == "yes" else { return }
+
+        // -CC attach: iTerm2 control mode로 attach → iTerm2가 native pane/window로 분리 표시
+        let attachCmd = "/bin/bash -lc 'tmux -CC attach-session -t \(escapedSn)'"
+        let appleScript = """
+        tell application "iTerm2"
+            activate
+            try
+                create window with default profile command "\(attachCmd)"
+            on error errMsg
+                return "error:" & errMsg
+            end try
+        end tell
+        """
         let script = "osascript << '__APPLES__'\n\(appleScript)\n__APPLES__"
         let result = await ShellService.runAsync(script)
-        // BUG-P1A fix: AppleScript 실패 시 1.5초 후 1회 재시도
+        // BUG-P1A: AppleScript 실패 시 1.5초 후 1회 재시도
         if result.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("error:") || result.contains("error:") {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await ShellService.runAsync(script)
