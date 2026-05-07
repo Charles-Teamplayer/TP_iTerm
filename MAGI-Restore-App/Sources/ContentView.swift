@@ -43,11 +43,13 @@ struct ContentView: View {
     enum Tab: String, CaseIterable {
         case sessions = "Sessions"
         case profiles = "Profiles"
+        case monitoring = "Monitoring"
         case system = "System"
         var icon: String {
             switch self {
             case .sessions: "terminal"
             case .profiles: "rectangle.3.group"
+            case .monitoring: "waveform.path.ecg"
             case .system: "gearshape"
             }
         }
@@ -151,7 +153,8 @@ struct ContentView: View {
                     selectedTab = .profiles
                     if profileSelection == nil { profileSelection = monitor.profileService.profiles.first?.id }
                 }.keyboardShortcut("2", modifiers: .command)
-                Button("") { selectedTab = .system  }.keyboardShortcut("3", modifiers: .command)
+                Button("") { selectedTab = .monitoring }.keyboardShortcut("3", modifiers: .command)
+                Button("") { selectedTab = .system     }.keyboardShortcut("4", modifiers: .command)
                 Button("") {
                     switch selectedTab {
                     case .sessions: searchFocused = true
@@ -223,7 +226,8 @@ struct ContentView: View {
     // MARK: - Session List Panel
 
     private var sessionListPanel: some View {
-        let profileSessions = monitor.sessions.filter { $0.profileRoot != nil }
+        // FIX-R (2026-05-07): profileRoot 매칭 실패해도 tmux active session 표시
+        let profileSessions = monitor.sessions.filter { $0.profileRoot != nil || $0.windowIndex >= 0 }
         let allRunning = profileSessions.filter(\.isRunning).count
         let allRestorable = profileSessions.filter {
             !$0.isRunning && $0.isAssigned && !$0.id.hasPrefix("profile-") && $0.windowIndex != Int.max
@@ -796,6 +800,7 @@ struct ContentView: View {
     private var otherTabContent: some View {
         switch selectedTab {
         case .profiles: ProfilesView(monitor: monitor, searchFocused: $profileSearchFocused, selection: $profileSelection)
+        case .monitoring: MonitoringView(monitor: monitor)
         case .system:   SystemView(monitor: monitor)
         default:        EmptyStateView(title: "Select an item", systemImage: "sidebar.left")
         }
