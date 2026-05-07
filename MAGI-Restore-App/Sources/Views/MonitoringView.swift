@@ -9,7 +9,7 @@ struct MonitoringView: View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("Active Agents (\(codexMonitor.agents.count))")
+                    Text("Active Agents (\(activeAgents.count))")
                         .font(.headline)
                     Spacer()
                     Text("Updated \(codexMonitor.lastUpdate.formatted(date: .omitted, time: .standard))")
@@ -27,8 +27,8 @@ struct MonitoringView: View {
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(groupedAgents.keys.sorted(), id: \.self) { sessionName in
-                            // 그룹 헤더 (1차)
+                        ForEach(activeGroupNames, id: \.self) { sessionName in
+                            // 그룹 헤더 (1차) — 활성 agent 있는 그룹만
                             Text(displayGroupName(sessionName))
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(.secondary)
@@ -36,9 +36,8 @@ struct MonitoringView: View {
                                 .padding(.top, 8)
                                 .padding(.bottom, 4)
 
-                            // FIX-S (2026-05-07): 윈도우(부모) 1차 + sub-agent 2차 (들여쓰기) 구조
-                            // windowName 별로 묶고, 각 묶음 안에서 부모 먼저 → sub-agent 들여쓰기
-                            let agentsInGroup = groupedAgents[sessionName] ?? []
+                            // 윈도우(부모) 1차 + sub-agent 2차 (들여쓰기)
+                            let agentsInGroup = activeAgentsByGroup[sessionName] ?? []
                             let byWindow = Dictionary(grouping: agentsInGroup, by: { $0.windowName })
                             ForEach(byWindow.keys.sorted(), id: \.self) { winName in
                                 let agents = (byWindow[winName] ?? []).sorted { $0.paneIndex < $1.paneIndex }
@@ -51,6 +50,21 @@ struct MonitoringView: View {
                                     .onTapGesture { selectedAgentId = agent.id }
                                 }
                             }
+                        }
+                        if activeGroupNames.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "moon.zzz")
+                                    .font(.system(size: 32))
+                                    .foregroundStyle(.secondary)
+                                Text("No active agents")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                Text("Agents 작업 시작하면 여기 표시됩니다")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
                         }
                     }
                 }
@@ -80,6 +94,28 @@ struct MonitoringView: View {
 
     private var groupedAgents: [String: [AgentSession]] {
         Dictionary(grouping: codexMonitor.agents, by: { $0.tmuxSession })
+    }
+
+    // FIX-U (2026-05-07): multi-agent로 운영 중인 윈도우만 표시
+    // — sub-agent (paneIndex >= 1) 가 1개라도 있는 윈도우만
+    // — 그 윈도우의 부모 + 모든 sub-agent 함께 표시
+    // — sub-agent 없는 단순 윈도우는 모두 숨김
+    private var activeAgents: [AgentSession] {
+        // 윈도우 키별로 그룹화
+        let byWindow = Dictionary(grouping: codexMonitor.agents, by: {
+            "\($0.tmuxSession)|\($0.windowName)"
+        })
+        // sub-agent가 1개라도 있는 윈도우만 통과
+        let multiAgentWindows = byWindow.filter { _, agents in
+            agents.contains(where: { !$0.isParent })
+        }
+        return multiAgentWindows.values.flatMap { $0 }
+    }
+    private var activeAgentsByGroup: [String: [AgentSession]] {
+        Dictionary(grouping: activeAgents, by: { $0.tmuxSession })
+    }
+    private var activeGroupNames: [String] {
+        activeAgentsByGroup.keys.sorted()
     }
 
     private func displayGroupName(_ sn: String) -> String {

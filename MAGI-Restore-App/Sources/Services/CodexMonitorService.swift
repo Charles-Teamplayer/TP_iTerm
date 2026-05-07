@@ -27,9 +27,10 @@ final class CodexMonitorService: ObservableObject {
         var result: [AgentSession] = []
         for pane in panes {
             let agentInfo = await extractAgentInfo(panePid: pane.pid, paneTty: pane.tty)
-            let summary = await fetchPaneSummary(target: "\(pane.session):\(pane.windowIndex).\(pane.paneIndex)")
+            let fullText = await fetchPaneSummary(target: "\(pane.session):\(pane.windowIndex).\(pane.paneIndex)")
             let startTime = Date(timeIntervalSince1970: TimeInterval(pane.startTimeSec))
-            let status = determineStatus(summary: summary, agentInfo: agentInfo)
+            let status = determineStatus(summary: fullText, agentInfo: agentInfo)
+            let summary = extractLastMeaningfulLine(fullText)
             result.append(AgentSession(
                 id: pane.paneId,
                 tmuxSession: pane.session,
@@ -99,13 +100,18 @@ final class CodexMonitorService: ObservableObject {
         return (agentId, agentName)
     }
 
+    // FIX-T (2026-05-07): summary는 마지막 줄이 아닌 화면 전체 텍스트 (working 패턴 검사용)
     private func fetchPaneSummary(target: String) async -> String {
         let raw = await ShellService.runAsync(
-            "tmux capture-pane -t '\(target)' -p 2>/dev/null | tail -5"
+            "tmux capture-pane -t '\(target)' -p 2>/dev/null | tail -15"
         )
-        let lines = raw.components(separatedBy: "\n")
+        return raw  // 전체 텍스트 보존 (status 판별 + 마지막 의미줄 추출 둘 다 가능)
+    }
+
+    private func extractLastMeaningfulLine(_ text: String) -> String {
+        let lines = text.components(separatedBy: "\n")
             .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+            .filter { !$0.isEmpty && $0 != "❯" && !$0.hasPrefix("─") }
         return lines.last.map { String($0.prefix(120)) } ?? ""
     }
 
@@ -114,11 +120,17 @@ final class CodexMonitorService: ObservableObject {
         if s.contains("error") || s.contains("failed") || s.contains("traceback") {
             return .error
         }
-        if s.contains("complete") || s.contains("✓") || s.contains("✅") {
-            return .completed
+        // FIX-T: Claude Code working indicator 패턴 감지
+        // — "✻ Working" / "Cogitating" / "Bash(" / "Edit(" / "Read(" / "Running" / "esc to interrupt"
+        let workingPatterns = ["✻", "cogitating", "esc to interrupt", "bash(", "edit(", "read(", "write(", "✺", "tokens"]
+        for p in workingPatterns {
+            if s.contains(p) { return .running }
         }
         if agentInfo.id != nil || agentInfo.name != nil {
             return .running
+        }
+        if s.contains("complete") || s.contains("✓") || s.contains("✅") {
+            return .completed
         }
         return .idle
     }
