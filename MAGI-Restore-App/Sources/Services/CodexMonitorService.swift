@@ -307,9 +307,9 @@ final class CodexMonitorService: ObservableObject {
         if s.contains("error") || s.contains("failed") || s.contains("traceback") {
             return .error
         }
-        // FIX-T: Claude Code working indicator 패턴 감지
-        // — "✻ Working" / "Cogitating" / "Bash(" / "Edit(" / "Read(" / "Running" / "esc to interrupt"
-        let workingPatterns = ["✻", "cogitating", "esc to interrupt", "bash(", "edit(", "read(", "write(", "✺", "tokens"]
+        // FIX-EE (2026-05-07): working indicator 정제 — "tokens"/"cogitating" 제거 (오탐 빈도 높음)
+        // 진짜 active 패턴만: ✻/✺ progress, esc to interrupt, tool call (Bash/Edit/Read/Write/Grep/Task)
+        let workingPatterns = ["✻ ", "✺ ", "esc to interrupt", "bash(", "edit(", "read(", "write(", "grep(", "task("]
         for p in workingPatterns {
             if s.contains(p) { return .running }
         }
