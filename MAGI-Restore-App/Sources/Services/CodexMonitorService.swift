@@ -21,7 +21,7 @@ final class CodexMonitorService: ObservableObject {
                 await self?.appendStartupLogFromTask("iter=\(iter) refresh begin")
                 await self?.refresh()
                 NSLog("[CodexMon] iter=\(iter) refresh done — sleep 10s")
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                try? await Task.sleep(nanoseconds: 15_000_000_000)  // FIX-FF: 10s → 15s (capture-pane 18번 부담)
             }
             NSLog("[CodexMon] pollTask CANCELLED iter=\(iter)")
         }
@@ -287,12 +287,12 @@ final class CodexMonitorService: ObservableObject {
         return (agentId, agentName)
     }
 
-    // FIX-T (2026-05-07): summary는 마지막 줄이 아닌 화면 전체 텍스트 (working 패턴 검사용)
+    // FIX-FF (2026-05-07): tail 15→8 (성능 — pattern 감지엔 마지막 8줄로 충분)
     private func fetchPaneSummary(target: String) async -> String {
         let raw = await ShellService.runAsync(
-            "tmux capture-pane -t '\(target)' -p 2>/dev/null | tail -15"
+            "tmux capture-pane -t '\(target)' -p 2>/dev/null | tail -8"
         )
-        return raw  // 전체 텍스트 보존 (status 판별 + 마지막 의미줄 추출 둘 다 가능)
+        return raw
     }
 
     private func extractLastMeaningfulLine(_ text: String) -> String {
@@ -304,20 +304,15 @@ final class CodexMonitorService: ObservableObject {
 
     private func determineStatus(summary: String, agentInfo: (id: String?, name: String?)) -> AgentStatus {
         let s = summary.lowercased()
-        if s.contains("error") || s.contains("failed") || s.contains("traceback") {
-            return .error
-        }
-        // FIX-EE (2026-05-07): working indicator 정제 — "tokens"/"cogitating" 제거 (오탐 빈도 높음)
-        // 진짜 active 패턴만: ✻/✺ progress, esc to interrupt, tool call (Bash/Edit/Read/Write/Grep/Task)
+        // FIX-FF (2026-05-07): error 자동 분류 제거 — 과거 에러 메시지가 화면에 남으면 오탐
+        // running 명확 신호만 신뢰: tool call active 또는 progress indicator
+        // ⏵⏵ bypass permissions on (모든 idle 화면에 항상) → 제외
         let workingPatterns = ["✻ ", "✺ ", "esc to interrupt", "bash(", "edit(", "read(", "write(", "grep(", "task("]
         for p in workingPatterns {
             if s.contains(p) { return .running }
         }
         if agentInfo.id != nil || agentInfo.name != nil {
             return .running
-        }
-        if s.contains("complete") || s.contains("✓") || s.contains("✅") {
-            return .completed
         }
         return .idle
     }

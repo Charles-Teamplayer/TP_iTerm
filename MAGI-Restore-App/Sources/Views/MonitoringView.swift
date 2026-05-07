@@ -117,13 +117,12 @@ struct MonitoringView: View {
         Dictionary(grouping: codexMonitor.agents, by: { $0.tmuxSession })
     }
 
-    // FIX-EE (2026-05-07): "작업 중"인 것만 표시
-    // — sub-agent (paneIndex >= 1): 모두 (split pane 자체가 active 작업)
-    // — 부모 Claude: working/error만 (idle prompt 대기는 제외)
+    // FIX-FF (2026-05-07): 진행 중인 것만 (status .running) — .error 제거
+    // 과거 에러 메시지가 화면에 남아있으면 .error로 잡혀 오탐. running만 신뢰.
     private var activeAgents: [AgentSession] {
         codexMonitor.agents.filter { agent in
             if !agent.isParent { return true }
-            return agent.status == .running || agent.status == .error
+            return agent.status == .running
         }
     }
     private var activeAgentsByGroup: [String: [AgentSession]] {
