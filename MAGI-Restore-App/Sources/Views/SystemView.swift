@@ -274,6 +274,7 @@ struct SystemView: View {
     @State private var showInstallLog = false
     @State private var showRestoreLog = false
     @State private var showForceRestoreConfirm = false
+    @State private var showBudgetSheet = false
     // 직접 입력 토글
     @State private var useCustomDelay = false
     @State private var useCustomAttempts = false
@@ -522,6 +523,20 @@ struct SystemView: View {
                         .buttonStyle(.link)
                 }
             }
+
+            Section("Agent Budget (분배기)") {
+                Button {
+                    showBudgetSheet = true
+                } label: {
+                    HStack {
+                        Image(systemName: "scale.3d").foregroundStyle(.blue)
+                        Text("Open Budget Settings")
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
         }
         .formStyle(.grouped)
         .onAppear {
@@ -566,6 +581,10 @@ struct SystemView: View {
                 }
             }
             .frame(width: 500, height: 400)
+        }
+        .sheet(isPresented: $showBudgetSheet) {
+            BudgetSettingsView()
+                .frame(minWidth: 500, minHeight: 600)
         }
     }
 }

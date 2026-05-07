@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var monitor = SessionMonitor()
+    @StateObject private var budgetStore = AgentBudgetStore()
     @State private var selectedTab: Tab = .sessions
     @State private var selectedSession: ClaudeSession?
     @State private var profileSelection: UUID? = nil
@@ -82,6 +83,8 @@ struct ContentView: View {
             NotificationService.shared.requestPermission()
             ToastService.shared.startPolling()
             monitor.start()
+            // FIX-Z: Budget store + CLAUDE.md sync 연결
+            ClaudeMdSyncService.shared.bind(store: budgetStore)
             monitor.profileService.load()
             monitor.windowGroupService.load()
             monitor.syncWindowGroupsWithProfiles()

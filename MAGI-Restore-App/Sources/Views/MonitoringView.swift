@@ -4,6 +4,7 @@ struct MonitoringView: View {
     @ObservedObject var monitor: SessionMonitor
     @StateObject private var codexMonitor = CodexMonitorService()
     @State private var selectedAgentId: String?
+    @State private var refreshing = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -15,10 +16,31 @@ struct MonitoringView: View {
                     Text("Updated \(codexMonitor.lastUpdate.formatted(date: .omitted, time: .standard))")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Button { Task { await codexMonitor.refresh() } } label: {
-                        Image(systemName: "arrow.clockwise")
+                    Button {
+                        Task {
+                            refreshing = true
+                            await codexMonitor.refresh()
+                            try? await Task.sleep(nanoseconds: 300_000_000)
+                            refreshing = false
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if refreshing {
+                                ProgressView().scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "arrow.clockwise.circle.fill")
+                                    .font(.system(size: 16))
+                            }
+                            Text(refreshing ? "Refreshing..." : "Refresh")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.accentColor.opacity(refreshing ? 0.3 : 0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
+                    .disabled(refreshing)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
