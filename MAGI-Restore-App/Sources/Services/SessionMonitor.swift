@@ -38,6 +38,10 @@ final class SessionMonitor: ObservableObject {
         profileService.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &serviceCancellables)
+        // FIX-Y (2026-05-07): init 시점 즉시 그룹/프로필 로드
+        // — 이전엔 ContentView.onAppear에서만 load 호출 → 첫 렌더 시 빈 화면
+        windowGroupService.load()
+        profileService.load()
     }
 
     // 자동 재시작 설정 + 상태 추적

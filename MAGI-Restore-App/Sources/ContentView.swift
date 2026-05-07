@@ -226,8 +226,9 @@ struct ContentView: View {
     // MARK: - Session List Panel
 
     private var sessionListPanel: some View {
-        // FIX-R (2026-05-07): profileRoot 매칭 실패해도 tmux active session 표시
-        let profileSessions = monitor.sessions.filter { $0.profileRoot != nil || $0.windowIndex >= 0 }
+        // FIX-W (2026-05-07): 근본 fix — 필터 제거. windowGroupService.groups + monitor.sessions 그대로
+        // 그룹 표시는 wgs.groups가 결정 (paneSessions 매칭 안 되면 빈 row 그대로 표시)
+        let profileSessions = monitor.sessions
         let allRunning = profileSessions.filter(\.isRunning).count
         let allRestorable = profileSessions.filter {
             !$0.isRunning && $0.isAssigned && !$0.id.hasPrefix("profile-") && $0.windowIndex != Int.max

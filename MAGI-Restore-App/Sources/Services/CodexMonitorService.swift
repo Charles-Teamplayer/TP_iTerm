@@ -12,7 +12,7 @@ final class CodexMonitorService: ObservableObject {
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refresh()
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                try? await Task.sleep(nanoseconds: 10_000_000_000)  // FIX-X: 5s → 10s (성능)
             }
         }
     }
@@ -22,14 +22,40 @@ final class CodexMonitorService: ObservableObject {
         pollTask = nil
     }
 
+    // FIX-V (2026-05-07): 자식 worker 프로세스(--agent-id, codex exec) 도 별도 row로 표시
+    // 디버그 로그: ~/.claude/logs/codex-monitor.log
+    private let logFile = NSHomeDirectory() + "/.claude/logs/codex-monitor.log"
+
+    private func dlog(_ msg: String) {
+        let dir = (logFile as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let ts = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(ts)] \(msg)\n"
+        if let data = line.data(using: .utf8) {
+            if let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: logFile)) {
+                h.seekToEndOfFile(); h.write(data); try? h.close()
+            } else {
+                try? data.write(to: URL(fileURLWithPath: logFile))
+            }
+        }
+    }
+
     func refresh() async {
         let panes = await fetchTmuxPanes()
+        let workers = await fetchActiveWorkers()
+        dlog("refresh: panes=\(panes.count) workers=\(workers.count)")
+        for w in workers { dlog("  worker pid=\(w.pid) ppid=\(w.ppid) type=\(w.type) name=\(w.name)") }
+
+        // 부모 process chain → tmux pane 매핑
+        let panePids = Set(panes.map { $0.pid })
         var result: [AgentSession] = []
         for pane in panes {
-            let agentInfo = await extractAgentInfo(panePid: pane.pid, paneTty: pane.tty)
             let fullText = await fetchPaneSummary(target: "\(pane.session):\(pane.windowIndex).\(pane.paneIndex)")
             let startTime = Date(timeIntervalSince1970: TimeInterval(pane.startTimeSec))
-            let status = determineStatus(summary: fullText, agentInfo: agentInfo)
+
+            // 1) 부모 row (pane index 0 — 부모 Claude)
+            let parentInfo = await extractAgentInfo(panePid: pane.pid, paneTty: pane.tty)
+            let parentStatus = determineStatus(summary: fullText, agentInfo: parentInfo)
             let summary = extractLastMeaningfulLine(fullText)
             result.append(AgentSession(
                 id: pane.paneId,
@@ -39,17 +65,134 @@ final class CodexMonitorService: ObservableObject {
                 paneIndex: pane.paneIndex,
                 panePid: pane.pid,
                 paneTty: pane.tty,
-                agentId: agentInfo.id,
-                agentName: agentInfo.name,
+                agentId: parentInfo.id,
+                agentName: parentInfo.name,
                 startTime: startTime,
                 endTime: nil,
-                status: status,
+                status: parentStatus,
                 summary: summary,
                 isParent: pane.paneIndex == 0
             ))
+
+            // 2) 그 pane의 자식 worker (codex exec / --agent-id) 별도 row
+            let paneWorkers = workers.filter { isDescendantOf(parentPid: pane.pid, childPid: $0.pid, allPids: panePids) }
+            for w in paneWorkers {
+                result.append(AgentSession(
+                    id: "worker-\(w.pid)",
+                    tmuxSession: pane.session,
+                    windowIndex: pane.windowIndex,
+                    windowName: pane.windowName,
+                    paneIndex: 100 + (paneWorkers.firstIndex(where: { $0.pid == w.pid }) ?? 0),
+                    panePid: w.pid,
+                    paneTty: pane.tty,
+                    agentId: w.type == "codex" ? "codex-exec" : w.name,
+                    agentName: w.name,
+                    startTime: startTime,
+                    endTime: nil,
+                    status: .running,
+                    summary: w.summary,
+                    isParent: false
+                ))
+                dlog("  attached worker pid=\(w.pid) → \(pane.session):\(pane.windowName)")
+            }
         }
+        dlog("refresh result: \(result.count) total agents")
         agents = result
         lastUpdate = Date()
+    }
+
+    // FIX-X (2026-05-07): 성능 최적화 — ps 1번만, leaf-only, ppid map 캐시
+    private var ppidCache: [Int: Int] = [:]
+
+    private func fetchActiveWorkers() async -> [WorkerInfo] {
+        // ps 한 번만 — 모든 프로세스 ppid map + agent/codex 후보 동시에
+        let raw = await ShellService.runAsync("ps -ax -o pid,ppid,command 2>/dev/null")
+        ppidCache.removeAll()
+        var candidates: [(pid: Int, ppid: Int, cmd: String)] = []
+        for line in raw.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            let comps = trimmed.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
+            guard comps.count >= 3,
+                  let pid = Int(comps[0]),
+                  let ppid = Int(comps[1]) else { continue }
+            ppidCache[pid] = ppid
+            let cmd = String(comps[2])
+            // worker 후보 (--agent-id, codex exec) — broker/app-server 제외
+            if cmd.contains("--agent-id") || (cmd.contains("codex exec") && !cmd.contains("app-server")) {
+                if !cmd.contains("grep ") {
+                    candidates.append((pid, ppid, cmd))
+                }
+            }
+        }
+        // leaf only — 다른 candidate의 ppid에 자기 pid가 안 보이면 leaf
+        let allPpids = Set(candidates.map { $0.ppid })
+        let leaves = candidates.filter { !allPpids.contains($0.pid) }
+
+        return leaves.map { c -> WorkerInfo in
+            let cmd = c.cmd
+            let type: String
+            let name: String
+            if cmd.contains("--agent-id") {
+                type = "agent"
+                name = cmd.range(of: "--agent-name ").flatMap { r -> String? in
+                    let rest = cmd[r.upperBound...]
+                    return String(rest.split(separator: " ").first ?? "")
+                } ?? "agent"
+            } else {
+                type = "codex"
+                // prompt 안에서 "Agent X —" 또는 "Phase X" 패턴 추출
+                let label = extractCodexLabel(cmd) ?? "codex"
+                name = label
+            }
+            let summary = extractWorkerSummary(cmd)
+            return WorkerInfo(pid: c.pid, ppid: c.ppid, type: type, name: name, summary: summary)
+        }
+    }
+
+    private func extractCodexLabel(_ cmd: String) -> String? {
+        // "Agent L —" / "Agent Q —" / "Phase X" 같은 라벨 추출
+        let patterns = [#"Agent [A-Z]\b"#, #"Phase [A-Z]+"#, #"# [A-Z][\w가-힣 ]{3,40}"#]
+        for p in patterns {
+            if let r = cmd.range(of: p, options: .regularExpression) {
+                return String(cmd[r])
+            }
+        }
+        // fallback: prompt 첫 의미있는 단어
+        if let r = cmd.range(of: "codex exec ")?.upperBound {
+            let rest = cmd[r...]
+            // " --" flag 이후 첫 따옴표 prompt
+            if let q = rest.range(of: "\"") {
+                let after = rest[q.upperBound...]
+                let first40 = String(after.prefix(40)).replacingOccurrences(of: "\\", with: "")
+                return "codex: " + first40
+            }
+        }
+        return nil
+    }
+
+    private func extractWorkerSummary(_ cmd: String) -> String {
+        // 첫 의미 있는 줄 (\012 = \n) — 너무 긴 export 등 제외
+        let lines = cmd.components(separatedBy: "\\012")
+        for l in lines {
+            let t = l.trimmingCharacters(in: .whitespaces)
+            if t.count > 10, !t.hasPrefix("export "), !t.hasPrefix(":"), !t.hasPrefix("source ") {
+                return String(t.prefix(140))
+            }
+        }
+        return String(cmd.prefix(140))
+    }
+
+    private func isDescendantOf(parentPid: Int, childPid: Int, allPids: Set<Int>) -> Bool {
+        // 캐시된 ppid map만 사용 — ps 호출 X (성능)
+        var cur = childPid
+        for _ in 0..<15 {
+            if cur == parentPid { return true }
+            guard let ppid = ppidCache[cur], ppid > 1 else { return false }
+            if ppid == parentPid { return true }
+            cur = ppid
+        }
+        return false
     }
 
     private func fetchTmuxPanes() async -> [TmuxPaneInfo] {
@@ -134,6 +277,14 @@ final class CodexMonitorService: ObservableObject {
         }
         return .idle
     }
+}
+
+private struct WorkerInfo {
+    let pid: Int
+    let ppid: Int
+    let type: String     // "agent" | "codex"
+    let name: String
+    let summary: String
 }
 
 private struct TmuxPaneInfo {
