@@ -117,20 +117,9 @@ struct MonitoringView: View {
         Dictionary(grouping: codexMonitor.agents, by: { $0.tmuxSession })
     }
 
-    // FIX-U (2026-05-07): multi-agent로 운영 중인 윈도우만 표시
-    // — sub-agent (paneIndex >= 1) 가 1개라도 있는 윈도우만
-    // — 그 윈도우의 부모 + 모든 sub-agent 함께 표시
-    // — sub-agent 없는 단순 윈도우는 모두 숨김
+    // FIX-DD (2026-05-07): 모든 active pane 표시 (CEO 결정 — multi-agent filter 제거)
     private var activeAgents: [AgentSession] {
-        // 윈도우 키별로 그룹화
-        let byWindow = Dictionary(grouping: codexMonitor.agents, by: {
-            "\($0.tmuxSession)|\($0.windowName)"
-        })
-        // sub-agent가 1개라도 있는 윈도우만 통과
-        let multiAgentWindows = byWindow.filter { _, agents in
-            agents.contains(where: { !$0.isParent })
-        }
-        return multiAgentWindows.values.flatMap { $0 }
+        codexMonitor.agents
     }
     private var activeAgentsByGroup: [String: [AgentSession]] {
         Dictionary(grouping: activeAgents, by: { $0.tmuxSession })
