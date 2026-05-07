@@ -111,7 +111,8 @@ struct MonitoringView: View {
             }
         }
         .onAppear { codexMonitor.start() }
-        .onDisappear { codexMonitor.stop() }
+        // FIX-AA (2026-05-07): 탭 떠도 폴링 유지 — 다른 탭 갔다 돌아왔을 때 최신 상태
+        // (앱 종료 시 자동 cleanup. 부담은 적음 — ps 1번 + capture-pane만)
     }
 
     private var groupedAgents: [String: [AgentSession]] {
