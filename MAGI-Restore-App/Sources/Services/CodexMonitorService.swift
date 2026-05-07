@@ -8,13 +8,39 @@ final class CodexMonitorService: ObservableObject {
     private var pollTask: Task<Void, Never>?
 
     func start() {
+        NSLog("[CodexMon] start() called")
+        appendStartupLog("start() called")
         pollTask?.cancel()
         pollTask = Task { [weak self] in
+            NSLog("[CodexMon] pollTask launched")
+            await self?.appendStartupLogFromTask("pollTask launched")
+            var iter = 0
             while !Task.isCancelled {
+                iter += 1
+                NSLog("[CodexMon] iter=\(iter) refresh begin")
+                await self?.appendStartupLogFromTask("iter=\(iter) refresh begin")
                 await self?.refresh()
-                try? await Task.sleep(nanoseconds: 10_000_000_000)  // FIX-X: 5s → 10s (성능)
+                NSLog("[CodexMon] iter=\(iter) refresh done — sleep 10s")
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+            }
+            NSLog("[CodexMon] pollTask CANCELLED iter=\(iter)")
+        }
+    }
+
+    private func appendStartupLog(_ msg: String) {
+        let dir = (logFile as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let line = "[\(ISO8601DateFormatter().string(from: Date()))] STARTUP: \(msg)\n"
+        if let data = line.data(using: .utf8) {
+            if let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: logFile)) {
+                h.seekToEndOfFile(); h.write(data); try? h.close()
+            } else {
+                try? data.write(to: URL(fileURLWithPath: logFile))
             }
         }
+    }
+    private func appendStartupLogFromTask(_ msg: String) async {
+        appendStartupLog(msg)
     }
 
     func stop() {
@@ -41,15 +67,19 @@ final class CodexMonitorService: ObservableObject {
     }
 
     func refresh() async {
+        dlog("STEP-1 refresh entry")
         let panes = await fetchTmuxPanes()
+        dlog("STEP-2 fetchTmuxPanes done: \(panes.count) panes")
         let workers = await fetchActiveWorkers()
-        dlog("refresh: panes=\(panes.count) workers=\(workers.count)")
+        dlog("STEP-3 fetchActiveWorkers done: \(workers.count) workers")
         for w in workers { dlog("  worker pid=\(w.pid) ppid=\(w.ppid) type=\(w.type) name=\(w.name)") }
 
         // 부모 process chain → tmux pane 매핑
         let panePids = Set(panes.map { $0.pid })
         var result: [AgentSession] = []
-        for pane in panes {
+        dlog("STEP-4 entering pane loop")
+        for (i, pane) in panes.enumerated() {
+            dlog("  STEP-4.\(i) pane=\(pane.session):\(pane.windowName)#\(pane.paneIndex)")
             let fullText = await fetchPaneSummary(target: "\(pane.session):\(pane.windowIndex).\(pane.paneIndex)")
             let startTime = Date(timeIntervalSince1970: TimeInterval(pane.startTimeSec))
 
@@ -105,9 +135,29 @@ final class CodexMonitorService: ObservableObject {
     private var ppidCache: [Int: Int] = [:]
 
     private func fetchActiveWorkers() async -> [WorkerInfo] {
-        // ps 한 번만 — 모든 프로세스 ppid map + agent/codex 후보 동시에
-        let raw = await ShellService.runAsync("ps -ax -o pid,ppid,command 2>/dev/null")
+        // FIX-CC (2026-05-07): ps 출력 sandboxing — pipe buffer overflow 방지
+        // ppidCache는 작은 ps -A -o pid=,ppid= 로, candidates는 grep으로 사전 필터
         ppidCache.removeAll()
+        let ppidRaw = await ShellService.runAsync("ps -A -o pid=,ppid= 2>/dev/null")
+        for line in ppidRaw.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            let comps = trimmed.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+            if comps.count == 2, let pid = Int(comps[0]), let ppid = Int(comps[1]) {
+                ppidCache[pid] = ppid
+            }
+        }
+        dlog("  fetchActiveWorkers: ppidCache=\(ppidCache.count)")
+
+        // worker candidates 만 grep으로 (출력 작음)
+        let raw = await ShellService.runAsync("""
+            ps -ax -o pid,ppid,command 2>/dev/null \
+              | grep -E -- '--agent-id|codex exec' \
+              | grep -v 'app-server' \
+              | grep -v 'broker' \
+              | grep -v ' grep ' \
+              | head -50
+        """)
         var candidates: [(pid: Int, ppid: Int, cmd: String)] = []
         for line in raw.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -116,15 +166,9 @@ final class CodexMonitorService: ObservableObject {
             guard comps.count >= 3,
                   let pid = Int(comps[0]),
                   let ppid = Int(comps[1]) else { continue }
-            ppidCache[pid] = ppid
-            let cmd = String(comps[2])
-            // worker 후보 (--agent-id, codex exec) — broker/app-server 제외
-            if cmd.contains("--agent-id") || (cmd.contains("codex exec") && !cmd.contains("app-server")) {
-                if !cmd.contains("grep ") {
-                    candidates.append((pid, ppid, cmd))
-                }
-            }
+            candidates.append((pid, ppid, String(comps[2])))
         }
+        dlog("  fetchActiveWorkers: candidates=\(candidates.count)")
         // leaf only — 다른 candidate의 ppid에 자기 pid가 안 보이면 leaf
         let allPpids = Set(candidates.map { $0.ppid })
         let leaves = candidates.filter { !allPpids.contains($0.pid) }

@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @StateObject private var monitor = SessionMonitor()
     @StateObject private var budgetStore = AgentBudgetStore()
+    @StateObject private var codexMonitor = CodexMonitorService()  // FIX-BB: ContentView level — 앱 시작 즉시 polling
     @State private var selectedTab: Tab = .sessions
     @State private var selectedSession: ClaudeSession?
     @State private var profileSelection: UUID? = nil
@@ -83,6 +84,8 @@ struct ContentView: View {
             NotificationService.shared.requestPermission()
             ToastService.shared.startPolling()
             monitor.start()
+            // FIX-BB: codexMonitor도 ContentView lifecycle로 — 항상 polling
+            codexMonitor.start()
             // FIX-Z: Budget store + CLAUDE.md sync 연결
             ClaudeMdSyncService.shared.bind(store: budgetStore)
             monitor.profileService.load()
@@ -804,7 +807,7 @@ struct ContentView: View {
     private var otherTabContent: some View {
         switch selectedTab {
         case .profiles: ProfilesView(monitor: monitor, searchFocused: $profileSearchFocused, selection: $profileSelection)
-        case .monitoring: MonitoringView(monitor: monitor)
+        case .monitoring: MonitoringView(monitor: monitor, codexMonitor: codexMonitor)
         case .system:   SystemView(monitor: monitor)
         default:        EmptyStateView(title: "Select an item", systemImage: "sidebar.left")
         }

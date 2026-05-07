@@ -2,7 +2,7 @@ import SwiftUI
 
 struct MonitoringView: View {
     @ObservedObject var monitor: SessionMonitor
-    @StateObject private var codexMonitor = CodexMonitorService()
+    @ObservedObject var codexMonitor: CodexMonitorService  // FIX-BB: ContentView에서 주입
     @State private var selectedAgentId: String?
     @State private var refreshing = false
 
@@ -110,9 +110,7 @@ struct MonitoringView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .onAppear { codexMonitor.start() }
-        // FIX-AA (2026-05-07): 탭 떠도 폴링 유지 — 다른 탭 갔다 돌아왔을 때 최신 상태
-        // (앱 종료 시 자동 cleanup. 부담은 적음 — ps 1번 + capture-pane만)
+        // FIX-BB: ContentView에서 start 호출 — 여기는 onAppear 불필요
     }
 
     private var groupedAgents: [String: [AgentSession]] {
