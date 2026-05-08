@@ -287,16 +287,20 @@ final class CodexMonitorService: ObservableObject {
         return (agentId, agentName)
     }
 
-    // FIX-GG (2026-05-08): tail 8→20 (footer 제외 후 의미 있는 줄 확보용)
+    // FIX-II (2026-05-08): tail 20→40 (10줄 의미 라인 확보 위한 buffer)
     private func fetchPaneSummary(target: String) async -> String {
         let raw = await ShellService.runAsync(
-            "tmux capture-pane -t '\(target)' -p 2>/dev/null | tail -20"
+            "tmux capture-pane -t '\(target)' -p 2>/dev/null | tail -40"
         )
         return raw
     }
 
-    // FIX-GG (2026-05-08): footer/prompt 제외 + 진짜 작업 내역 추출
+    // FIX-II (2026-05-08): 마지막 의미있는 N줄 추출 (default 10) — 작업 내역 추적용
     private func extractLastMeaningfulLine(_ text: String) -> String {
+        return extractLastMeaningfulLines(text, count: 10)
+    }
+
+    private func extractLastMeaningfulLines(_ text: String, count: Int) -> String {
         let footerPatterns = [
             "bypass permissions",
             "shift+tab to cycle",
@@ -312,18 +316,20 @@ final class CodexMonitorService: ObservableObject {
             "/help"
         ]
         let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        var collected: [String] = []
         for line in lines.reversed() {
             guard !line.isEmpty else { continue }
             if line == "❯" || line == ">" { continue }
             if line.hasPrefix("─") { continue }
             if line.hasPrefix("⏵") { continue }
-            if line.hasPrefix("❯") { continue }  // 사용자 prompt 입력 (❯ ...)
-            if line.hasPrefix("@") && line.count < 100 { continue }  // mention 라인 (header)
+            if line.hasPrefix("❯") { continue }
+            if line.hasPrefix("@") && line.count < 100 { continue }
             let lower = line.lowercased()
             if footerPatterns.contains(where: { lower.contains($0) }) { continue }
-            return String(line.prefix(140))
+            collected.append(String(line.prefix(140)))
+            if collected.count >= count { break }
         }
-        return ""
+        return collected.reversed().joined(separator: "\n")
     }
 
     private func determineStatus(summary: String, agentInfo: (id: String?, name: String?)) -> AgentStatus {

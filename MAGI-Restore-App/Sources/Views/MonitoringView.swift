@@ -172,7 +172,7 @@ private struct AgentRow: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
-                Text(agent.summary)
+                Text(agent.summary.components(separatedBy: "\n").last ?? agent.summary)
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
@@ -234,10 +234,12 @@ private struct AgentDetailView: View {
                     }
                     .padding(4)
                 }
-                GroupBox("Last Output") {
-                    Text(agent.summary.isEmpty ? "(empty)" : agent.summary)
+                GroupBox("최근 작업 내역 (마지막 10줄)") {
+                    Text(agent.summary.isEmpty ? "(no recent activity)" : agent.summary)
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
                         .padding(4)
                 }
                 Spacer()
