@@ -328,10 +328,9 @@ final class CodexMonitorService: ObservableObject {
 
     private func determineStatus(summary: String, agentInfo: (id: String?, name: String?)) -> AgentStatus {
         let s = summary.lowercased()
-        // FIX-FF (2026-05-07): error 자동 분류 제거 — 과거 에러 메시지가 화면에 남으면 오탐
-        // running 명확 신호만 신뢰: tool call active 또는 progress indicator
-        // ⏵⏵ bypass permissions on (모든 idle 화면에 항상) → 제외
-        let workingPatterns = ["✻ ", "✺ ", "esc to interrupt", "bash(", "edit(", "read(", "write(", "grep(", "task("]
+        // FIX-HH (2026-05-08): ✻/✺ 제거 — `✻ Idle`, `✻ Worked for X`도 매칭되어 오탐
+        // 진짜 working 신호만: esc to interrupt (응답 생성 중) + tool call 진행
+        let workingPatterns = ["esc to interrupt", "bash(", "edit(", "read(", "write(", "grep(", "task("]
         for p in workingPatterns {
             if s.contains(p) { return .running }
         }
