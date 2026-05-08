@@ -287,19 +287,43 @@ final class CodexMonitorService: ObservableObject {
         return (agentId, agentName)
     }
 
-    // FIX-FF (2026-05-07): tail 15→8 (성능 — pattern 감지엔 마지막 8줄로 충분)
+    // FIX-GG (2026-05-08): tail 8→20 (footer 제외 후 의미 있는 줄 확보용)
     private func fetchPaneSummary(target: String) async -> String {
         let raw = await ShellService.runAsync(
-            "tmux capture-pane -t '\(target)' -p 2>/dev/null | tail -8"
+            "tmux capture-pane -t '\(target)' -p 2>/dev/null | tail -20"
         )
         return raw
     }
 
+    // FIX-GG (2026-05-08): footer/prompt 제외 + 진짜 작업 내역 추출
     private func extractLastMeaningfulLine(_ text: String) -> String {
-        let lines = text.components(separatedBy: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && $0 != "❯" && !$0.hasPrefix("─") }
-        return lines.last.map { String($0.prefix(120)) } ?? ""
+        let footerPatterns = [
+            "bypass permissions",
+            "shift+tab to cycle",
+            "shift+tab",
+            "new task?",
+            "/clear to save",
+            "ctrl+t to show",
+            "background task",
+            "esc to interrupt",
+            "press tab",
+            "tokens (",
+            "to expand",
+            "/help"
+        ]
+        let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        for line in lines.reversed() {
+            guard !line.isEmpty else { continue }
+            if line == "❯" || line == ">" { continue }
+            if line.hasPrefix("─") { continue }
+            if line.hasPrefix("⏵") { continue }
+            if line.hasPrefix("❯") { continue }  // 사용자 prompt 입력 (❯ ...)
+            if line.hasPrefix("@") && line.count < 100 { continue }  // mention 라인 (header)
+            let lower = line.lowercased()
+            if footerPatterns.contains(where: { lower.contains($0) }) { continue }
+            return String(line.prefix(140))
+        }
+        return ""
     }
 
     private func determineStatus(summary: String, agentInfo: (id: String?, name: String?)) -> AgentStatus {
