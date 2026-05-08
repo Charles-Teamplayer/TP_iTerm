@@ -227,7 +227,9 @@
   },
   "enabledPlugins": {
     "swift-lsp@claude-plugins-official": true,
-    "ralph-loop@claude-plugins-official": true
+    "ralph-loop@claude-plugins-official": true,
+    "compounding-engineering@every-marketplace": true,
+    "codex@openai-codex": true
   },
   "skipDangerousModePermissionPrompt": true,
   "teammateMode": "tmux"
