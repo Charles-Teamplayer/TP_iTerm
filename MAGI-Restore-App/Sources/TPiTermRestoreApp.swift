@@ -5,6 +5,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        let uid = getuid()
+        for label in ["com.claude.watchdog", "com.claude.tab-focus-monitor"] {
+            _ = ShellService.run("launchctl bootout gui/\(uid)/\(label) 2>/dev/null; true")
+        }
+        _ = ShellService.run("pkill -f 'watchdog.sh' 2>/dev/null; pkill -f 'tab-focus-monitor.sh' 2>/dev/null; pkill -f 'session-registry.sh crash-detect' 2>/dev/null; true")
+    }
 }
 
 @main
