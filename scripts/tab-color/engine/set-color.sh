@@ -204,17 +204,13 @@ if [ "$NOTIFY" = "true" ]; then
     _NOTIFY_LOG="$HOME/.claude/logs/notify-fire.log"
     mkdir -p "$(dirname "$_NOTIFY_LOG")"
     printf '[%s] fire project=%s tty=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$PROJECT" "$TTY_NAME" >> "$_NOTIFY_LOG"
-    if command -v terminal-notifier &>/dev/null && [ -x "$_FOCUS_SCRIPT" ]; then
-        # nohup으로 SIGHUP 격리 — 부모(set-color.sh) 종료 시 자식 죽지 않도록
-        nohup terminal-notifier \
-            -title "Claude Code" \
-            -subtitle "⚠️ Attention Required" \
-            -message "${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다" \
-            -sender com.googlecode.iterm2 \
-            -group "claude-attn-${TTY_NAME}" \
-            -execute "$_FOCUS_SCRIPT '$TTY_PATH' '$_SAFE_PROJECT'" </dev/null >/dev/null 2>&1 &
+    # iMessage 발송 (osascript 알림 → iMessage 전환, CEO 명령 2026-05-25)
+    _IMSG_SEND="$HOME/claude/TP_A.iMessage_standalone_01067051080/scripts/imsg-send.sh"
+    if [ -x "$_IMSG_SEND" ]; then
+        nohup "$_IMSG_SEND" "$_SAFE_PROJECT" "⚠️ 세션 입력 대기 (tty=$TTY_NAME)" </dev/null >>"$_NOTIFY_LOG" 2>&1 &
         disown 2>/dev/null || true
     else
+        # iMessage 스크립트 부재 시만 macOS 알림 fallback
         nohup osascript -e "display notification \"${_SAFE_PROJECT} 세션이 입력을 기다리고 있습니다\" with title \"Claude Code\" subtitle \"⚠️ Attention Required\"" </dev/null >/dev/null 2>&1 &
         disown 2>/dev/null || true
     fi
